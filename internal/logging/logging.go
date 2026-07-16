@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"regexp"
 	"strings"
 )
@@ -93,13 +94,17 @@ func redactAttr(attribute slog.Attr) slog.Attr {
 	if attribute.Value.Kind() == slog.KindAny {
 		switch value := attribute.Value.Any().(type) {
 		case error:
-			if mustRedact(value.Error()) {
+			rendered, ok := safeRender(value, value.Error)
+			if !ok || mustRedact(rendered) {
 				return slog.String(attribute.Key, redacted)
 			}
+			return slog.String(attribute.Key, rendered)
 		case fmt.Stringer:
-			if mustRedact(value.String()) {
+			rendered, ok := safeRender(value, value.String)
+			if !ok || mustRedact(rendered) {
 				return slog.String(attribute.Key, redacted)
 			}
+			return slog.String(attribute.Key, rendered)
 		}
 	}
 	return attribute
@@ -107,6 +112,28 @@ func redactAttr(attribute slog.Attr) slog.Attr {
 
 func mustRedact(value string) bool {
 	return sensitiveValue.MatchString(value) || strings.Contains(value, "PRIVATE KEY")
+}
+
+func safeRender(value any, render func() string) (text string, ok bool) {
+	reflected := reflect.ValueOf(value)
+	switch reflected.Kind() {
+	case reflect.Chan,
+		reflect.Func,
+		reflect.Interface,
+		reflect.Map,
+		reflect.Pointer,
+		reflect.Slice:
+		if reflected.IsNil() {
+			return "<nil>", true
+		}
+	}
+	defer func() {
+		if recover() != nil {
+			text = ""
+			ok = false
+		}
+	}()
+	return render(), true
 }
 
 func attrsToAny(attributes []slog.Attr) []any {
