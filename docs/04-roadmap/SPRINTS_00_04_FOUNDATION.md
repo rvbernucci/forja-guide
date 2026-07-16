@@ -14,9 +14,9 @@ implemented behavior.
 - [x] Add initial language-neutral JSON schemas.
 - [x] Add automated checks for internal links, JSON validity, private paths, and
   common credential patterns.
-- [ ] Enable GitHub branch protection and required CI checks.
-- [ ] Enable GitHub private vulnerability reporting.
-- [ ] Create the first tagged planning release.
+- [x] Enable GitHub branch protection and required CI checks.
+- [x] Enable GitHub private vulnerability reporting.
+- [x] Create the first tagged planning release.
 
 ### Acceptance
 
@@ -128,4 +128,3 @@ processes.
 - Timeout produces a classified retryable or terminal result.
 - Supervisor restart reconciles active attempts correctly.
 - A worker cannot change scheduler or approval state directly.
-
