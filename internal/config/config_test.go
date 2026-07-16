@@ -70,6 +70,37 @@ func TestLoadRejectsMultipleDocuments(t *testing.T) {
 	}
 }
 
+func TestLoadUsesLastConfigFlagConsistently(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	first := filepath.Join(directory, "first.json")
+	second := filepath.Join(directory, "second.json")
+	if err := os.WriteFile(
+		first,
+		[]byte(`{"environment":"first"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		second,
+		[]byte(`{"environment":"second"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(
+		[]string{"--config", first, "--config=" + second},
+		func(string) (string, bool) { return "", false },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ConfigFile != second || cfg.Environment != "second" {
+		t.Fatalf("unexpected config selection: %#v", cfg)
+	}
+}
+
 func TestValidateRejectsUnsafeConfiguration(t *testing.T) {
 	t.Parallel()
 	cases := []Config{

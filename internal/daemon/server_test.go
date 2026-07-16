@@ -119,6 +119,40 @@ func TestHTTPFailsClosedForMalformedCommands(t *testing.T) {
 	}
 }
 
+func TestHTTPUnicodeObjectiveMatchesSchemaSemantics(t *testing.T) {
+	t.Parallel()
+	server := httptest.NewServer(newTestServer(t).Handler())
+	defer server.Close()
+
+	tooShort := requestJSON(
+		t,
+		server.Client(),
+		http.MethodPost,
+		server.URL+"/v1/runs",
+		`{"objective":"😀😀"}`,
+	)
+	if tooShort.StatusCode != http.StatusBadRequest {
+		t.Fatalf(
+			"short Unicode status=%d body=%s",
+			tooShort.StatusCode,
+			readBody(t, tooShort),
+		)
+	}
+	tooShort.Body.Close()
+
+	valid := requestJSON(
+		t,
+		server.Client(),
+		http.MethodPost,
+		server.URL+"/v1/runs",
+		`{"objective":"😀😀😀"}`,
+	)
+	if valid.StatusCode != http.StatusCreated {
+		t.Fatalf("valid Unicode status=%d body=%s", valid.StatusCode, readBody(t, valid))
+	}
+	valid.Body.Close()
+}
+
 func TestReadinessCanFailClosed(t *testing.T) {
 	t.Parallel()
 	daemon := newTestServer(t)

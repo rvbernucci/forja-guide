@@ -115,3 +115,18 @@ func TestParseTimeout(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultClientDefersDeadlineToCommandContext(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient("http://127.0.0.1:8080", nil, registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.httpClient.Timeout != 0 {
+		t.Fatalf("unexpected hidden client timeout: %s", client.httpClient.Timeout)
+	}
+}
