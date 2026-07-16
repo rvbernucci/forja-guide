@@ -4,7 +4,7 @@
   "name": "Go Kernel",
   "status": "completed",
   "objective": "Provide an executable forjad daemon and forja CLI with canonical contract validation and a deterministic in-memory state machine.",
-  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "basis_commit": "b78238d8839d2480c868012ee253cfa1890acd5b",
   "scope": [
     "Go 1.26.5 module and executable daemon and CLI",
     "configuration precedence and fail-closed parsing",

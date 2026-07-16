@@ -77,6 +77,35 @@ class EvidenceValidationTests(unittest.TestCase):
             ]
             self.assertEqual(6, len(missing_errors))
 
+    def test_invalid_basis_commit_is_rejected(self) -> None:
+        """Evidence commit references must use immutable full SHA-1 values."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-01"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES:
+                payload = {
+                    "evidence_version": "1.0",
+                    "sprint_id": "01",
+                    "basis_commit": "not-a-commit",
+                    "status": (
+                        "closed" if filename == "close-receipt.json" else "ok"
+                    ),
+                }
+                (sprint / filename).write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            invalid = [
+                error for error in errors if "invalid basis_commit" in error
+            ]
+            self.assertEqual(7, len(invalid))
+
 
 if __name__ == "__main__":
     unittest.main()

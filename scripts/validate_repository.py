@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 import sys
 from pathlib import Path
 from urllib.parse import unquote
@@ -58,6 +59,7 @@ FORBIDDEN_PATTERNS = {
 }
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
+COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
 
 
 def files_with_suffix(suffix: str) -> list[Path]:
@@ -126,6 +128,33 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"sprint_id mismatch in {path.relative_to(ROOT)}: "
                     f"expected {expected_sprint_id}"
                 )
+            basis_commit = payload.get("basis_commit")
+            if basis_commit is not None:
+                if not isinstance(basis_commit, str) or not COMMIT_SHA.fullmatch(
+                    basis_commit
+                ):
+                    errors.append(
+                        f"invalid basis_commit in {path.relative_to(ROOT)}"
+                    )
+                elif (ROOT / ".git").exists():
+                    result = subprocess.run(
+                        [
+                            "git",
+                            "-C",
+                            str(ROOT),
+                            "cat-file",
+                            "-e",
+                            f"{basis_commit}^{{commit}}",
+                        ],
+                        check=False,
+                        capture_output=True,
+                        text=True,
+                    )
+                    if result.returncode != 0:
+                        errors.append(
+                            f"unresolvable basis_commit in "
+                            f"{path.relative_to(ROOT)}: {basis_commit}"
+                        )
 
         close_path = sprint_dir / "close-receipt.json"
         if close_path.is_file():
