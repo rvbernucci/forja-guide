@@ -1,6 +1,6 @@
 # Contract Model
 
-Status: Proposed
+Status: Partially implemented
 
 ## Purpose
 
@@ -27,10 +27,15 @@ contracts.
 
 | Schema | Responsibility |
 | --- | --- |
+| [`run.schema.json`](../../schemas/run.schema.json) | Sprint 01 in-memory run aggregate |
 | [`run-event.schema.json`](../../schemas/run-event.schema.json) | Immutable state transition and audit event |
 | [`artifact.schema.json`](../../schemas/artifact.schema.json) | Durable artifact metadata and provenance |
 | [`context-request.schema.json`](../../schemas/context-request.schema.json) | Scoped request for contextual evidence |
 | [`context-pack.schema.json`](../../schemas/context-pack.schema.json) | Bounded evidence package returned to an agent |
+
+The Sprint 01 Go kernel embeds these schemas, compiles them at startup, and
+validates run aggregates at its HTTP and CLI boundaries. See the
+[kernel API](KERNEL_API.md).
 
 ## Stable IDs
 
@@ -100,4 +105,3 @@ Contract tests must verify:
 - serialized forms remain stable;
 - database constraints match schema requirements;
 - MCP tool schemas remain compatible with canonical contracts.
-
