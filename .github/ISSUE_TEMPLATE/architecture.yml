@@ -1,0 +1,28 @@
+name: Architecture proposal
+description: Propose a change to a system boundary or major design decision.
+title: "[Architecture]: "
+labels:
+  - architecture
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What concrete limitation or risk should be addressed?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: Describe the proposed boundary, flow, and alternatives.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Required evidence
+      description: How will the decision be evaluated and validated?
+    validations:
+      required: true
+

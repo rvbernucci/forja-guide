@@ -1,0 +1,102 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/run-event.schema.json",
+  "title": "Forja Run Event",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "event_id",
+    "event_type",
+    "schema_version",
+    "aggregate_type",
+    "aggregate_id",
+    "aggregate_version",
+    "occurred_at",
+    "actor",
+    "correlation_id",
+    "idempotency_key",
+    "payload"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string",
+      "pattern": "^event_[A-Za-z0-9_-]+$"
+    },
+    "event_type": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 120
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "aggregate_type": {
+      "enum": [
+        "sprint",
+        "task",
+        "run",
+        "attempt",
+        "approval",
+        "artifact",
+        "projection"
+      ]
+    },
+    "aggregate_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160
+    },
+    "aggregate_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "properties": {
+        "actor_type": {
+          "enum": [
+            "human",
+            "agent",
+            "worker",
+            "system"
+          ]
+        },
+        "actor_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        }
+      }
+    },
+    "correlation_id": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 160
+    },
+    "causation_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "maxLength": 160
+    },
+    "idempotency_key": {
+      "type": "string",
+      "minLength": 8,
+      "maxLength": 200
+    },
+    "payload": {
+      "type": "object"
+    }
+  }
+}
+

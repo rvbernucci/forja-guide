@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/context-request.schema.json",
+  "title": "Forja Context Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id",
+    "schema_version",
+    "tenant_id",
+    "repository_id",
+    "objective",
+    "scope",
+    "budget"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string",
+      "pattern": "^context_request_[A-Za-z0-9_-]+$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[A-Za-z0-9_-]+$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[A-Za-z0-9_-]+$"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 8000
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "commit",
+        "allowed_paths"
+      ],
+      "properties": {
+        "commit": {
+          "type": "string",
+          "pattern": "^[A-Za-z0-9._/-]{1,160}$"
+        },
+        "allowed_paths": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "uniqueItems": true
+        },
+        "denied_paths": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "uniqueItems": true
+        },
+        "languages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "uniqueItems": true
+        }
+      }
+    },
+    "seed_entity_ids": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "pattern": "^entity_[A-Za-z0-9_-]+$"
+      },
+      "uniqueItems": true
+    },
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_tokens",
+        "max_sources",
+        "max_graph_hops"
+      ],
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 256,
+          "maximum": 200000
+        },
+        "max_sources": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 200
+        },
+        "max_graph_hops": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 8
+        }
+      }
+    }
+  }
+}
+

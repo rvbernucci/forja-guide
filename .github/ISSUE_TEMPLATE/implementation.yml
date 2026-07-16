@@ -1,0 +1,28 @@
+name: Implementation task
+description: Propose an implementation unit tied to the roadmap.
+title: "[Implementation]: "
+labels:
+  - implementation
+body:
+  - type: input
+    id: sprint
+    attributes:
+      label: Sprint
+      placeholder: "Sprint 03"
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+      description: Describe observable behavior, not only files to create.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance evidence
+      description: List tests, receipts, metrics, or review requirements.
+    validations:
+      required: true
+

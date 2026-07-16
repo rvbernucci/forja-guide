@@ -1,0 +1,44 @@
+# Operating systems and editors
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Build, test, and runtime output
+bin/
+build/
+dist/
+coverage/
+.cache/
+.tmp/
+tmp/
+logs/
+artifacts/
+worktrees/
+
+# Language-specific caches
+node_modules/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+vendor/
+
+# Local databases and generated indexes
+*.db
+*.sqlite
+*.sqlite3
+qdrant_storage/
+neo4j_data/
+postgres_data/
+

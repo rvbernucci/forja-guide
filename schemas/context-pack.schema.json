@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/context-pack.schema.json",
+  "title": "Forja Context Pack",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "context_pack_id",
+    "schema_version",
+    "request_id",
+    "tenant_id",
+    "repository_id",
+    "source_commit",
+    "status",
+    "entities",
+    "paths",
+    "sources",
+    "gaps",
+    "token_estimate",
+    "receipt"
+  ],
+  "properties": {
+    "context_pack_id": {
+      "type": "string",
+      "pattern": "^context_pack_[A-Za-z0-9_-]+$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "request_id": {
+      "type": "string",
+      "pattern": "^context_request_[A-Za-z0-9_-]+$"
+    },
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[A-Za-z0-9_-]+$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[A-Za-z0-9_-]+$"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]{1,160}$"
+    },
+    "status": {
+      "enum": [
+        "complete",
+        "degraded",
+        "blocked"
+      ]
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "entity_id",
+          "kind",
+          "authority",
+          "source_hash"
+        ],
+        "properties": {
+          "entity_id": {
+            "type": "string",
+            "pattern": "^entity_[A-Za-z0-9_-]+$"
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "authority": {
+            "enum": [
+              "canonical",
+              "supporting",
+              "candidate"
+            ]
+          },
+          "source_hash": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          }
+        }
+      }
+    },
+    "paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path_id",
+          "entity_ids",
+          "relation_types",
+          "evidence_strength"
+        ],
+        "properties": {
+          "path_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "entity_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^entity_[A-Za-z0-9_-]+$"
+            }
+          },
+          "relation_types": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            }
+          },
+          "evidence_strength": {
+            "enum": [
+              "confirmed_static",
+              "confirmed_schema",
+              "confirmed_behavioral",
+              "runtime_observed",
+              "curated",
+              "candidate_semantic"
+            ]
+          }
+        }
+      }
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "artifact_id",
+          "citation",
+          "authority",
+          "token_estimate"
+        ],
+        "properties": {
+          "artifact_id": {
+            "type": "string",
+            "pattern": "^artifact_[A-Za-z0-9_-]+$"
+          },
+          "citation": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "authority": {
+            "enum": [
+              "canonical",
+              "supporting",
+              "historical"
+            ]
+          },
+          "token_estimate": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "gap_id",
+          "kind",
+          "description"
+        ],
+        "properties": {
+          "gap_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "token_estimate": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "receipt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "exact_candidates",
+        "semantic_candidates",
+        "resolved_entities",
+        "graph_paths",
+        "projection_freshness"
+      ],
+      "properties": {
+        "exact_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "semantic_candidates": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "resolved_entities": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "graph_paths": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "projection_freshness": {
+          "enum": [
+            "fresh",
+            "stale",
+            "unknown"
+          ]
+        }
+      }
+    }
+  }
+}
