@@ -26,6 +26,16 @@ REQUIRED_FILES = (
     "docs/04-roadmap/MASTER_DEVELOPMENT_PLAN.md",
 )
 
+EVIDENCE_FILES = (
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json",
+    "close-receipt.json",
+)
+
 SKIPPED_DIRECTORIES = {
     ".git",
     ".cache",
@@ -70,6 +80,53 @@ def validate_json(errors: list[str]) -> None:
             json.loads(path.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             errors.append(f"invalid JSON: {path.relative_to(ROOT)}: {exc}")
+
+
+def validate_evidence_sets(errors: list[str]) -> None:
+    evidence_root = ROOT / "docs" / "evidence"
+    if not evidence_root.exists():
+        return
+
+    for sprint_dir in sorted(evidence_root.glob("sprint-*")):
+        if not sprint_dir.is_dir():
+            continue
+
+        expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
+        for filename in EVIDENCE_FILES:
+            path = sprint_dir / filename
+            if not path.is_file():
+                errors.append(
+                    f"incomplete Sprint evidence set: {sprint_dir.relative_to(ROOT)} "
+                    f"is missing {filename}"
+                )
+                continue
+
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+
+            if payload.get("evidence_version") != "1.0":
+                errors.append(
+                    f"invalid evidence_version in {path.relative_to(ROOT)}"
+                )
+            if payload.get("sprint_id") != expected_sprint_id:
+                errors.append(
+                    f"sprint_id mismatch in {path.relative_to(ROOT)}: "
+                    f"expected {expected_sprint_id}"
+                )
+
+        close_path = sprint_dir / "close-receipt.json"
+        if close_path.is_file():
+            try:
+                close_receipt = json.loads(close_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if close_receipt.get("status") != "closed":
+                errors.append(
+                    f"Sprint close receipt is not closed: "
+                    f"{close_path.relative_to(ROOT)}"
+                )
 
 
 def validate_sensitive_content(errors: list[str]) -> None:
@@ -122,6 +179,7 @@ def main() -> int:
     errors: list[str] = []
     validate_required_files(errors)
     validate_json(errors)
+    validate_evidence_sets(errors)
     validate_sensitive_content(errors)
     validate_markdown_links(errors)
 

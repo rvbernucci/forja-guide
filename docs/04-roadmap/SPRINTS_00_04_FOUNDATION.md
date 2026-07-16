@@ -5,6 +5,9 @@
 **Outcome:** establish a clean public project that clearly separates plans from
 implemented behavior.
 
+**Status:** Closed. See the
+[Sprint 00 evidence package](../evidence/sprint-00/close-receipt.json).
+
 ### Scope
 
 - [x] Create repository structure and reading order.

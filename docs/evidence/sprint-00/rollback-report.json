@@ -1,0 +1,17 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "00",
+  "status": "passed",
+  "strategy": "Restore the immutable v0.1.0 planning tag or revert the Sprint closure pull request.",
+  "tag": "v0.1.0",
+  "tag_commit": "9aad8cfe49032933979f4923091f54a8ac5899da",
+  "release_url": "https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0",
+  "test": {
+    "command": "git clone --branch v0.1.0 --depth 1 https://github.com/rvbernucci/forja-guide.git && make validate",
+    "result": "passed",
+    "summary": "The immutable planning tag cloned independently and passed repository validation."
+  },
+  "data_migration_required": false,
+  "recorded_at": "2026-07-16T20:57:15Z"
+}
+
