@@ -1,6 +1,6 @@
 # Master Development Plan
 
-Status: Proposed
+Status: Active. Sprints 00-01 closed.
 
 ## Objective
 
@@ -139,4 +139,3 @@ object storage and are represented by hash-pinned metadata.
 - [Sprints 00-04: Foundation and execution](SPRINTS_00_04_FOUNDATION.md)
 - [Sprints 05-09: Delivery and intelligence](SPRINTS_05_09_INTELLIGENCE.md)
 - [Sprints 10-14: Governance and production](SPRINTS_10_14_PRODUCTION.md)
-

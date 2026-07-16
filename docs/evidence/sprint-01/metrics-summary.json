@@ -1,0 +1,24 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "status": "recorded",
+  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "metrics": {
+    "tracked_files_before_evidence": 85,
+    "go_files": 23,
+    "go_test_files": 8,
+    "test_and_fuzz_entry_points": 31,
+    "statement_coverage_percent": 71.2,
+    "active_fuzz_executions": 1208209,
+    "canonical_json_schemas": 5,
+    "reproducible_linux_binaries": 4,
+    "linux_amd64_forja_bytes": 7200894,
+    "linux_amd64_forjad_bytes": 7315582,
+    "linux_arm64_forja_bytes": 6750334,
+    "linux_arm64_forjad_bytes": 6815870,
+    "known_reachable_vulnerabilities": 0,
+    "independent_review_findings_resolved": 6,
+    "independent_final_review_findings": 0
+  },
+  "recorded_at": "2026-07-16T21:27:30Z"
+}

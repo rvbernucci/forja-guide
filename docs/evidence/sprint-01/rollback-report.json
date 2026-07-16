@@ -1,0 +1,15 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "status": "passed",
+  "strategy": "Revert the Sprint 01 pull request to restore the closed Sprint 00 architecture-only state.",
+  "rollback_target": "d0061e9b41b144b04282bf0dada634b5b56198fd",
+  "test": {
+    "command": "git worktree add --detach <temporary-directory> d0061e9b41b144b04282bf0dada634b5b56198fd && make validate",
+    "result": "passed",
+    "summary": "The rollback target validated independently with 32 Markdown files and 4 JSON schemas."
+  },
+  "data_migration_required": false,
+  "runtime_state_impact": "Sprint 01 state is in memory and has no durable migration or rollback dependency.",
+  "recorded_at": "2026-07-16T21:27:30Z"
+}

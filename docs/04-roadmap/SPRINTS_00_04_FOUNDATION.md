@@ -33,19 +33,22 @@ implemented behavior.
 **Outcome:** provide an executable `forjad` daemon and `forja` CLI with contract
 validation and a deterministic in-memory state machine.
 
+**Status:** Closed. See the
+[Sprint 01 evidence package](../evidence/sprint-01/close-receipt.json).
+
 ### Scope
 
-- [ ] Initialize the Go module and target supported Go versions.
-- [ ] Create `cmd/forjad` and `cmd/forja`.
-- [ ] Define configuration precedence: defaults, file, environment, flags.
-- [ ] Generate or hand-map Go structs from canonical JSON schemas.
-- [ ] Implement schema validation at external boundaries.
-- [ ] Implement typed IDs, clocks, UUID generation, and error taxonomy.
-- [ ] Implement the run FSM in memory.
-- [ ] Add graceful shutdown through context cancellation.
-- [ ] Add structured logging with automatic secret redaction.
-- [ ] Add unit, race, fuzz, and contract fixture tests.
-- [ ] Build reproducible `linux/amd64` and `linux/arm64` binaries.
+- [x] Initialize the Go module and target supported Go versions.
+- [x] Create `cmd/forjad` and `cmd/forja`.
+- [x] Define configuration precedence: defaults, file, environment, flags.
+- [x] Generate or hand-map Go structs from canonical JSON schemas.
+- [x] Implement schema validation at external boundaries.
+- [x] Implement typed IDs, clocks, UUID generation, and error taxonomy.
+- [x] Implement the run FSM in memory.
+- [x] Add graceful shutdown through context cancellation.
+- [x] Add structured logging with automatic secret redaction.
+- [x] Add unit, race, fuzz, and contract fixture tests.
+- [x] Build reproducible `linux/amd64` and `linux/arm64` binaries.
 
 ### Acceptance
 

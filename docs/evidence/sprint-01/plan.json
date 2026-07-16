@@ -1,0 +1,25 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "name": "Go Kernel",
+  "status": "completed",
+  "objective": "Provide an executable forjad daemon and forja CLI with canonical contract validation and a deterministic in-memory state machine.",
+  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "scope": [
+    "Go 1.26.5 module and executable daemon and CLI",
+    "configuration precedence and fail-closed parsing",
+    "embedded canonical JSON Schema validation",
+    "typed run IDs, deterministic clocks, stable errors, and optimistic FSM",
+    "structured secret-redacted logging and graceful shutdown",
+    "unit, race, fuzz, contract, smoke, and reproducible build gates"
+  ],
+  "out_of_scope": [
+    "durable PostgreSQL state",
+    "MCP tools",
+    "worker process execution",
+    "remote authentication and multi-tenant authorization"
+  ],
+  "author": "codex",
+  "independent_validator": "GitHub Actions and isolated Codex CLI review",
+  "completed_at": "2026-07-16T21:27:30Z"
+}
