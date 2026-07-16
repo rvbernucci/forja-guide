@@ -26,6 +26,16 @@ REQUIRED_FILES = (
     "docs/04-roadmap/MASTER_DEVELOPMENT_PLAN.md",
 )
 
+EVIDENCE_FILES = (
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json",
+    "close-receipt.json",
+)
+
 SKIPPED_DIRECTORIES = {
     ".git",
     ".cache",
@@ -51,6 +61,7 @@ MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 
 
 def files_with_suffix(suffix: str) -> list[Path]:
+    """Return repository files with a suffix, excluding generated directories."""
     return [
         path
         for path in ROOT.rglob(f"*{suffix}")
@@ -59,12 +70,14 @@ def files_with_suffix(suffix: str) -> list[Path]:
 
 
 def validate_required_files(errors: list[str]) -> None:
+    """Require the public governance and architecture entry points."""
     for relative in REQUIRED_FILES:
         if not (ROOT / relative).is_file():
             errors.append(f"missing required file: {relative}")
 
 
 def validate_json(errors: list[str]) -> None:
+    """Ensure every tracked JSON document can be parsed."""
     for path in files_with_suffix(".json"):
         try:
             json.loads(path.read_text(encoding="utf-8"))
@@ -72,7 +85,69 @@ def validate_json(errors: list[str]) -> None:
             errors.append(f"invalid JSON: {path.relative_to(ROOT)}: {exc}")
 
 
+def validate_evidence_sets(errors: list[str]) -> None:
+    """Validate the mandatory, versioned evidence package for every Sprint."""
+    evidence_root = ROOT / "docs" / "evidence"
+    if not evidence_root.exists():
+        return
+
+    for sprint_dir in sorted(evidence_root.glob("sprint-*")):
+        if not sprint_dir.is_dir():
+            continue
+
+        expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
+        for filename in EVIDENCE_FILES:
+            path = sprint_dir / filename
+            if not path.is_file():
+                errors.append(
+                    f"incomplete Sprint evidence set: {sprint_dir.relative_to(ROOT)} "
+                    f"is missing {filename}"
+                )
+                continue
+
+            try:
+                payload = json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+
+            if not isinstance(payload, dict):
+                errors.append(
+                    f"evidence document must be a JSON object: "
+                    f"{path.relative_to(ROOT)}"
+                )
+                continue
+
+            if payload.get("evidence_version") != "1.0":
+                errors.append(
+                    f"invalid evidence_version in {path.relative_to(ROOT)}"
+                )
+            if payload.get("sprint_id") != expected_sprint_id:
+                errors.append(
+                    f"sprint_id mismatch in {path.relative_to(ROOT)}: "
+                    f"expected {expected_sprint_id}"
+                )
+
+        close_path = sprint_dir / "close-receipt.json"
+        if close_path.is_file():
+            try:
+                close_receipt = json.loads(close_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(close_receipt, dict):
+                errors.append(
+                    f"evidence document must be a JSON object: "
+                    f"{close_path.relative_to(ROOT)}"
+                )
+                continue
+            if close_receipt.get("status") != "closed":
+                errors.append(
+                    f"Sprint close receipt is not closed: "
+                    f"{close_path.relative_to(ROOT)}"
+                )
+
+
 def validate_sensitive_content(errors: list[str]) -> None:
+    """Reject common credentials and machine-specific paths in public files."""
     text_suffixes = {".md", ".json", ".yaml", ".yml", ".py", ".go", ".ts"}
     for path in ROOT.rglob("*"):
         if (
@@ -90,10 +165,12 @@ def validate_sensitive_content(errors: list[str]) -> None:
 
 
 def strip_fragment(target: str) -> str:
+    """Remove URL query and fragment components from an internal link."""
     return target.split("#", maxsplit=1)[0].split("?", maxsplit=1)[0]
 
 
 def validate_markdown_links(errors: list[str]) -> None:
+    """Check that relative Markdown links resolve inside the repository."""
     for path in files_with_suffix(".md"):
         text = path.read_text(encoding="utf-8")
         for raw_target in MARKDOWN_LINK.findall(text):
@@ -119,9 +196,11 @@ def validate_markdown_links(errors: list[str]) -> None:
 
 
 def main() -> int:
+    """Run all repository quality gates and return a process exit code."""
     errors: list[str] = []
     validate_required_files(errors)
     validate_json(errors)
+    validate_evidence_sets(errors)
     validate_sensitive_content(errors)
     validate_markdown_links(errors)
 

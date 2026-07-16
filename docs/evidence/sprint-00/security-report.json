@@ -1,0 +1,50 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "00",
+  "status": "passed",
+  "basis_commit": "6e11ece9087e9494d7f09f456aec20bd59f62e1d",
+  "checks": [
+    {
+      "name": "private path scan",
+      "result": "passed",
+      "findings": 0
+    },
+    {
+      "name": "common credential pattern scan",
+      "result": "passed",
+      "findings": 0
+    },
+    {
+      "name": "large tracked artifact scan",
+      "result": "passed",
+      "findings": 0,
+      "threshold_bytes": 1048576
+    },
+    {
+      "name": "main branch protection",
+      "result": "passed",
+      "controls": [
+        "required validate check",
+        "administrator enforcement",
+        "linear history",
+        "force push disabled",
+        "branch deletion disabled",
+        "conversation resolution required"
+      ]
+    },
+    {
+      "name": "private vulnerability reporting",
+      "result": "enabled"
+    },
+    {
+      "name": "dependency vulnerability alerts",
+      "result": "enabled"
+    }
+  ],
+  "residual_risks": [
+    "The repository is architecture-only and does not yet exercise runtime security controls.",
+    "The built-in pattern scan is a baseline and will be complemented by dedicated secret and dependency scanners in later Sprints."
+  ],
+  "recorded_at": "2026-07-16T20:57:15Z"
+}
+

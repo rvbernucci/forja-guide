@@ -14,6 +14,7 @@ language.
 7. [Master development plan](04-roadmap/MASTER_DEVELOPMENT_PLAN.md)
 8. [Architecture decisions](05-decisions/)
 9. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
+10. [Sprint evidence](evidence/)
 
 ## Documentation States
 
@@ -27,4 +28,3 @@ language.
 
 Documents must not claim `Implemented` without a reference to tests, code, or an
 operational receipt.
-
