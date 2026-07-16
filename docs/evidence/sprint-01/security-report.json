@@ -29,6 +29,11 @@
       "findings": 0
     },
     {
+      "name": "GitHub Actions supply-chain pinning",
+      "result": "passed",
+      "summary": "Third-party workflow actions are pinned to immutable release commit SHAs."
+    },
+    {
       "name": "HTTP command boundary",
       "result": "passed",
       "controls": [
