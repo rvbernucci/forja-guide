@@ -3,7 +3,7 @@
   "sprint_id": "01",
   "name": "Go Kernel",
   "status": "closed",
-  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "basis_commit": "b78238d8839d2480c868012ee253cfa1890acd5b",
   "definition_of_done": {
     "implementation_committed": true,
     "mechanical_tests_passed": true,
