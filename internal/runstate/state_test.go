@@ -49,6 +49,22 @@ func TestStoreFailsClosed(t *testing.T) {
 	}
 }
 
+func TestStoreCountsObjectiveAsUnicodeCodePoints(t *testing.T) {
+	t.Parallel()
+	store := NewStore(clock.Fixed{Time: time.Now().UTC()})
+	if _, err := store.Create(testRunID, "😀😀"); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("expected two code points to fail, got %v", err)
+	}
+	objective := "😀😀😀"
+	run, err := store.Create(testRunID, objective)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Objective != objective {
+		t.Fatalf("objective changed: %q", run.Objective)
+	}
+}
+
 func TestStoreSerializesConcurrentTransitions(t *testing.T) {
 	t.Parallel()
 	store := NewStore(clock.Fixed{Time: time.Now().UTC()})

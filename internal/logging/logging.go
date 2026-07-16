@@ -3,6 +3,7 @@ package logging
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"regexp"
@@ -46,7 +47,11 @@ func (h *redactingHandler) Enabled(ctx context.Context, level slog.Level) bool {
 }
 
 func (h *redactingHandler) Handle(ctx context.Context, record slog.Record) error {
-	clean := slog.NewRecord(record.Time, record.Level, record.Message, record.PC)
+	message := record.Message
+	if mustRedact(message) {
+		message = redacted
+	}
+	clean := slog.NewRecord(record.Time, record.Level, message, record.PC)
 	record.Attrs(func(attribute slog.Attr) bool {
 		clean.AddAttrs(redactAttr(attribute))
 		return true
@@ -81,11 +86,27 @@ func redactAttr(attribute slog.Attr) slog.Attr {
 	}
 	if attribute.Value.Kind() == slog.KindString {
 		value := attribute.Value.String()
-		if sensitiveValue.MatchString(value) || strings.Contains(value, "PRIVATE KEY") {
+		if mustRedact(value) {
 			return slog.String(attribute.Key, redacted)
 		}
 	}
+	if attribute.Value.Kind() == slog.KindAny {
+		switch value := attribute.Value.Any().(type) {
+		case error:
+			if mustRedact(value.Error()) {
+				return slog.String(attribute.Key, redacted)
+			}
+		case fmt.Stringer:
+			if mustRedact(value.String()) {
+				return slog.String(attribute.Key, redacted)
+			}
+		}
+	}
 	return attribute
+}
+
+func mustRedact(value string) bool {
+	return sensitiveValue.MatchString(value) || strings.Contains(value, "PRIVATE KEY")
 }
 
 func attrsToAny(attributes []slog.Attr) []any {

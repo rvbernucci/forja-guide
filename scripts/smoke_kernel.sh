@@ -15,6 +15,10 @@ cleanup() {
 trap cleanup EXIT
 
 cd "$root"
+if ! command -v curl >/dev/null 2>&1; then
+  echo "curl is required for the kernel smoke test" >&2
+  exit 1
+fi
 go build -trimpath -buildvcs=false -o "$work/forjad" ./cmd/forjad
 go build -trimpath -buildvcs=false -o "$work/forja" ./cmd/forja
 
@@ -25,12 +29,14 @@ go build -trimpath -buildvcs=false -o "$work/forja" ./cmd/forja
 daemon_pid="$!"
 
 endpoint=""
+ready=false
 for _ in $(seq 1 100); do
   endpoint="$(
     sed -n 's/.*"listen":"\([^"]*\)".*/http:\/\/\1/p' "$work/daemon.log" |
       head -n 1
   )"
   if [[ -n "$endpoint" ]] && curl --fail --silent "$endpoint/readyz" >/dev/null; then
+    ready=true
     break
   fi
   if ! kill -0 "$daemon_pid" 2>/dev/null; then
@@ -41,8 +47,8 @@ for _ in $(seq 1 100); do
   sleep 0.05
 done
 
-if [[ -z "$endpoint" ]]; then
-  echo "forjad did not publish its listen address" >&2
+if [[ "$ready" != true ]]; then
+  echo "forjad did not become ready" >&2
   exit 1
 fi
 

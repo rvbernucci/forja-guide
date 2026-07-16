@@ -80,19 +80,25 @@ func Load(args []string, lookup LookupEnv) (Config, error) {
 }
 
 func discoverConfigPath(args []string) (string, error) {
+	var path string
 	for index := 0; index < len(args); index++ {
 		arg := args[index]
 		if strings.HasPrefix(arg, "--config=") {
-			return strings.TrimPrefix(arg, "--config="), nil
+			path = strings.TrimPrefix(arg, "--config=")
+			if path == "" {
+				return "", fmt.Errorf("--config requires a path")
+			}
+			continue
 		}
 		if arg == "--config" {
 			if index+1 >= len(args) {
 				return "", fmt.Errorf("--config requires a path")
 			}
-			return args[index+1], nil
+			path = args[index+1]
+			index++
 		}
 	}
-	return "", nil
+	return path, nil
 }
 
 func applyFile(cfg *Config, path string) error {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -167,7 +168,8 @@ func NewStore(source clock.Clock) *Store {
 
 // Create adds a draft run with a caller-supplied ID.
 func (s *Store) Create(id identity.RunID, objective string) (contracts.Run, error) {
-	if len(objective) < 3 || len(objective) > 8000 {
+	length := utf8.RuneCountInString(objective)
+	if length < 3 || length > 8000 {
 		return contracts.Run{}, fault.New(
 			fault.CodeInvalidArgument,
 			"runstate.Store.Create",

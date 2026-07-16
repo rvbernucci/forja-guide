@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
@@ -39,7 +38,8 @@ func NewClient(
 		return nil, fmt.Errorf("endpoint host is required")
 	}
 	if httpClient == nil {
-		httpClient = &http.Client{Timeout: 10 * time.Second}
+		// Command contexts own the deadline so FORJA_TIMEOUT remains authoritative.
+		httpClient = &http.Client{}
 	}
 	if registry == nil {
 		return nil, fmt.Errorf("contract registry is required")
