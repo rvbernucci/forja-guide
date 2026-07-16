@@ -17,6 +17,8 @@ The first implementation target is a Go control plane that coordinates Codex
 CLI workers through explicit contracts, isolated Git worktrees, PostgreSQL
 state, and auditable evidence.
 
+Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
+
 ## Architecture
 
 ```mermaid
@@ -64,6 +66,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`docs/07-evaluations`](docs/07-evaluations/) | Quality, safety, retrieval, and resilience evaluation strategy |
 | [`schemas`](schemas/) | Language-neutral JSON Schema contracts |
 
+See [CHANGELOG.md](CHANGELOG.md) for public release history.
+
 ## Initial Technology Direction
 
 - **Go** for the daemon, scheduler, MCP server, process supervisor, and control
@@ -99,4 +103,3 @@ Read [CONTRIBUTING.md](CONTRIBUTING.md), [GOVERNANCE.md](GOVERNANCE.md), and
 ## License
 
 Licensed under the [Apache License 2.0](LICENSE).
-
