@@ -1,11 +1,11 @@
 # Local Development
 
-Status: Proposed
+Status: Sprint 01 kernel implemented; later infrastructure proposed
 
 ## Current Repository
 
-The repository currently contains architecture, planning, schemas, and quality
-automation.
+The repository contains the executable Sprint 01 Go kernel, architecture,
+planning, canonical schemas, and quality automation.
 
 Validate it with:
 
@@ -13,7 +13,43 @@ Validate it with:
 make validate
 ```
 
-## Planned Runtime Prerequisites
+The full gate runs formatting checks, module verification, `go vet`, unit and
+race tests, reproducible cross-builds, a process-level smoke test, and public
+repository validation.
+
+## Kernel
+
+Prerequisite: Go 1.26.5.
+
+Start the daemon:
+
+```bash
+go run ./cmd/forjad --listen 127.0.0.1:8080
+```
+
+Create and inspect a synthetic run:
+
+```bash
+go run ./cmd/forja run create \
+  --endpoint http://127.0.0.1:8080 \
+  --objective "Build a governed Sprint"
+
+go run ./cmd/forja run get \
+  --endpoint http://127.0.0.1:8080 \
+  --id run_REPLACE_WITH_CREATED_ID
+```
+
+Transition it with optimistic concurrency:
+
+```bash
+go run ./cmd/forja run transition \
+  --endpoint http://127.0.0.1:8080 \
+  --id run_REPLACE_WITH_CREATED_ID \
+  --expected-version 1 \
+  --to awaiting_approval
+```
+
+## Later Runtime Prerequisites
 
 - Go;
 - Docker or a compatible container runtime;
@@ -57,6 +93,20 @@ No configuration layer may contain committed credentials.
 
 The future `.env.example` will list variable names and synthetic values only.
 
+Sprint 01 daemon variables are:
+
+| Variable | Purpose |
+| --- | --- |
+| `FORJA_LISTEN` | Explicit daemon host and port |
+| `FORJA_ENVIRONMENT` | Runtime environment label |
+| `FORJA_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` |
+| `FORJA_SHUTDOWN_TIMEOUT` | Graceful shutdown duration |
+| `FORJA_ENDPOINT` | CLI daemon endpoint |
+| `FORJA_TIMEOUT` | CLI request deadline |
+
+Daemon precedence is defaults, JSON file, environment, then flags. Unknown
+configuration fields fail closed.
+
 ## Test Layers
 
 ```text
@@ -79,4 +129,3 @@ run separately with budgets and recorded model versions.
 Runtime artifacts, model outputs, worktrees, logs, database volumes, and
 retrieval indexes stay outside Git. Only small deterministic fixtures and
 hash-pinned evidence metadata may be committed.
-

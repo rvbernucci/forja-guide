@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/run.schema.json",
+  "title": "Forja Run",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "run_id",
+    "schema_version",
+    "objective",
+    "state",
+    "version",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 8000
+    },
+    "state": {
+      "enum": [
+        "draft",
+        "awaiting_approval",
+        "queued",
+        "preparing",
+        "running",
+        "validating",
+        "awaiting_decision",
+        "completed",
+        "cancelling",
+        "cancelled",
+        "failed_retryable",
+        "failed_terminal"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
+

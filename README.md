@@ -10,12 +10,14 @@ It is designed around one principle:
 
 ## Status
 
-This repository is currently a **public architecture and planning project**.
-It does not yet claim to provide a production-ready runtime.
+This repository now includes the **Sprint 01 experimental Go kernel** alongside
+the public architecture and roadmap. It is not yet a production-ready
+multi-agent runtime.
 
-The first implementation target is a Go control plane that coordinates Codex
-CLI workers through explicit contracts, isolated Git worktrees, PostgreSQL
-state, and auditable evidence.
+The implemented kernel provides `forjad`, `forja`, canonical contract
+validation, a deterministic in-memory run state machine, structured redacted
+logs, graceful shutdown, and reproducible Linux builds. Durable PostgreSQL
+state, MCP tools, and Codex worker execution remain planned for later Sprints.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -65,6 +67,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`docs/06-operations`](docs/06-operations/) | Development and operating procedures |
 | [`docs/07-evaluations`](docs/07-evaluations/) | Quality, safety, retrieval, and resilience evaluation strategy |
 | [`schemas`](schemas/) | Language-neutral JSON Schema contracts |
+| [`cmd/forjad`](cmd/forjad/) | Experimental Go daemon |
+| [`cmd/forja`](cmd/forja/) | Experimental command-line client |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
 
@@ -92,8 +96,9 @@ Run:
 make validate
 ```
 
-The validator checks required public files, JSON schemas, internal Markdown
-links, forbidden private paths, and common credential patterns.
+The gate runs Go formatting, module, vet, unit, race, reproducible build, and
+process-level smoke checks before validating public files, JSON schemas,
+internal Markdown links, private paths, and common credential patterns.
 
 ## Contributing
 
