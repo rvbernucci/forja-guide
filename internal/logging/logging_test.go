@@ -61,3 +61,39 @@ func TestLoggerRedactsMessagesAndErrors(t *testing.T) {
 		t.Fatalf("expected two redactions: %s", output.String())
 	}
 }
+
+type nilError struct{}
+
+func (*nilError) Error() string {
+	panic("nil receiver")
+}
+
+type changingStringer struct {
+	calls int
+}
+
+func (value *changingStringer) String() string {
+	value.calls++
+	if value.calls == 1 {
+		return "stable safe value"
+	}
+	return "Bearer " + "later-secret"
+}
+
+func TestLoggerSafelyMaterializesAnyValuesOnce(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	logger := New(&output, "debug")
+	var typedNil *nilError
+	value := &changingStringer{}
+	logger.Error("typed nil", "error", typedNil)
+	logger.Info("changing", "value", value)
+	text := output.String()
+	if !strings.Contains(text, `"<nil>"`) ||
+		!strings.Contains(text, "stable safe value") {
+		t.Fatalf("unexpected materialized output: %s", text)
+	}
+	if value.calls != 1 || strings.Contains(text, "later-secret") {
+		t.Fatalf("value was rendered more than once: calls=%d output=%s", value.calls, text)
+	}
+}
