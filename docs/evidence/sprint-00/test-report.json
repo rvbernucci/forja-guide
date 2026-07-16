@@ -26,8 +26,13 @@
       "name": "Apache 2.0 license comparison",
       "result": "passed",
       "summary": "LICENSE matches the official Apache License 2.0 text"
+    },
+    {
+      "name": "evidence validator negative tests",
+      "command": "python3 -m unittest discover -s tests -p 'test_*.py'",
+      "result": "passed",
+      "summary": "non-object and incomplete evidence packages fail closed without crashing"
     }
   ],
   "recorded_at": "2026-07-16T20:57:15Z"
 }
-
