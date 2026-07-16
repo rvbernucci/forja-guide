@@ -1,0 +1,49 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "status": "passed",
+  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@latest ./...",
+      "result": "passed",
+      "findings": 0
+    },
+    {
+      "name": "secret redaction regression tests",
+      "result": "passed",
+      "coverage": [
+        "sensitive keys",
+        "Bearer values",
+        "credential URLs",
+        "nested groups",
+        "error values",
+        "typed nils",
+        "panicking and changing Stringers"
+      ]
+    },
+    {
+      "name": "public repository credential and private path scan",
+      "result": "passed",
+      "findings": 0
+    },
+    {
+      "name": "HTTP command boundary",
+      "result": "passed",
+      "controls": [
+        "one MiB body limit",
+        "strict JSON decoding",
+        "unknown field rejection",
+        "single-document enforcement",
+        "internal error suppression"
+      ]
+    }
+  ],
+  "residual_risks": [
+    "The Sprint 01 HTTP boundary is local and unauthenticated; authenticated MCP and policy controls belong to Sprint 03.",
+    "State is intentionally volatile until PostgreSQL durability and idempotency are implemented in Sprint 02.",
+    "Pattern-based redaction is defense in depth and does not replace a secret manager or sanitized worker environments."
+  ],
+  "recorded_at": "2026-07-16T21:27:30Z"
+}

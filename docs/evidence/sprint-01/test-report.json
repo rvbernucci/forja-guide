@@ -1,0 +1,44 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "status": "passed",
+  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Formatting, module verification, vet, unit, race, reproducible build, process smoke, and repository checks passed."
+    },
+    {
+      "name": "race detector",
+      "command": "go test -race ./...",
+      "result": "passed",
+      "summary": "Concurrent optimistic transitions and all package tests completed without a reported race."
+    },
+    {
+      "name": "active fuzzing",
+      "result": "passed",
+      "executions": 1208209,
+      "targets": [
+        "FuzzParseRunID",
+        "FuzzParseState",
+        "FuzzRunContract"
+      ],
+      "summary": "No crash or invariant violation was found in the bounded active fuzz runs."
+    },
+    {
+      "name": "process-level kernel smoke",
+      "command": "scripts/smoke_kernel.sh",
+      "result": "passed",
+      "summary": "A fresh daemon became ready, the CLI created and inspected a run, and SIGTERM completed graceful shutdown."
+    },
+    {
+      "name": "GitHub Actions validation",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29535944228",
+      "head_sha": "65965badecba570921614272f4f39efaebc70ab6"
+    }
+  ],
+  "recorded_at": "2026-07-16T21:27:30Z"
+}

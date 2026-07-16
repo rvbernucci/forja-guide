@@ -1,0 +1,48 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "01",
+  "status": "passed",
+  "basis_commit": "65965badecba570921614272f4f39efaebc70ab6",
+  "validators": [
+    {
+      "name": "Repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29535944228"
+    },
+    {
+      "name": "Isolated Codex CLI final review",
+      "type": "independent",
+      "result": "passed",
+      "model": "gpt-5.6-sol",
+      "report_sha256": "438c408f2eff703150f9b6010816ac6bb5441cb68c311e562b726e15ab76bf9e",
+      "summary": "The final hardening commit passed the full gate and had no actionable regression."
+    }
+  ],
+  "resolved_findings": [
+    "align objective length with JSON Schema Unicode semantics",
+    "remove the hidden HTTP client deadline",
+    "redact error and Stringer values without panic or repeat rendering",
+    "make repeated config flags consistently last-one-wins",
+    "require observed readiness in the process smoke test"
+  ],
+  "acceptance": [
+    {
+      "criterion": "daemon starts and becomes healthy within the local smoke budget",
+      "result": "proven"
+    },
+    {
+      "criterion": "CLI creates and inspects a synthetic run",
+      "result": "proven"
+    },
+    {
+      "criterion": "invalid transitions and malformed contracts fail closed",
+      "result": "proven"
+    },
+    {
+      "criterion": "go test -race ./... passes",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-16T21:27:30Z"
+}
