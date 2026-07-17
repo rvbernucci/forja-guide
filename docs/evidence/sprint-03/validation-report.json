@@ -42,11 +42,11 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "aa40b08ec3346462f7a8453c13757e916c019a6c71631920c491d78580b38ba6"
+      "artifact_sha256": "bd2a5906896741ae8450fbe438c3412b111ec85fc6171a91e4fac433b2d37495"
     }
   ],
   "resolved_review_findings": {
-    "count": 28,
+    "count": 29,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
@@ -64,7 +64,8 @@
       "legacy_receipt_promotion_review": 1,
       "promotion_integrity_and_irreversibility_review": 4,
       "type_strict_promotion_review": 1,
-      "complete_history_and_lossless_promotion_review": 4
+      "complete_history_and_lossless_promotion_review": 4,
+      "merge_history_irreversibility_review": 1
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -86,7 +87,8 @@
       "irreversible closure state and mandatory Git-history verification",
       "type-strict canonical JSON preservation during receipt promotion",
       "unique receipt introduction and canonical ASCII Sprint identity",
-      "non-shallow Git history and lossless numeric-token preservation"
+      "non-shallow Git history and lossless numeric-token preservation",
+      "full merge-history inspection for irreversible receipt introduction"
     ]
   },
   "acceptance": [
@@ -117,5 +119,5 @@
     ]
   },
   "recorded_at": "2026-07-17T21:06:37Z",
-  "amended_at": "2026-07-17T22:32:02Z"
+  "amended_at": "2026-07-17T22:36:43Z"
 }

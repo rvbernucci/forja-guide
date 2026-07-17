@@ -879,6 +879,175 @@ class EvidenceValidationTests(unittest.TestCase):
                 errors,
             )
 
+    def test_merged_receipt_history_cannot_hide_reintroduction(self) -> None:
+        """Full merge history exposes an add/delete hidden by path simplification."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(
+                ["git", "init", "--initial-branch=main", str(root)],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.name", "test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.email", "test@test"],
+                check=True,
+            )
+            sprint = root / "docs/evidence/sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "03",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            roadmaps = root / "docs/04-roadmap"
+            roadmaps.mkdir(parents=True)
+            master = roadmaps / "MASTER_DEVELOPMENT_PLAN.md"
+            detail = roadmaps / "SPRINTS_00_04_FOUNDATION.md"
+            master.write_text("candidate\n", encoding="utf-8")
+            detail.write_text("candidate\n", encoding="utf-8")
+            candidate = {
+                "evidence_version": "1.0",
+                "sprint_id": "03",
+                "status": "candidate",
+                "closure_protocol_version": "2.0",
+                "authoritative": False,
+                "definition_of_done": {
+                    "independent_validation_recorded": False,
+                },
+                "supporting_artifacts": [],
+                "next_sprint_authorized": None,
+                "recorded_at": "2026-07-17T21:06:37Z",
+            }
+            candidate_path = sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE
+            receipt_path = sprint / "close-receipt.json"
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "."], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "candidate"],
+                check=True,
+                capture_output=True,
+            )
+
+            subprocess.run(
+                ["git", "-C", str(root), "switch", "-c", "side"],
+                check=True,
+                capture_output=True,
+            )
+            receipt_path.write_text("{}", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", str(receipt_path)],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "hidden add"],
+                check=True,
+                capture_output=True,
+            )
+            receipt_path.unlink()
+            subprocess.run(
+                ["git", "-C", str(root), "add", "-A"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "hidden delete"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "switch", "main"],
+                check=True,
+                capture_output=True,
+            )
+            (root / "main-marker").write_text("main\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "main-marker"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "main advance"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "merge", "--no-ff", "side", "-m", "merge"],
+                check=True,
+                capture_output=True,
+            )
+            candidate_commit = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            review_path = "docs/evidence/sprint-03/reviews/immutable.md"
+            review_file = root / review_path
+            review_file.parent.mkdir()
+            review_file.write_text("No findings.\n", encoding="utf-8")
+            review = {
+                "result": "passed",
+                "reviewed_commit": candidate_commit,
+                "artifact_path": review_path,
+                "artifact_sha256": hashlib.sha256(review_file.read_bytes()).hexdigest(),
+            }
+            receipt = {
+                **candidate,
+                "status": "closed",
+                "authoritative": True,
+                "definition_of_done": {
+                    "independent_validation_recorded": True,
+                },
+                "supporting_artifacts": [review_path],
+                "next_sprint_authorized": "04",
+                "candidate_recorded_at": candidate["recorded_at"],
+                "reviewed_candidate_commit": candidate_commit,
+                "immutable_review": review,
+                "closed_at": "2026-07-17T22:10:00Z",
+            }
+            del receipt["recorded_at"]
+            candidate_path.unlink()
+            receipt_path.write_text(json.dumps(receipt), encoding="utf-8")
+            master.write_text("closed\n", encoding="utf-8")
+            detail.write_text("closed\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(root), "add", "-A"], check=True)
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "attest"],
+                check=True,
+                capture_output=True,
+            )
+            trusted_main = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                {
+                    "FORJA_ENFORCE_TRUSTED_MAIN": "1",
+                    "FORJA_TRUSTED_MAIN_SHA": trusted_main,
+                },
+            ):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "v2 close receipt has multiple introductions: "
+                "docs/evidence/sprint-03/close-receipt.json",
+                errors,
+            )
+
     def test_attestation_must_match_trusted_main_topology(self) -> None:
         """Protected CI rejects unpublished and stale-base attestations."""
         with tempfile.TemporaryDirectory() as directory:

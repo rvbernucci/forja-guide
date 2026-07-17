@@ -185,3 +185,14 @@
   ASCII `00` through `14` form. Promotion validation decodes every JSON number
   as a lossless kind-and-lexeme value before recursively type-strict comparison.
   Regression tests reproduce each exploit and prove it fails closed.
+
+## Pass 15: Merge-History Irreversibility Review
+
+- Reviewed commit: `5966e66b0dc0a6f1a9a02696999ba72ae029f198`.
+- Finding: 1 P1 closure-integrity issue from an isolated Codex CLI review.
+- Finding detail: Git's default path-history simplification could omit a receipt
+  added and deleted on a side branch before merge, allowing a later receipt to
+  appear uniquely introduced.
+- Resolution: both candidate reopening and receipt uniqueness checks now scan
+  `--full-history`. A merge-topology regression creates the hidden side-branch
+  add/delete sequence and proves the final reintroduction is rejected.
