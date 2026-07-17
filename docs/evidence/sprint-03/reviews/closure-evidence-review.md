@@ -141,3 +141,19 @@
   exact three historical receipts at their canonical paths are accepted; every
   new or changed receipt must use protocol v2. A regression test exercises the
   previously accepted downgrade.
+
+## Pass 12: Promotion Integrity and Irreversibility
+
+- Reviewed public candidate:
+  `c7216ba518f850526c77caf28365220412b948c5`.
+- Findings: 3 P1 closure-integrity issues and 1 P2 fail-closed issue from an
+  isolated Codex CLI review.
+- Finding details: attestation could rewrite reviewed candidate fields,
+  authorize an arbitrary successor, later replace a receipt with a candidate,
+  or self-assert a v2 receipt when Git history was unavailable.
+- Resolution: the validator now derives the exact successor from the canonical
+  Sprint sequence, treats Sprint 14 as terminal, compares the full promoted
+  receipt against the reviewed candidate with an explicit attestation-field
+  allowlist, rejects any candidate after receipt introduction, and requires Git
+  history for authoritative v2 validation. Reproduction tests cover all four
+  exploits.

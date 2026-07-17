@@ -30,8 +30,12 @@ head. Before merge, the repository validator requires that trusted SHA to equal
 the reviewed candidate. After publication, it requires the attestation commit
 to be an ancestor of the trusted `main` head. It also verifies the fail-closed
 candidate, requires the attestation introduction commit to be its direct child,
-allowlists the exact promotion paths, and rejects later receipt mutation. The
-owning roadmap is derived from the numeric Sprint range.
+allowlists the exact promotion paths, preserves every reviewed candidate field
+except the declared attestation fields, and rejects later receipt mutation or a
+return to candidate state. The owning roadmap and exact authorized successor
+are derived from the numeric Sprint range; Sprint 14 is terminal and authorizes
+no successor. An authoritative v2 receipt is invalid without complete Git
+history.
 
 Sprint 00-02 receipts remain valid under the legacy format only when their path
 and content hash match the three receipts already published. Every closure
@@ -56,6 +60,7 @@ Negative:
 ## Guardrail
 
 CI must fetch full Git history. Tests must reject unpublished candidates,
-candidate or receipt protocol downgrade, ambiguous closure files, unauthorized
-next-Sprint fields, non-promotion changes, review artifacts outside the Sprint
-evidence directory, and receipts modified after their attestation commit.
+candidate or receipt protocol downgrade, ambiguous closure files, noncanonical
+successors, reviewed-content changes, closure reopening, non-promotion changes,
+review artifacts outside the Sprint evidence directory, history-free v2
+receipts, and receipts modified after their attestation commit.
