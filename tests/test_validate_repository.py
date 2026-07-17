@@ -152,6 +152,44 @@ class EvidenceValidationTests(unittest.TestCase):
                 sum("candidate is not fail-closed" in error for error in errors),
             )
 
+    def test_v2_close_receipt_requires_immutable_review_binding(self) -> None:
+        """A v2 close receipt cannot authorize work without a passed review."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES:
+                payload: dict[str, object] = {
+                    "evidence_version": "1.0",
+                    "sprint_id": "03",
+                    "status": "ok",
+                }
+                if filename == "close-receipt.json":
+                    payload.update(
+                        {
+                            "status": "closed",
+                            "closure_protocol_version": "2.0",
+                            "authoritative": True,
+                            "reviewed_candidate_commit": "0" * 40,
+                            "next_sprint_authorized": "04",
+                            "closed_at": "2026-07-17T21:21:32Z",
+                        }
+                    )
+                (sprint / filename).write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "Sprint v2 close receipt is not review-bound: "
+                "docs/evidence/sprint-03/close-receipt.json",
+                errors,
+            )
+
     def test_invalid_basis_commit_is_rejected(self) -> None:
         """Evidence commit references must use immutable full SHA-1 values."""
         with tempfile.TemporaryDirectory() as directory:

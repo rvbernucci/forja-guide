@@ -1,0 +1,1 @@
+The amendment timestamps correctly follow the reviewed parent commit, the review-finding counts remain internally consistent, and the updated artifact digest matches the referenced review file. The full repository validation suite also passes.

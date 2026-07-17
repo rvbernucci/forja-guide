@@ -196,6 +196,12 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"Sprint close receipt is not closed: "
                     f"{close_path.relative_to(ROOT)}"
                 )
+            if close_receipt.get("closure_protocol_version") == "2.0":
+                validate_v2_close_receipt(
+                    close_receipt,
+                    close_path,
+                    errors,
+                )
         if candidate_path.is_file():
             try:
                 candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
@@ -212,6 +218,55 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"Sprint closure candidate is not fail-closed: "
                     f"{candidate_path.relative_to(ROOT)}"
                 )
+
+
+def validate_v2_close_receipt(
+    receipt: dict[str, object],
+    path: Path,
+    errors: list[str],
+) -> None:
+    """Require immutable review binding before a v2 receipt authorizes work."""
+    label = path.relative_to(ROOT)
+    candidate_commit = receipt.get("reviewed_candidate_commit")
+    review = receipt.get("immutable_review")
+    next_sprint = receipt.get("next_sprint_authorized")
+    closed_at = receipt.get("closed_at")
+    valid = (
+        receipt.get("authoritative") is True
+        and isinstance(candidate_commit, str)
+        and COMMIT_SHA.fullmatch(candidate_commit) is not None
+        and isinstance(review, dict)
+        and review.get("result") == "passed"
+        and review.get("reviewed_commit") == candidate_commit
+        and isinstance(review.get("artifact_path"), str)
+        and isinstance(review.get("artifact_sha256"), str)
+        and isinstance(next_sprint, str)
+        and bool(next_sprint.strip())
+        and isinstance(closed_at, str)
+        and bool(closed_at.strip())
+    )
+    if not valid:
+        errors.append(f"Sprint v2 close receipt is not review-bound: {label}")
+        return
+    if (ROOT / ".git").exists():
+        result = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "cat-file",
+                "-e",
+                f"{candidate_commit}^{{commit}}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            errors.append(
+                f"unresolvable reviewed_candidate_commit in {label}: "
+                f"{candidate_commit}"
+            )
 
 
 def validate_artifact_references(

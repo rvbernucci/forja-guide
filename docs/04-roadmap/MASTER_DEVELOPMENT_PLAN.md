@@ -1,7 +1,6 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-02 closed. Sprint 03 implementation complete; formal
-closure is awaiting immutable evidence review. Gate A remains achieved.
+Status: Active. Sprints 00-03 closed. Gate A achieved.
 
 ## Objective
 
