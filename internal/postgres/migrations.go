@@ -192,7 +192,7 @@ func VerifySchema(
 		ctx,
 		tx,
 		"constraints",
-		`SELECT c.conrelid::regclass::text || ':' || c.conname || ':' || c.contype,
+		`SELECT c.conrelid::regclass::text || ':' || c.conname || ':' || c.contype::text,
 		        pg_get_constraintdef(c.oid, true)
 		 FROM pg_constraint AS c
 		 JOIN pg_namespace AS n ON n.oid=c.connamespace
