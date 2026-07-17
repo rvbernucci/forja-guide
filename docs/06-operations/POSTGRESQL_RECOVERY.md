@@ -22,22 +22,25 @@ creates a PostgreSQL custom-format archive, validates its table of contents,
 and atomically publishes it without replacing an existing path:
 
 ```bash
-scripts/postgres_backup.sh \
-  "$FORJA_DATABASE_URL" \
-  /secure/backups/forja-2026-07-16.dump
+export FORJA_DATABASE_URL='postgresql://forja@database/forja'
+scripts/postgres_backup.sh /secure/backups/forja-2026-07-16.dump
 ```
 
 The script does not print the connection URL and refuses an existing
 destination, so a known-good recovery point cannot be silently overwritten.
+The credential-bearing URL is accepted only through the environment. Before a
+client starts, any embedded password is separated into `PGPASSWORD`; only the
+sanitized, password-free URI can appear in a PostgreSQL client argument.
+See [ADR-0006](../05-decisions/ADR-0006-POSTGRES-CREDENTIAL-BOUNDARY.md) for
+the threat model and trust-boundary decision.
 
 ## Restore Drill
 
 Restore into a new, empty staging database:
 
 ```bash
-scripts/postgres_restore.sh \
-  "$FORJA_RESTORE_DATABASE_URL" \
-  /secure/backups/forja-2026-07-16.dump
+export FORJA_DATABASE_URL='postgresql://forja@staging-database/forja_restore'
+scripts/postgres_restore.sh /secure/backups/forja-2026-07-16.dump
 ```
 
 The restore command uses a schema-only archive to refuse any target containing
@@ -59,7 +62,8 @@ replace a populated database.
 The same non-destructive verification can be run independently:
 
 ```bash
-scripts/postgres_verify.sh "$FORJA_RESTORE_DATABASE_URL"
+export FORJA_DATABASE_URL='postgresql://forja@staging-database/forja_restore'
+scripts/postgres_verify.sh
 ```
 
 After staging restore:

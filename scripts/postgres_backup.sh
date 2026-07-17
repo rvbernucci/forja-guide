@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 2 ]]; then
-  echo "usage: postgres_backup.sh <database-url> <backup-file>" >&2
+if [[ "$#" -ne 1 ]]; then
+  echo "usage: FORJA_DATABASE_URL=<database-url> postgres_backup.sh <backup-file>" >&2
   exit 2
 fi
 
-database_url="$1"
-destination="$2"
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/postgres_connection.sh"
+forja_prepare_postgres_connection
+destination="$1"
 destination_dir="$(dirname "$destination")"
 temporary="${destination}.tmp.$$"
 
@@ -25,7 +27,7 @@ pg_dump \
   --no-owner \
   --no-acl \
   --file="$temporary" \
-  "$database_url"
+  "$FORJA_PG_SAFE_URL"
 
 pg_restore --list "$temporary" >/dev/null
 if ! ln "$temporary" "$destination"; then

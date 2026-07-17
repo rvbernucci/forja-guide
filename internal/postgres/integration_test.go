@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -25,6 +26,13 @@ import (
 func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) < 2 {
+		t.Fatalf("migration count = %d, want at least 2", len(migrations))
+	}
 
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate clean database: %v", err)
@@ -39,12 +47,12 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 1 {
-		t.Fatalf("migration count = %d, want 1", count)
+	if count != len(migrations) {
+		t.Fatalf("migration count = %d, want %d", count, len(migrations))
 	}
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum='tampered'",
+		"UPDATE forja.schema_migrations SET checksum='tampered' WHERE version=1",
 	); err != nil {
 		t.Fatalf("tamper migration checksum: %v", err)
 	}
@@ -54,21 +62,33 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("rollback accepted modified migration history")
 	}
-	migrations, err := loadMigrations()
-	if err != nil {
-		t.Fatalf("load migrations: %v", err)
-	}
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum=$1",
+		"UPDATE forja.schema_migrations SET checksum=$1 WHERE version=1",
 		migrations[0].checksum,
 	); err != nil {
 		t.Fatalf("restore migration checksum: %v", err)
 	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback latest migration: %v", err)
+	for index := len(migrations) - 1; index > 0; index-- {
+		if err := RollbackLast(t.Context(), pool); err != nil {
+			t.Fatalf("rollback migration %d: %v", migrations[index].version, err)
+		}
 	}
 	var runsTableExists bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT EXISTS (
+			SELECT 1
+			FROM information_schema.tables
+			WHERE table_schema='forja' AND table_name='runs'
+		)`).Scan(&runsTableExists); err != nil {
+		t.Fatalf("inspect tables after incremental rollback: %v", err)
+	}
+	if !runsTableExists {
+		t.Fatal("base schema was removed while rolling back incremental migrations")
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback base migration: %v", err)
+	}
 	if err := pool.QueryRow(t.Context(), `
 		SELECT EXISTS (
 			SELECT 1
@@ -82,6 +102,98 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	}
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("upgrade after rollback: %v", err)
+	}
+}
+
+func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) < 2 {
+		t.Fatalf("migration count = %d, want at least 2", len(migrations))
+	}
+	if _, err := pool.Exec(t.Context(), migrations[0].up); err != nil {
+		t.Fatalf("apply version one schema: %v", err)
+	}
+	if _, err := pool.Exec(
+		t.Context(),
+		`INSERT INTO forja.schema_migrations (version, name, checksum)
+		 VALUES ($1, $2, $3)`,
+		migrations[0].version,
+		migrations[0].name,
+		migrations[0].checksum,
+	); err != nil {
+		t.Fatalf("record version one migration: %v", err)
+	}
+	const runID = "run_00000000-0000-4000-8000-000000000003"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, objective, state, version,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, 'Exercise the version one upgrade', 'draft', 1,
+			statement_timestamp(), statement_timestamp()
+		)`,
+		runID,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("seed version one run: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.leases (
+			tenant_id, repository_id, resource_type, resource_id, owner_id,
+			fencing_token, acquired_at, expires_at, updated_at
+		) VALUES (
+			$1, $2, 'scheduler', 'upgrade-probe', 'upgrade-worker', 1,
+			clock_timestamp(), clock_timestamp()+interval '1 minute',
+			clock_timestamp()
+		)`,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("seed version one lease: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.attempts (
+			attempt_id, tenant_id, run_id, ordinal, status,
+			lease_resource_type, lease_resource_id, worker_id, fencing_token,
+			created_at, updated_at
+		) VALUES (
+			'attempt_upgrade_probe', $2, $1, 1, 'queued',
+			'scheduler', 'upgrade-probe', 'upgrade-worker', 1,
+			statement_timestamp(), statement_timestamp()+interval '1 microsecond'
+		)`,
+		runID,
+		DefaultTenantID,
+	); err != nil {
+		t.Fatalf("seed version one attempt: %v", err)
+	}
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("upgrade version one database: %v", err)
+	}
+	var timestampsEqual bool
+	if err := pool.QueryRow(
+		t.Context(),
+		`SELECT created_at=updated_at
+		 FROM forja.attempts
+		 WHERE attempt_id='attempt_upgrade_probe'`,
+	).Scan(&timestampsEqual); err != nil {
+		t.Fatalf("inspect upgraded attempt: %v", err)
+	}
+	if !timestampsEqual {
+		t.Fatal("version one attempt timestamps were not migrated to the canonical invariant")
+	}
+	if err := VerifySchema(
+		t.Context(),
+		pool,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("verify upgraded database: %v", err)
 	}
 }
 
@@ -293,22 +405,14 @@ func TestPostgresVerifyRejectsSemanticSchemaDrift(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			pool := migratedPool(t)
-			verify := exec.CommandContext(
-				t.Context(),
-				"../../scripts/postgres_verify.sh",
-				integrationDatabaseURL(t),
-			)
+			verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 			if output, err := verify.CombinedOutput(); err != nil {
 				t.Fatalf("verify canonical schema: %v\n%s", err, output)
 			}
 			if _, err := pool.Exec(t.Context(), drift); err != nil {
 				t.Fatalf("apply semantic drift: %v", err)
 			}
-			verify = exec.CommandContext(
-				t.Context(),
-				"../../scripts/postgres_verify.sh",
-				integrationDatabaseURL(t),
-			)
+			verify = postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 			if output, err := verify.CombinedOutput(); err == nil {
 				t.Fatalf("verification accepted semantic drift\n%s", output)
 			}
@@ -786,6 +890,17 @@ func TestDuplicateAttemptCommandCreatesOneAttempt(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("attempt count = %d, want 1", count)
 	}
+	var timestampsEqual bool
+	if err := pool.QueryRow(
+		t.Context(),
+		"SELECT created_at=updated_at FROM forja.attempts WHERE attempt_id=$1",
+		first.AttemptID,
+	).Scan(&timestampsEqual); err != nil {
+		t.Fatalf("compare attempt creation timestamps: %v", err)
+	}
+	if !timestampsEqual {
+		t.Fatal("new attempt has different created_at and updated_at timestamps")
+	}
 	var events, outbox int
 	if err := pool.QueryRow(t.Context(), `
 		SELECT
@@ -936,6 +1051,46 @@ func TestRepositoryBoundStoreRejectsCrossRepositoryAuthority(t *testing.T) {
 			firstCount,
 			secondCount,
 		)
+	}
+	var firstOutboxID int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT o.outbox_id
+		FROM forja.outbox AS o
+		JOIN forja.events AS e
+		  ON e.tenant_id=o.tenant_id
+		 AND e.repository_id=o.repository_id
+		 AND e.event_id=o.event_id
+		WHERE e.tenant_id=$1 AND e.repository_id=$2
+		  AND e.aggregate_type='run' AND e.aggregate_id=$3`,
+		DefaultTenantID,
+		DefaultRepositoryID,
+		firstID.String(),
+	).Scan(&firstOutboxID); err != nil {
+		t.Fatalf("read first repository outbox: %v", err)
+	}
+	var secondEventID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT event_id
+		FROM forja.events
+		WHERE tenant_id=$1 AND repository_id=$2
+		  AND aggregate_type='run' AND aggregate_id=$3`,
+		DefaultTenantID,
+		otherRepositoryID,
+		secondID.String(),
+	).Scan(&secondEventID); err != nil {
+		t.Fatalf("read second repository event: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.projection_dead_letters (
+			tenant_id, repository_id, projector_name, outbox_id, event_id,
+			error_class, error_message, payload
+		) VALUES ($1, $2, 'cross-repository-probe', $3, $4, 'probe', 'probe', '{}')`,
+		DefaultTenantID,
+		otherRepositoryID,
+		firstOutboxID,
+		secondEventID,
+	); err == nil {
+		t.Fatal("dead letter accepted an outbox row from another repository")
 	}
 }
 
@@ -1934,11 +2089,7 @@ func TestReplayRejectsSemanticallyInvalidEventStream(t *testing.T) {
 	); err != nil {
 		t.Fatalf("insert semantic corruption: %v", err)
 	}
-	verify := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_verify.sh",
-		integrationDatabaseURL(t),
-	)
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err == nil {
 		t.Fatalf("external verifier accepted semantic corruption\n%s", output)
 	}
@@ -2061,25 +2212,17 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create backup attempt: %v", err)
 	}
-	verify := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_verify.sh",
-		integrationDatabaseURL(t),
-	)
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err != nil {
 		t.Fatalf("schema verification failed: %v\n%s", err, output)
 	}
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum='tampered-backup'",
+		"UPDATE forja.schema_migrations SET checksum='tampered-backup' WHERE version=1",
 	); err != nil {
 		t.Fatalf("tamper migration ledger: %v", err)
 	}
-	verify = exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_verify.sh",
-		integrationDatabaseURL(t),
-	)
+	verify = postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err == nil {
 		t.Fatalf("verification accepted a tampered ledger\n%s", output)
 	}
@@ -2089,36 +2232,25 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	}
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum=$1",
+		"UPDATE forja.schema_migrations SET checksum=$1 WHERE version=1",
 		migrations[0].checksum,
 	); err != nil {
 		t.Fatalf("restore migration checksum: %v", err)
 	}
 	backupPath := filepath.Join(t.TempDir(), "forja.dump")
-	backup := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_backup.sh",
-		integrationDatabaseURL(t),
-		backupPath,
-	)
+	backup := postgresScriptCommand(t, "../../scripts/postgres_backup.sh", backupPath)
 	if output, err := backup.CombinedOutput(); err != nil {
 		t.Fatalf("backup failed: %v\n%s", err, output)
 	}
-	refuseOverwrite := exec.CommandContext(
-		t.Context(),
+	refuseOverwrite := postgresScriptCommand(
+		t,
 		"../../scripts/postgres_backup.sh",
-		integrationDatabaseURL(t),
 		backupPath,
 	)
 	if output, err := refuseOverwrite.CombinedOutput(); err == nil {
 		t.Fatalf("backup silently overwrote a recovery point\n%s", output)
 	}
-	refused := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_restore.sh",
-		integrationDatabaseURL(t),
-		backupPath,
-	)
+	refused := postgresScriptCommand(t, "../../scripts/postgres_restore.sh", backupPath)
 	if output, err := refused.CombinedOutput(); err == nil {
 		t.Fatalf("restore unexpectedly replaced a non-empty target\n%s", output)
 	}
@@ -2139,10 +2271,9 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 			$$`); err != nil {
 		t.Fatalf("create non-relation restore hazard: %v", err)
 	}
-	refuseFunction := exec.CommandContext(
-		t.Context(),
+	refuseFunction := postgresScriptCommand(
+		t,
 		"../../scripts/postgres_restore.sh",
-		integrationDatabaseURL(t),
 		backupPath,
 	)
 	if output, err := refuseFunction.CombinedOutput(); err == nil {
@@ -2154,12 +2285,7 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	); err != nil {
 		t.Fatalf("remove non-relation restore hazard: %v", err)
 	}
-	restore := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_restore.sh",
-		integrationDatabaseURL(t),
-		backupPath,
-	)
+	restore := postgresScriptCommand(t, "../../scripts/postgres_restore.sh", backupPath)
 	if output, err := restore.CombinedOutput(); err != nil {
 		t.Fatalf("restore failed: %v\n%s", err, output)
 	}
@@ -2238,10 +2364,9 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 		t.Fatalf("insert corrupt restored event: %v", err)
 	}
 	corruptBackupPath := filepath.Join(t.TempDir(), "forja-corrupt.dump")
-	corruptBackup := exec.CommandContext(
-		t.Context(),
+	corruptBackup := postgresScriptCommand(
+		t,
 		"../../scripts/postgres_backup.sh",
-		integrationDatabaseURL(t),
 		corruptBackupPath,
 	)
 	if output, err := corruptBackup.CombinedOutput(); err != nil {
@@ -2250,10 +2375,9 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if _, err := pool.Exec(t.Context(), "DROP SCHEMA forja CASCADE"); err != nil {
 		t.Fatalf("empty target before corrupt restore: %v", err)
 	}
-	corruptRestore := exec.CommandContext(
-		t.Context(),
+	corruptRestore := postgresScriptCommand(
+		t,
 		"../../scripts/postgres_restore.sh",
-		integrationDatabaseURL(t),
 		corruptBackupPath,
 	)
 	if output, err := corruptRestore.CombinedOutput(); err == nil {
@@ -2268,6 +2392,94 @@ func integrationDatabaseURL(t *testing.T) string {
 		t.Skip("FORJA_TEST_DATABASE_URL is not set")
 	}
 	return value
+}
+
+func TestPostgresScriptCommandKeepsDatabaseURLOutOfArguments(t *testing.T) {
+	databaseURL := integrationDatabaseURL(t)
+	command := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
+	for _, argument := range command.Args {
+		if strings.Contains(argument, databaseURL) {
+			t.Fatalf("database URL leaked into process argument %q", argument)
+		}
+	}
+	expectedEnvironment := "FORJA_DATABASE_URL=" + databaseURL
+	if !slices.Contains(command.Env, expectedEnvironment) {
+		t.Fatal("database URL was not passed through the protected environment boundary")
+	}
+}
+
+func TestPostgresConnectionSanitizerSeparatesEmbeddedPassword(t *testing.T) {
+	command := exec.CommandContext(
+		t.Context(),
+		"/bin/bash",
+		"-c",
+		`source ../../scripts/postgres_connection.sh
+forja_prepare_postgres_connection
+printf '%s\n%s\n' "$FORJA_PG_SAFE_URL" "$PGPASSWORD"`,
+	)
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "FORJA_DATABASE_URL=") &&
+			!strings.HasPrefix(entry, "PGPASSWORD=") {
+			environment = append(environment, entry)
+		}
+	}
+	credentialURL := "postgresql://" +
+		"worker" + ":" + "secret%2Fvalue" +
+		"@db/forja?sslmode=require"
+	command.Env = append(
+		environment,
+		"FORJA_DATABASE_URL="+credentialURL,
+	)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("sanitize PostgreSQL URL: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(output), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("sanitizer output = %q", output)
+	}
+	if lines[0] != "postgresql://worker@db/forja?sslmode=require" {
+		t.Fatalf("safe URL = %q", lines[0])
+	}
+	if lines[1] != "secret/value" {
+		t.Fatal("embedded password was not decoded into the libpq environment")
+	}
+}
+
+func TestPostgresConnectionSanitizerPreservesMultiHostURI(t *testing.T) {
+	command := exec.CommandContext(
+		t.Context(),
+		"/bin/bash",
+		"-c",
+		`source ../../scripts/postgres_connection.sh
+forja_prepare_postgres_connection
+printf '%s\n%s\n' "$FORJA_PG_SAFE_URL" "$PGPASSWORD"`,
+	)
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "FORJA_DATABASE_URL=") &&
+			!strings.HasPrefix(entry, "PGPASSWORD=") {
+			environment = append(environment, entry)
+		}
+	}
+	multiHostURL := "postgresql://" + "worker" + ":" + "secret" +
+		"@db-a:5432,db-b:5433/forja?target_session_attrs=read-write"
+	command.Env = append(environment, "FORJA_DATABASE_URL="+multiHostURL)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("sanitize multi-host PostgreSQL URL: %v", err)
+	}
+	lines := strings.Split(strings.TrimSuffix(string(output), "\n"), "\n")
+	if len(lines) != 2 {
+		t.Fatalf("sanitizer output = %q", output)
+	}
+	if lines[0] != "postgresql://worker@db-a:5432,db-b:5433/forja?target_session_attrs=read-write" {
+		t.Fatalf("safe URL = %q", lines[0])
+	}
+	if lines[1] != "secret" {
+		t.Fatal("multi-host embedded password was not moved to the environment")
+	}
 }
 
 func integrationPool(t *testing.T) *pgxpool.Pool {
@@ -2308,14 +2520,26 @@ func newIntegrationStore(t *testing.T, pool *pgxpool.Pool) *Store {
 
 func requirePostgresVerifyFailure(t *testing.T) {
 	t.Helper()
-	verify := exec.CommandContext(
-		t.Context(),
-		"../../scripts/postgres_verify.sh",
-		integrationDatabaseURL(t),
-	)
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err == nil {
 		t.Fatalf("PostgreSQL verification accepted contradictory state\n%s", output)
 	}
+}
+
+func postgresScriptCommand(t *testing.T, path string, args ...string) *exec.Cmd {
+	t.Helper()
+	command := exec.CommandContext(t.Context(), path, args...)
+	environment := make([]string, 0, len(os.Environ())+1)
+	for _, entry := range os.Environ() {
+		if !strings.HasPrefix(entry, "FORJA_DATABASE_URL=") {
+			environment = append(environment, entry)
+		}
+	}
+	command.Env = append(
+		environment,
+		"FORJA_DATABASE_URL="+integrationDatabaseURL(t),
+	)
+	return command
 }
 
 func mustRunID(t *testing.T) identity.RunID {

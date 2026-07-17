@@ -1,14 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 2 ]]; then
-  echo "usage: postgres_restore.sh <database-url> <backup-file>" >&2
+if [[ "$#" -ne 1 ]]; then
+  echo "usage: FORJA_DATABASE_URL=<database-url> postgres_restore.sh <backup-file>" >&2
   exit 2
 fi
 
-database_url="$1"
-backup_file="$2"
+backup_file="$1"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/postgres_connection.sh"
+forja_prepare_postgres_connection
 guard_dump="$(mktemp "${TMPDIR:-/tmp}/forja-restore-guard.XXXXXX")"
 
 cleanup() {
@@ -29,7 +30,7 @@ pg_dump \
   --no-owner \
   --no-acl \
   --file="$guard_dump" \
-  "$database_url"
+  "$FORJA_PG_SAFE_URL"
 object_count="$(
   pg_restore --list "$guard_dump" |
     awk 'substr($0, 1, 1) != ";" && NF { count++ } END { print count + 0 }'
@@ -44,9 +45,10 @@ pg_restore \
   --single-transaction \
   --no-owner \
   --no-acl \
-  --dbname="$database_url" \
+  --dbname="$FORJA_PG_SAFE_URL" \
   "$backup_file"
 
-"$root/scripts/postgres_verify.sh" "$database_url" >/dev/null
+FORJA_DATABASE_URL="$FORJA_PG_SAFE_URL" \
+  "$root/scripts/postgres_verify.sh" >/dev/null
 
 echo "PostgreSQL staging restore verified and ready for controlled promotion"

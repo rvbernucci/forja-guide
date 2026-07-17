@@ -80,7 +80,7 @@ func TestHTTPReadinessFailsWhenPostgresPoolCloses(t *testing.T) {
 	assertReadyStatus(t, httpServer.URL, http.StatusOK)
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum='readiness-drift'",
+		"UPDATE forja.schema_migrations SET checksum='readiness-drift' WHERE version=1",
 	); err != nil {
 		t.Fatalf("tamper migration ledger: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestHTTPReadinessFailsWhenPostgresPoolCloses(t *testing.T) {
 	}
 	if _, err := pool.Exec(
 		t.Context(),
-		"UPDATE forja.schema_migrations SET checksum=$1",
+		"UPDATE forja.schema_migrations SET checksum=$1 WHERE version=1",
 		migrations[0].checksum,
 	); err != nil {
 		t.Fatalf("restore migration ledger: %v", err)
