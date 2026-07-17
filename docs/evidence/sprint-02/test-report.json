@@ -1,0 +1,57 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Formatting, module verification, vet, unit, race, reproducible builds, kernel smoke, Python tests, and repository validation passed."
+    },
+    {
+      "name": "PostgreSQL durability and process restart gate",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> make test-integration",
+      "result": "passed",
+      "summary": "Integration tests ran with backup/restore enabled, then a daemon restart recovered byte-equivalent canonical run state."
+    },
+    {
+      "name": "PostgreSQL integration coverage",
+      "command": "FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
+      "result": "passed",
+      "statement_coverage_percent": 75.1
+    },
+    {
+      "name": "migration compatibility",
+      "result": "passed",
+      "coverage": [
+        "clean database migration and full rollback",
+        "upgrade from immutable version 1 with legacy attempt data",
+        "unknown applied version rejection",
+        "canonical schema and behavioral drift rejection"
+      ]
+    },
+    {
+      "name": "durability invariants",
+      "result": "passed",
+      "coverage": [
+        "restart-safe state and command replay",
+        "duplicate attempt suppression",
+        "concurrent lease fencing and takeover",
+        "non-overlapping SKIP LOCKED outbox claims",
+        "event replay and corrupt stream rejection",
+        "backup and restore round trip"
+      ]
+    },
+    {
+      "name": "official PostgreSQL 18.3 CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549460728",
+      "head_sha": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+      "summary": "The protected main workflow passed against the digest-pinned PostgreSQL 18.3 service and matching PostgreSQL 18 client."
+    }
+  ],
+  "compatibility_note": "PostgreSQL 14.19 on macOS passed as an additional local compatibility check; PostgreSQL 18.3 is the official CI and supported target.",
+  "recorded_at": "2026-07-17T02:23:33Z"
+}

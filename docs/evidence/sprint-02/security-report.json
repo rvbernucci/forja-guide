@@ -1,0 +1,45 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@latest ./...",
+      "result": "passed",
+      "findings": 0
+    },
+    {
+      "name": "tenant and repository authority",
+      "result": "passed",
+      "summary": "Repository-bound stores, cross-repository foreign keys, and lease keys reject authority crossing."
+    },
+    {
+      "name": "transaction and fencing integrity",
+      "result": "passed",
+      "summary": "Aggregate writes, immutable events, idempotency receipts, outbox rows, and database-clock lease checks are transactionally enforced."
+    },
+    {
+      "name": "canonical event immutability",
+      "result": "passed",
+      "summary": "Append-only triggers, exact schema signatures, and replay verification reject mutation and semantic drift."
+    },
+    {
+      "name": "PostgreSQL credential boundary",
+      "result": "passed",
+      "summary": "Recovery scripts accept credentials only through the environment, remove embedded passwords from child arguments, preserve multi-host libpq semantics, and never print the credential."
+    },
+    {
+      "name": "workflow supply-chain controls",
+      "result": "passed",
+      "summary": "GitHub Actions are commit-pinned and PostgreSQL 18.3 is referenced by immutable image digest."
+    }
+  ],
+  "residual_risks": [
+    "Environment variables are less exposed than process arguments but are not a secret vault; production deployment must use a dedicated identity and secret manager.",
+    "Remote authentication and user-facing authorization are deferred to the governed MCP boundary in Sprint 03.",
+    "Migrations are applied transactionally; online zero-downtime index orchestration is intentionally outside Sprint 02 and requires an operator maintenance plan."
+  ],
+  "recorded_at": "2026-07-17T02:23:33Z"
+}

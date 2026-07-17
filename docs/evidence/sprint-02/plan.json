@@ -1,0 +1,27 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "name": "Durable State",
+  "status": "completed",
+  "objective": "Make state transitions, leases, command replay, and projection delivery durable and recoverable in PostgreSQL.",
+  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "scope": [
+    "versioned PostgreSQL migrations for canonical state, events, leases, idempotency, outbox, checkpoints, and dead letters",
+    "transactional optimistic run and attempt persistence with immutable events",
+    "replay-safe commands and durable idempotency receipts",
+    "tenant- and repository-bound leases with database-clock expiry and fencing",
+    "competing outbox consumers using SKIP LOCKED and fenced claims",
+    "projection replay, corruption detection, backup, restore, and migration rollback",
+    "persistence interfaces that keep SQL outside policy logic",
+    "credential-safe PostgreSQL recovery tooling"
+  ],
+  "out_of_scope": [
+    "remote authentication and MCP authorization",
+    "worker process supervision",
+    "zero-downtime online schema migration orchestration",
+    "Qdrant and Neo4j derived projections"
+  ],
+  "author": "codex",
+  "independent_validator": "GitHub Actions, CodeRabbit, and isolated Codex CLI review",
+  "completed_at": "2026-07-17T02:23:33Z"
+}

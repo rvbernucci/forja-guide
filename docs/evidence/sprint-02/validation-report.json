@@ -1,0 +1,88 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "validators": [
+    {
+      "name": "protected main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549460728",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "pull request hardening workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549390531"
+    },
+    {
+      "name": "isolated Codex CLI merged-commit review",
+      "type": "independent",
+      "result": "passed",
+      "model": "gpt-5.6-sol",
+      "report_sha256": "5bfee7df3e1f304ffa0c9e5b920203249c1817cce462b17d3e6d01cdc268fd6a",
+      "summary": "No actionable correctness issue was identified after independent migration, credential-boundary, verification, and backup/restore analysis."
+    },
+    {
+      "name": "CodeRabbit pull request review",
+      "type": "independent",
+      "result": "passed",
+      "pull_requests": [
+        "https://github.com/rvbernucci/forja-guide/pull/5",
+        "https://github.com/rvbernucci/forja-guide/pull/6"
+      ]
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 17,
+    "sources": {
+      "pull_request_5_coderabbit_threads": 9,
+      "post_merge_independent_audit": 3,
+      "pre_pull_request_6_independent_review": 2,
+      "follow_up_independent_review": 2,
+      "pull_request_6_coderabbit_actionable_threads": 1
+    },
+    "themes": [
+      "migration immutability and upgrade compatibility",
+      "database-clock timestamp and fencing semantics",
+      "repository-scoped outbox and dead-letter lineage",
+      "credential-free process arguments and multi-host URI preservation",
+      "legacy attempt timestamp backfill and macOS Bash compatibility",
+      "architecture decision documentation and future-proof migration tests"
+    ]
+  },
+  "operational_observability": {
+    "result": "passed",
+    "signals": [
+      "HTTP readiness fails when the PostgreSQL pool or canonical schema is unavailable",
+      "typed database faults preserve operation context without exposing internal SQL",
+      "outbox attempts, state, last error, and dead letters preserve delivery failure history",
+      "projection checkpoints expose replay progress and recovery position"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "kill-and-restart tests preserve valid state",
+      "result": "proven"
+    },
+    {
+      "criterion": "duplicate commands do not create duplicate attempts",
+      "result": "proven"
+    },
+    {
+      "criterion": "two schedulers cannot own the same fenced lease",
+      "result": "proven"
+    },
+    {
+      "criterion": "event replay rebuilds the expected read model",
+      "result": "proven"
+    },
+    {
+      "criterion": "migrations pass clean-database and upgrade-path tests",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-17T02:23:33Z"
+}

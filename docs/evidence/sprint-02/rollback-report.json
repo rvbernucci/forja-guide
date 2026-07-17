@@ -1,0 +1,40 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "strategy": "Prefer a forward repair after live durable writes. Before writes, migrations can roll back in reverse order. A full return to Sprint 01 requires restoring a pre-Sprint-02 backup or accepting destructive removal of the Forja schema before reverting code.",
+  "rollback_target": "47112ddc24b250429650bc2cb059156a5bebb388",
+  "tests": [
+    {
+      "name": "code rollback target",
+      "command": "git worktree add --detach <temporary-directory> 47112ddc24b250429650bc2cb059156a5bebb388 && make validate",
+      "result": "passed",
+      "summary": "The exact pre-Sprint-02 main commit passed its complete validation gate in an isolated worktree."
+    },
+    {
+      "name": "migration rollback and re-upgrade",
+      "test": "TestMigrationsCleanRollbackAndUpgrade",
+      "result": "passed"
+    },
+    {
+      "name": "immutable version 1 upgrade",
+      "test": "TestMigrationsUpgradeDatabaseFromImmutableVersionOne",
+      "result": "passed",
+      "immutable_version_1_sha256": {
+        "up": "92d621f9578db90bc23a336b15f7099bc9c423df5a31a001654c7a34cd3237d2",
+        "down": "c4fbb1d7cc1c0950d911b2f09204e18147b0f1aad69e6108d36c812ecb9429d8"
+      },
+      "summary": "Version 1 migration hashes remained byte-identical while version 2 upgraded seeded legacy attempt data."
+    },
+    {
+      "name": "backup and restore round trip",
+      "test": "TestBackupRestoreRoundTrip",
+      "result": "passed",
+      "summary": "Canonical runs, attempts, events, idempotency receipts, leases, outbox rows, and projection state survived dump and restore verification."
+    }
+  ],
+  "data_migration_required": true,
+  "runtime_state_impact": "Reverting the code without reconciling the database is unsupported. Preserve a verified backup and either migrate backward before new writes or restore the backup; forward repair is safest once Sprint 02 data exists.",
+  "recorded_at": "2026-07-17T02:23:33Z"
+}
