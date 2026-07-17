@@ -63,9 +63,11 @@ jobs:
             "Architectures: $(dpkg --print-architecture)" \
             'Components: main' \
             'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' |
-            sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends postgresql-client-18
+          echo '/usr/lib/postgresql/18/bin' >>"$GITHUB_PATH"
+          export PATH="/usr/lib/postgresql/18/bin:$PATH"
           test "$(pg_dump --version | awk '{print $3}' | cut -d. -f1)" = "18"
 
       - name: Validate public repository
