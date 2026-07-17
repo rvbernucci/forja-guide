@@ -49,6 +49,22 @@ jobs:
       - name: Match PostgreSQL client to server
         run: |
           sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ca-certificates curl
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl \
+            --fail \
+            --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          printf '%s\n' \
+            'Types: deb' \
+            'URIs: https://apt.postgresql.org/pub/repos/apt' \
+            "Suites: ${VERSION_CODENAME}-pgdg" \
+            "Architectures: $(dpkg --print-architecture)" \
+            'Components: main' \
+            'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' |
+            sudo tee /etc/apt/sources.list.d/pgdg.sources >/dev/null
+          sudo apt-get update
           sudo apt-get install --yes --no-install-recommends postgresql-client-18
           test "$(pg_dump --version | awk '{print $3}' | cut -d. -f1)" = "18"
 
