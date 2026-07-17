@@ -15,7 +15,7 @@
     "governed_mcp_tools": 8,
     "canonical_postgres_tables": 15,
     "known_reachable_vulnerabilities": 0,
-    "independent_review_findings_resolved": 7,
+    "independent_review_findings_resolved": 8,
     "independent_post_merge_findings": 0
   },
   "official_database_target": "PostgreSQL 18.3",

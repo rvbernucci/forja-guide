@@ -41,3 +41,14 @@
   may only bind the immutable review result and promote the candidate receipt;
   it must not alter the reviewed implementation or closure evidence. Protected
   PR CI and post-merge review remain external publication controls.
+
+## Pass 4: Capability Gate Consistency
+
+- Reviewed commit: `5133fc85c1970d16f537116e5d37c77b3c683d77`.
+- Finding: 1 P2 roadmap consistency issue.
+- Finding detail: the candidate incorrectly changed Gate A from achieved to
+  pending even though the authoritative Sprint 02 receipt already proves that
+  gate. Only Sprint 03 closure is pending.
+- Resolution: Gate A remains achieved. The evidence documentation now defines
+  the mutually exclusive candidate and final receipt states enforced by the
+  repository validator.

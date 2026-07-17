@@ -1,7 +1,7 @@
 # Master Development Plan
 
 Status: Active. Sprints 00-02 closed. Sprint 03 implementation complete; formal
-closure is awaiting immutable evidence review. Gate A remains pending.
+closure is awaiting immutable evidence review. Gate A remains achieved.
 
 ## Objective
 
@@ -129,11 +129,14 @@ docs/evidence/sprint-XX/
   security-report.json
   rollback-report.json
   metrics-summary.json
-  close-receipt.json
+  closure-candidate.json  # while immutable review is pending
+  close-receipt.json      # after immutable review passes
 ```
 
-Evidence directories are introduced with the runtime. Large bodies belong in
-object storage and are represented by hash-pinned metadata.
+Exactly one closure document may exist at a time. A candidate is fail-closed,
+non-authoritative, and cannot authorize the next Sprint. Evidence directories
+are introduced with the runtime. Large bodies belong in object storage and are
+represented by hash-pinned metadata.
 
 ## Detailed Checklists
 

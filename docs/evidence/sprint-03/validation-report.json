@@ -42,18 +42,19 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "9458c10ccde26bdcc8bcc891cf5688ba05c7ebfd6a5e056262ae4b8e562f722c"
+      "artifact_sha256": "0afa438306b6d39f81f3f3a3f4610854e29c3d65537a3ad1c687ea17ddcfb087"
     }
   ],
   "resolved_review_findings": {
-    "count": 7,
+    "count": 8,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
       "follow_up_http_boundary_review": 1,
       "closure_completion_integrity_review": 1,
       "closure_gate_semantics_review": 1,
-      "closure_immutable_binding_review": 1
+      "closure_immutable_binding_review": 1,
+      "closure_capability_gate_consistency_review": 1
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -62,7 +63,8 @@
       "daemon-only loopback validation without breaking stdio MCP configuration",
       "closure review provenance and premature next-Sprint authorization",
       "non-circular separation of closure evidence from external PR publication controls",
-      "immutable binding between independent review and the exact closure candidate"
+      "immutable binding between independent review and the exact closure candidate",
+      "preservation of capability gates established by authoritative prior receipts"
     ]
   },
   "acceptance": [
