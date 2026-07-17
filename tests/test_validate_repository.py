@@ -106,6 +106,43 @@ class EvidenceValidationTests(unittest.TestCase):
             ]
             self.assertEqual(7, len(invalid))
 
+    def test_evidence_artifact_digest_is_enforced(self) -> None:
+        """Hash-pinned review and security artifacts must remain byte exact."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-02"
+            artifact = sprint / "reviews" / "review.md"
+            artifact.parent.mkdir(parents=True)
+            artifact.write_text("reviewed\n", encoding="utf-8")
+            for filename in VALIDATOR.EVIDENCE_FILES:
+                payload = {
+                    "evidence_version": "1.0",
+                    "sprint_id": "02",
+                    "status": (
+                        "closed" if filename == "close-receipt.json" else "ok"
+                    ),
+                }
+                if filename == "validation-report.json":
+                    payload["validator"] = {
+                        "artifact_path": (
+                            "docs/evidence/sprint-02/reviews/review.md"
+                        ),
+                        "artifact_sha256": "0" * 64,
+                    }
+                (sprint / filename).write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertEqual(
+                1,
+                sum("artifact digest mismatch" in error for error in errors),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

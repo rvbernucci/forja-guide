@@ -1,0 +1,114 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+  "validators": [
+    {
+      "name": "protected main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550445554",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "complete closure package pull request workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550921444",
+      "head_sha": "668ef87d43d0621321881e8973e98057ee917bb3",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "isolated Codex CLI merged-commit review",
+      "type": "independent",
+      "result": "passed",
+      "model": "gpt-5.6-sol",
+      "reviewed_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+      "artifact_path": "docs/evidence/sprint-02/reviews/merged-implementation-review.md",
+      "artifact_sha256": "f22e2c939841675a5f3f52f0740a7d7903238db5699f20873f516aa362f64e78",
+      "summary": "No actionable regression was identified after independent review of the merged TTL conversion and commit-fence hardening, including repeated PostgreSQL integration."
+    },
+    {
+      "name": "CodeRabbit pull request review",
+      "type": "independent",
+      "result": "passed",
+      "pull_requests": [
+        "https://github.com/rvbernucci/forja-guide/pull/5",
+        "https://github.com/rvbernucci/forja-guide/pull/6"
+      ]
+    },
+    {
+      "name": "independent closure evidence reviews",
+      "type": "independent",
+      "result": "findings_resolved",
+      "reviewed_commits": [
+        "cf7b98edb0e6cfe702ba86de786a6ee7119173d6",
+        "f3fcde2f77d864de36e628a1b3a2d07c52e718d7",
+        "668ef87d43d0621321881e8973e98057ee917bb3",
+        "12ae4b100ad9cce55897d303e1c6e578f5b6c390"
+      ],
+      "artifact_path": "docs/evidence/sprint-02/reviews/closure-evidence-review.md",
+      "artifact_sha256": "3599c6548c1a0dc1500c143daf676f1373d39e08ea386ed76fad2d171cc919a4"
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 27,
+    "sources": {
+      "pull_request_5_coderabbit_threads": 9,
+      "post_merge_independent_audit": 3,
+      "pre_pull_request_6_independent_review": 2,
+      "follow_up_independent_review": 2,
+      "pull_request_6_coderabbit_actionable_threads": 1,
+      "closure_ci_hardening": 2,
+      "closure_reproducibility_review": 2,
+      "closure_chronology_review": 1,
+      "closure_traceability_review": 4,
+      "closure_provenance_review": 1
+    },
+    "themes": [
+      "migration immutability and upgrade compatibility",
+      "database-clock timestamp and fencing semantics",
+      "repository-scoped outbox and dead-letter lineage",
+      "credential-free process arguments and multi-host URI preservation",
+      "legacy attempt timestamp backfill and macOS Bash compatibility",
+      "architecture decision documentation and future-proof migration tests",
+      "portable TTL serialization and host-speed-independent commit-fence fixtures",
+      "self-contained rollback and database coverage reproduction commands",
+      "chronologically valid closure receipts and exact PR-head validation",
+      "stable review artifacts and pinned vulnerability-scanner evidence"
+    ]
+  },
+  "operational_observability": {
+    "result": "passed",
+    "signals": [
+      "HTTP readiness fails when the PostgreSQL pool or canonical schema is unavailable",
+      "typed database faults preserve operation context without exposing internal SQL",
+      "outbox attempts, state, last error, and dead letters preserve delivery failure history",
+      "projection checkpoints expose replay progress and recovery position"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "kill-and-restart tests preserve valid state",
+      "result": "proven"
+    },
+    {
+      "criterion": "duplicate commands do not create duplicate attempts",
+      "result": "proven"
+    },
+    {
+      "criterion": "two schedulers cannot own the same fenced lease",
+      "result": "proven"
+    },
+    {
+      "criterion": "event replay rebuilds the expected read model",
+      "result": "proven"
+    },
+    {
+      "criterion": "migrations pass clean-database and upgrade-path tests",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-17T03:08:05Z"
+}

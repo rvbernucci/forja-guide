@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -60,6 +61,7 @@ FORBIDDEN_PATTERNS = {
 
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
+SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
 
 def files_with_suffix(suffix: str) -> list[Path]:
@@ -155,6 +157,7 @@ def validate_evidence_sets(errors: list[str]) -> None:
                             f"unresolvable basis_commit in "
                             f"{path.relative_to(ROOT)}: {basis_commit}"
                         )
+            validate_artifact_references(payload, path, errors)
 
         close_path = sprint_dir / "close-receipt.json"
         if close_path.is_file():
@@ -173,6 +176,48 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"Sprint close receipt is not closed: "
                     f"{close_path.relative_to(ROOT)}"
                 )
+
+
+def validate_artifact_references(
+    value: object,
+    evidence_path: Path,
+    errors: list[str],
+) -> None:
+    """Verify every artifact_path and artifact_sha256 pair recursively."""
+    if isinstance(value, list):
+        for item in value:
+            validate_artifact_references(item, evidence_path, errors)
+        return
+    if not isinstance(value, dict):
+        return
+
+    artifact_path = value.get("artifact_path")
+    artifact_sha256 = value.get("artifact_sha256")
+    if artifact_path is not None or artifact_sha256 is not None:
+        label = evidence_path.relative_to(ROOT)
+        if not isinstance(artifact_path, str) or not artifact_path:
+            errors.append(f"invalid artifact_path in {label}")
+        elif not isinstance(artifact_sha256, str) or not SHA256.fullmatch(
+            artifact_sha256
+        ):
+            errors.append(f"invalid artifact_sha256 in {label}")
+        else:
+            candidate = (ROOT / artifact_path).resolve()
+            root = ROOT.resolve()
+            if Path(artifact_path).is_absolute() or not candidate.is_relative_to(root):
+                errors.append(f"artifact_path escapes repository in {label}")
+            elif not candidate.is_file():
+                errors.append(f"missing evidence artifact in {label}: {artifact_path}")
+            else:
+                digest = hashlib.sha256(candidate.read_bytes()).hexdigest()
+                if digest != artifact_sha256:
+                    errors.append(
+                        f"evidence artifact digest mismatch in {label}: "
+                        f"{artifact_path}"
+                    )
+
+    for item in value.values():
+        validate_artifact_references(item, evidence_path, errors)
 
 
 def validate_sensitive_content(errors: list[str]) -> None:

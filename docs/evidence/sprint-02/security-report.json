@@ -1,0 +1,51 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "go_version": "go1.26.5",
+      "database": "https://vuln.go.dev",
+      "database_updated_at": "2026-07-08T17:05:00Z",
+      "artifact_path": "docs/evidence/sprint-02/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
+    },
+    {
+      "name": "tenant and repository authority",
+      "result": "passed",
+      "summary": "Repository-bound stores, cross-repository foreign keys, and lease keys reject authority crossing."
+    },
+    {
+      "name": "transaction and fencing integrity",
+      "result": "passed",
+      "summary": "Aggregate writes, immutable events, idempotency receipts, outbox rows, and database-clock lease checks are transactionally enforced."
+    },
+    {
+      "name": "canonical event immutability",
+      "result": "passed",
+      "summary": "Append-only triggers, exact schema signatures, and replay verification reject mutation and semantic drift."
+    },
+    {
+      "name": "PostgreSQL credential boundary",
+      "result": "passed",
+      "summary": "Recovery scripts accept credentials only through the environment, remove embedded passwords from child arguments, preserve multi-host libpq semantics, and never print the credential."
+    },
+    {
+      "name": "workflow supply-chain controls",
+      "result": "passed",
+      "summary": "GitHub Actions are commit-pinned and PostgreSQL 18.3 is referenced by immutable image digest."
+    }
+  ],
+  "residual_risks": [
+    "Environment variables are less exposed than process arguments but are not a secret vault; production deployment must use a dedicated identity and secret manager.",
+    "Remote authentication and user-facing authorization are deferred to the governed MCP boundary in Sprint 03.",
+    "Migrations are applied transactionally; online zero-downtime index orchestration is intentionally outside Sprint 02 and requires an operator maintenance plan."
+  ],
+  "recorded_at": "2026-07-17T03:08:05Z"
+}

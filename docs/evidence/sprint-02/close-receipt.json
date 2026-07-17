@@ -1,0 +1,42 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "name": "Durable State",
+  "status": "closed",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": true,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "capability_gate": {
+    "name": "Gate A: Executable Kernel",
+    "status": "achieved",
+    "proof": [
+      "state survives process restart",
+      "duplicate commands are idempotent",
+      "aggregate state and events commit transactionally",
+      "events rebuild and verify read models"
+    ]
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "reviews/closure-evidence-review.md",
+    "security/govulncheck-v1.6.0.txt"
+  ],
+  "next_sprint_authorized": "03",
+  "closed_at": "2026-07-17T03:08:05Z"
+}

@@ -1,0 +1,75 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "02",
+  "status": "passed",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Formatting, module verification, vet, unit, race, reproducible builds, kernel smoke, Python tests, and repository validation passed."
+    },
+    {
+      "name": "PostgreSQL durability and process restart gate",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> make test-integration",
+      "result": "passed",
+      "summary": "Integration tests ran with backup/restore enabled, then a daemon restart recovered byte-equivalent canonical run state."
+    },
+    {
+      "name": "PostgreSQL integration coverage",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
+      "result": "passed",
+      "statement_coverage_percent": 75.2
+    },
+    {
+      "name": "migration compatibility",
+      "result": "passed",
+      "coverage": [
+        "clean database migration and full rollback",
+        "upgrade from immutable version 1 with legacy attempt data",
+        "unknown applied version rejection",
+        "canonical schema and behavioral drift rejection"
+      ]
+    },
+    {
+      "name": "durability invariants",
+      "result": "passed",
+      "coverage": [
+        "restart-safe state and command replay",
+        "duplicate attempt suppression",
+        "concurrent lease fencing and takeover",
+        "non-overlapping SKIP LOCKED outbox claims",
+        "event replay and corrupt stream rejection",
+        "backup and restore round trip"
+      ]
+    },
+    {
+      "name": "lease TTL and commit-fence portability",
+      "result": "passed",
+      "coverage": [
+        "one millisecond through 24-hour lease serialization",
+        "deterministic attempt rejection at commit",
+        "database-deadline outbox rejection at commit",
+        "five consecutive targeted executions on PostgreSQL 14.19",
+        "official PostgreSQL 18.3 pull request and main workflows"
+      ]
+    },
+    {
+      "name": "official PostgreSQL 18.3 CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550445554",
+      "head_sha": "1f020cdfde72e32acb20b506db8cab154356c636",
+      "summary": "The protected main workflow passed against the digest-pinned PostgreSQL 18.3 service and matching PostgreSQL 18 client."
+    },
+    {
+      "name": "complete closure package PR CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550921444",
+      "head_sha": "668ef87d43d0621321881e8973e98057ee917bb3",
+      "summary": "The complete seven-file evidence package and closed roadmap passed repository quality and PostgreSQL durability on the recorded PR head."
+    }
+  ],
+  "compatibility_note": "PostgreSQL 14.19 on macOS passed as an additional local compatibility check; PostgreSQL 18.3 is the official CI and supported target.",
+  "recorded_at": "2026-07-17T03:08:05Z"
+}

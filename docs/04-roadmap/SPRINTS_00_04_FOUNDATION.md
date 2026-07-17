@@ -62,19 +62,22 @@ validation and a deterministic in-memory state machine.
 **Outcome:** make state transitions, leases, and projection events durable and
 recoverable in PostgreSQL.
 
+**Status:** Closed. See the
+[Sprint 02 evidence package](../evidence/sprint-02/close-receipt.json).
+
 ### Scope
 
-- [ ] Define migrations for tenants, repositories, Sprints, tasks, runs,
+- [x] Define migrations for tenants, repositories, Sprints, tasks, runs,
   attempts, events, leases, idempotency keys, and outbox entries.
-- [ ] Use optimistic aggregate versions for state transitions.
-- [ ] Commit aggregate state and immutable events in one transaction.
-- [ ] Implement command idempotency and replay-safe responses.
-- [ ] Implement worker, scheduler, file, and worktree leases.
-- [ ] Implement lease expiry, renewal, fencing tokens, and takeover.
-- [ ] Implement transactional outbox claiming with `SKIP LOCKED`.
-- [ ] Add projection checkpoints and dead-letter state.
-- [ ] Add backup, restore, migration rollback, and corruption fixtures.
-- [ ] Add repository interfaces without leaking SQL into policy logic.
+- [x] Use optimistic aggregate versions for state transitions.
+- [x] Commit aggregate state and immutable events in one transaction.
+- [x] Implement command idempotency and replay-safe responses.
+- [x] Implement worker, scheduler, file, and worktree leases.
+- [x] Implement lease expiry, renewal, fencing tokens, and takeover.
+- [x] Implement transactional outbox claiming with `SKIP LOCKED`.
+- [x] Add projection checkpoints and dead-letter state.
+- [x] Add backup, restore, migration rollback, and corruption fixtures.
+- [x] Add repository interfaces without leaking SQL into policy logic.
 
 ### Acceptance
 
