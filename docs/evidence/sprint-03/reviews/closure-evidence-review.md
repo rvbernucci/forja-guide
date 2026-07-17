@@ -91,3 +91,16 @@
   candidate. The validator derives the detailed roadmap from the Sprint ID for
   ranges 00-04, 05-09, and 10-14. Sprint 04 remains blocked throughout the
   candidate phase.
+
+## Pass 8: Published-Base Enforcement and Decision Record
+
+- Reviewed commit: `db45fe497d5390a80202e63929fc8e3cc43fe11f`.
+- Findings: 1 P1 publication-integrity issue and 1 P2 governance issue.
+- Finding details: the documented two-phase flow did not mechanically require
+  the candidate to exist on `origin/main`, so a single pull request could still
+  pass before failing after squash. The new trust and compatibility boundary
+  also lacked the ADR required by the agent operating contract.
+- Resolution: protocol-v2 validation now requires the candidate commit to be
+  reachable from `origin/main`, with a repository-level Git test covering the
+  unpublished and published states. ADR-0009 records the two-phase trust model,
+  compatibility rule, exact promotion surface, and full-history CI guardrail.

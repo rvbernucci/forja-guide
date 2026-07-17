@@ -42,11 +42,11 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "66865719a4337665aca02267ce24f54b9e8a91942c3f2439a9bfa9d07d258380"
+      "artifact_sha256": "d060fadaceb4672a27f556a2a94e9b760a9d2f22a43dbd76721593433c84f681"
     }
   ],
   "resolved_review_findings": {
-    "count": 13,
+    "count": 15,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
@@ -57,7 +57,8 @@
       "closure_capability_gate_consistency_review": 1,
       "closure_evidence_chronology_review": 1,
       "closure_attestation_integrity_review": 2,
-      "closure_publication_topology_review": 2
+      "closure_publication_topology_review": 2,
+      "closure_publication_enforcement_review": 2
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -70,7 +71,8 @@
       "preservation of capability gates established by authoritative prior receipts",
       "chronologically credible amendments to audit evidence",
       "protocol downgrade prevention and minimal attestation diffs",
-      "squash-stable two-phase publication and Sprint-specific roadmap ownership"
+      "squash-stable two-phase publication and Sprint-specific roadmap ownership",
+      "published-main ancestry enforcement and decision-record governance"
     ]
   },
   "acceptance": [
@@ -101,5 +103,5 @@
     ]
   },
   "recorded_at": "2026-07-17T21:06:37Z",
-  "amended_at": "2026-07-17T21:31:09Z"
+  "amended_at": "2026-07-17T21:38:00Z"
 }

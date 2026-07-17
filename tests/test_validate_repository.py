@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -239,6 +240,91 @@ class EvidenceValidationTests(unittest.TestCase):
 
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("not-numeric"))
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("15"))
+
+    def test_candidate_must_be_published_to_origin_main(self) -> None:
+        """A side-branch candidate cannot authorize a squash-unsafe receipt."""
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "source"
+            clone = Path(directory) / "clone"
+            source.mkdir()
+            subprocess.run(
+                ["git", "init", "--initial-branch=main", str(source)],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "config", "user.name", "test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "config", "user.email", "test@test"],
+                check=True,
+            )
+            (source / "state").write_text("main\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(source), "add", "state"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(source), "commit", "-m", "main"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "clone", str(source), str(clone)],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(clone), "config", "user.name", "test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(clone), "config", "user.email", "test@test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(clone), "switch", "-c", "candidate"],
+                check=True,
+                capture_output=True,
+            )
+            (clone / "candidate").write_text("candidate\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(clone), "add", "candidate"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(clone), "commit", "-m", "candidate"],
+                check=True,
+                capture_output=True,
+            )
+            candidate = subprocess.run(
+                ["git", "-C", str(clone), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            with patch.object(VALIDATOR, "ROOT", clone):
+                self.assertFalse(
+                    VALIDATOR.commit_is_published_to_main(candidate)
+                )
+
+            subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(clone),
+                    "update-ref",
+                    "refs/remotes/origin/main",
+                    candidate,
+                ],
+                check=True,
+            )
+            with patch.object(VALIDATOR, "ROOT", clone):
+                self.assertTrue(
+                    VALIDATOR.commit_is_published_to_main(candidate)
+                )
 
     def test_invalid_basis_commit_is_rejected(self) -> None:
         """Evidence commit references must use immutable full SHA-1 values."""

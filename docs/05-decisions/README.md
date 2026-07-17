@@ -10,6 +10,7 @@
 | [0006](ADR-0006-POSTGRES-CREDENTIAL-BOUNDARY.md) | Keep PostgreSQL credentials out of process arguments | Accepted |
 | [0007](ADR-0007-FAIL-FAST-INCREMENTAL-MIGRATIONS.md) | Require quiescence and fail-fast barriers for incremental migrations | Accepted |
 | [0008](ADR-0008-FAIL-CLOSED-DAEMON-HTTP-AUTHENTICATION.md) | Authenticate and authorize the daemon HTTP boundary fail-closed | Accepted |
+| [0009](ADR-0009-TWO-PHASE-SPRINT-CLOSURE.md) | Bind Sprint closure to a published, independently reviewed candidate | Accepted |
 
 Use zero-padded sequential identifiers. Accepted ADRs are not edited to reverse
 their decision; a new ADR supersedes them.

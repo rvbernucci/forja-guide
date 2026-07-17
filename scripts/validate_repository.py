@@ -83,6 +83,25 @@ def sprint_roadmap_path(sprint_id: str) -> str | None:
     return None
 
 
+def commit_is_published_to_main(commit: str) -> bool:
+    """Return whether a commit is already reachable from public origin/main."""
+    result = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(ROOT),
+            "merge-base",
+            "--is-ancestor",
+            commit,
+            "refs/remotes/origin/main",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0
+
+
 def files_with_suffix(suffix: str) -> list[Path]:
     """Return repository files with a suffix, excluding generated directories."""
     return [
@@ -301,6 +320,11 @@ def validate_v2_close_receipt(
             errors.append(
                 f"unresolvable reviewed_candidate_commit in {label}: "
                 f"{candidate_commit}"
+            )
+            return
+        if not commit_is_published_to_main(candidate_commit):
+            errors.append(
+                f"reviewed candidate is not published to origin/main: {label}"
             )
             return
 
