@@ -1,6 +1,6 @@
 # System Architecture
 
-Status: Proposed
+Status: Partially implemented through Sprint 03
 
 ## Overview
 
@@ -92,8 +92,11 @@ forjad
   └── telemetry exporters
 ```
 
-PostgreSQL, Qdrant, Neo4j, object storage, and observability services remain
-separate infrastructure processes.
+The current modular kernel implements the run state machine, PostgreSQL
+authority, transactional outbox, and governed MCP surface. Scheduler, process
+supervisor, policy expansion, Context Broker, derived stores, and telemetry
+exporters remain planned. PostgreSQL, Qdrant, Neo4j, object storage, and
+observability services remain separate infrastructure processes.
 
 This boundary gives Forja transactional simplicity while preserving replaceable
 adapters.
@@ -150,4 +153,3 @@ Language-specific indexing may use other runtimes. For example, the TypeScript
 Compiler API should produce richer TypeScript type evidence than a generic Go
 parser. Such indexers are adapters with versioned output contracts, not
 alternative control planes.
-

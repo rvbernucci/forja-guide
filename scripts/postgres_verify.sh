@@ -285,14 +285,19 @@ psql "$FORJA_PG_SAFE_URL" \
            repository_id::text,
            aggregate_type,
            aggregate_id,
+           aggregate_version,
+           event_id,
            event_type,
            encode(convert_to(actor_type, 'UTF8'), 'hex'),
            encode(convert_to(actor_id, 'UTF8'), 'hex'),
+           encode(convert_to(correlation_id, 'UTF8'), 'hex'),
            encode(convert_to(COALESCE(causation_id, ''), 'UTF8'), 'hex'),
            encode(convert_to(idempotency_key, 'UTF8'), 'hex'),
            encode(convert_to(payload::text, 'UTF8'), 'hex')
     FROM forja.events
-    WHERE aggregate_type IN ('run', 'attempt')
+    WHERE aggregate_type IN (
+      'run', 'attempt', 'sprint', 'decision', 'audit', 'projection'
+    )
     ORDER BY tenant_id, repository_id, aggregate_type, aggregate_id,
              aggregate_version;
   " >"$work/command-events.tsv"
@@ -315,6 +320,64 @@ psql "$FORJA_PG_SAFE_URL" \
     ORDER BY tenant_id, scope, idempotency_key;
   " >"$work/idempotency.tsv"
 
+psql "$FORJA_PG_SAFE_URL" \
+  --no-psqlrc \
+  --set=ON_ERROR_STOP=1 \
+  --tuples-only \
+  --no-align \
+  --field-separator=$'\t' \
+  --command="
+    SELECT sp.tenant_id::text,
+           sp.repository_id::text,
+           'sprint_' || sp.sprint_id::text,
+           sp.sequence_number,
+           encode(convert_to(sp.title, 'UTF8'), 'hex'),
+           encode(convert_to(sp.objective, 'UTF8'), 'hex'),
+           sp.status,
+           sp.version,
+           sp.run_id,
+           encode(convert_to(COALESCE((
+             SELECT d.decision_id
+             FROM forja.decisions AS d
+             WHERE d.tenant_id=sp.tenant_id
+               AND d.repository_id=sp.repository_id
+               AND d.sprint_id=sp.sprint_id
+               AND d.status='pending'
+             ORDER BY d.created_at, d.decision_id
+             LIMIT 1
+           ), ''), 'UTF8'), 'hex'),
+           (extract(epoch FROM sp.created_at) * 1000000)::bigint,
+           (extract(epoch FROM sp.updated_at) * 1000000)::bigint
+    FROM forja.sprints AS sp
+    ORDER BY sp.tenant_id, sp.repository_id, sp.sprint_id;
+  " >"$work/sprints.tsv"
+
+psql "$FORJA_PG_SAFE_URL" \
+  --no-psqlrc \
+  --set=ON_ERROR_STOP=1 \
+  --tuples-only \
+  --no-align \
+  --field-separator=$'\t' \
+  --command="
+    SELECT d.tenant_id::text,
+           d.repository_id::text,
+           d.decision_id,
+           'sprint_' || d.sprint_id::text,
+           d.run_id,
+           encode(convert_to(d.action, 'UTF8'), 'hex'),
+           encode(convert_to(d.risk_class, 'UTF8'), 'hex'),
+           d.status,
+           d.version,
+           encode(convert_to(d.requested_by, 'UTF8'), 'hex'),
+           encode(convert_to(COALESCE(d.decided_by, ''), 'UTF8'), 'hex'),
+           encode(convert_to(COALESCE(d.reason, ''), 'UTF8'), 'hex'),
+           (extract(epoch FROM d.created_at) * 1000000)::bigint,
+           (extract(epoch FROM d.updated_at) * 1000000)::bigint,
+           COALESCE((extract(epoch FROM d.decided_at) * 1000000)::bigint, -1)
+    FROM forja.decisions AS d
+    ORDER BY d.tenant_id, d.repository_id, d.decision_id;
+  " >"$work/decisions.tsv"
+
 python3 - \
   "$root/internal/postgres/schema_manifest.json" \
   "$work/tables.tsv" \
@@ -327,8 +390,6 @@ python3 - \
   "$work/attempts.tsv" \
   "$work/attempt-events.tsv" \
   "$work/event-outbox-integrity.tsv" \
-  "$work/command-events.tsv" \
-  "$work/idempotency.tsv" \
   "$authority" <<'PY'
 import datetime
 import hashlib
@@ -349,8 +410,6 @@ import sys
     attempts_path,
     attempt_events_path,
     event_outbox_integrity_path,
-    command_events_path,
-    idempotency_path,
     authority,
 ) = sys.argv[1:]
 manifest = json.loads(pathlib.Path(manifest_path).read_text())
@@ -733,96 +792,15 @@ if outbox_parts != ["0", "0"]:
         "every canonical event must have exactly one matching outbox row: "
         f"observed={outbox_parts}"
     )
-
-expected_receipts = {}
-for line in pathlib.Path(command_events_path).read_text().splitlines():
-    (
-        tenant_id,
-        repository_id,
-        aggregate_type,
-        aggregate_id,
-        event_type,
-        actor_type_hex,
-        actor_id_hex,
-        causation_hex,
-        idempotency_key_hex,
-        payload_hex,
-    ) = line.split("\t", 9)
-    actor_type = bytes.fromhex(actor_type_hex).decode()
-    actor_id = bytes.fromhex(actor_id_hex).decode()
-    causation = bytes.fromhex(causation_hex).decode()
-    idempotency_key = bytes.fromhex(idempotency_key_hex).decode()
-    payload = json.loads(bytes.fromhex(payload_hex).decode())
-    if aggregate_type == "run" and event_type == "run.created":
-        scope = f"create_run:{repository_id}"
-        status = 201
-        parts = ["create_run", repository_id, payload["objective"]]
-    elif aggregate_type == "run" and event_type == "run.transitioned":
-        scope = f"transition_run:{repository_id}:{aggregate_id}"
-        status = 200
-        parts = [
-            "transition_run",
-            aggregate_id,
-            str(payload["version"] - 1),
-            payload["state"],
-        ]
-    elif aggregate_type == "attempt" and event_type == "attempt.created":
-        scope = f"create_attempt:{repository_id}:{payload['run_id']}"
-        status = 201
-        parts = [
-            scope,
-            payload["status"],
-            payload["lease_resource_type"],
-            payload["lease_resource_id"],
-            payload["worker_id"],
-            str(payload["fencing_token"]),
-        ]
-    else:
-        raise SystemExit(
-            f"unsupported canonical command event {aggregate_type}/{event_type}"
-        )
-    request_hash = hashlib.sha256(
-        "\0".join(parts + [actor_type, actor_id, causation]).encode()
-    ).hexdigest()
-    key = (tenant_id, scope, idempotency_key)
-    if key in expected_receipts:
-        raise SystemExit(f"duplicate command receipt identity: {key}")
-    expected_receipts[key] = {
-        "request_hash": request_hash,
-        "status": status,
-        "response": canonical_json(payload),
-    }
-
-receipts = {}
-for line in pathlib.Path(idempotency_path).read_text().splitlines():
-    (
-        tenant_id,
-        scope_hex,
-        idempotency_key_hex,
-        request_hash,
-        status,
-        response_hex,
-        expires_is_null,
-    ) = line.split("\t", 6)
-    if expires_is_null != "t":
-        raise SystemExit("release receipts must not expire")
-    key = (
-        tenant_id,
-        bytes.fromhex(scope_hex).decode(),
-        bytes.fromhex(idempotency_key_hex).decode(),
-    )
-    receipts[key] = {
-        "request_hash": request_hash,
-        "status": int(status),
-        "response": canonical_json(
-            json.loads(bytes.fromhex(response_hex).decode())
-        ),
-    }
-
-if receipts != expected_receipts:
-    raise SystemExit(
-        "idempotency receipts differ from canonical command events"
-    )
 PY
 
-echo "PostgreSQL schema, canonical state, event streams, and outbox verified"
+python3 "$root/scripts/verify_command_receipts.py" \
+  "$work/command-events.tsv" \
+  "$work/idempotency.tsv"
+
+python3 "$root/scripts/verify_governed_state.py" \
+  "$work/command-events.tsv" \
+  "$work/sprints.tsv" \
+  "$work/decisions.tsv"
+
+echo "PostgreSQL schema, canonical state, event streams, outbox, and receipts verified"

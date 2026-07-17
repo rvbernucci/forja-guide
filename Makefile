@@ -1,4 +1,4 @@
-.PHONY: build check-format smoke test test-integration test-race validate
+.PHONY: build check-format smoke smoke-mcp test test-integration test-race validate
 
 check-format:
 	@test -z "$$(gofmt -l cmd internal schemas)" || \
@@ -22,6 +22,9 @@ build:
 smoke:
 	./scripts/smoke_kernel.sh
 
+smoke-mcp:
+	go test -count=1 ./internal/mcpserver -run 'TestMCPGovernedLifecycleAndAudit|TestToolCompatibilityFixture'
+
 validate: check-format
 	go mod verify
 	go vet ./...
@@ -29,5 +32,6 @@ validate: check-format
 	go test -race ./...
 	./scripts/check_reproducible_builds.sh
 	./scripts/smoke_kernel.sh
+	$(MAKE) smoke-mcp
 	python3 -m unittest discover -s tests -p 'test_*.py'
 	python3 scripts/validate_repository.py

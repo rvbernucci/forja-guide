@@ -37,6 +37,8 @@
         "run",
         "attempt",
         "approval",
+        "decision",
+        "audit",
         "artifact",
         "projection"
       ]
@@ -99,4 +101,3 @@
     }
   }
 }
-

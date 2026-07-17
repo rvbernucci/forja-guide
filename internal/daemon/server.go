@@ -303,6 +303,10 @@ func (s *Server) writeError(writer http.ResponseWriter, err error) {
 	switch code {
 	case fault.CodeInvalidArgument:
 		status = http.StatusBadRequest
+	case fault.CodeUnauthenticated:
+		status = http.StatusUnauthorized
+	case fault.CodePermissionDenied:
+		status = http.StatusForbidden
 	case fault.CodeNotFound:
 		status = http.StatusNotFound
 	case fault.CodeConflict:

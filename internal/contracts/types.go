@@ -14,6 +14,39 @@ type Run struct {
 	UpdatedAt     time.Time `json:"updated_at"`
 }
 
+// Sprint is the canonical governed plan contract.
+type Sprint struct {
+	SprintID          string    `json:"sprint_id"`
+	SchemaVersion     string    `json:"schema_version"`
+	SequenceNumber    int       `json:"sequence_number"`
+	Title             string    `json:"title"`
+	Objective         string    `json:"objective"`
+	Status            string    `json:"status"`
+	Version           int       `json:"version"`
+	RunID             string    `json:"run_id"`
+	PendingDecisionID *string   `json:"pending_decision_id,omitempty"`
+	CreatedAt         time.Time `json:"created_at"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
+// Decision is a durable approval request bound to one canonical action.
+type Decision struct {
+	DecisionID    string     `json:"decision_id"`
+	SchemaVersion string     `json:"schema_version"`
+	SprintID      string     `json:"sprint_id"`
+	RunID         string     `json:"run_id"`
+	Action        string     `json:"action"`
+	RiskClass     string     `json:"risk_class"`
+	Status        string     `json:"status"`
+	Version       int        `json:"version"`
+	RequestedBy   string     `json:"requested_by"`
+	DecidedBy     *string    `json:"decided_by,omitempty"`
+	Reason        *string    `json:"reason,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DecidedAt     *time.Time `json:"decided_at,omitempty"`
+}
+
 // Actor identifies who caused a durable event.
 type Actor struct {
 	ActorType string `json:"actor_type"`

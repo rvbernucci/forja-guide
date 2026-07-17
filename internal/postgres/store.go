@@ -20,6 +20,7 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
@@ -27,8 +28,8 @@ import (
 
 const (
 	// DefaultTenantID and DefaultRepositoryID bootstrap the single-user runtime.
-	DefaultTenantID     = "00000000-0000-4000-8000-000000000001"
-	DefaultRepositoryID = "00000000-0000-4000-8000-000000000002"
+	DefaultTenantID     = control.LocalTenantID
+	DefaultRepositoryID = control.LocalRepositoryID
 	outboxWatermarkLock = "forja:event-outbox-commit-order:v1"
 )
 
@@ -311,9 +312,37 @@ func (s *Store) TransitionRun(
 	); err != nil {
 		return contracts.Run{}, err
 	} else if found {
+		if err := s.appendSuccessToolAudit(ctx, tx, metadata, scope, postgresTimestamp(s.clock.Now()), true); err != nil {
+			return contracts.Run{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return contracts.Run{}, databaseError("postgres.TransitionRun.commitReplayAudit", err)
+		}
 		return replay, nil
 	}
 
+	// Decision resolution locks Sprint before Run. Generic transitions use the
+	// same order so the two command paths cannot form a lock cycle.
+	sprint, sprintErr := scanSprint(tx.QueryRow(ctx, `
+			SELECT 'sprint_' || sp.sprint_id::text, sp.sequence_number, sp.title,
+			       sp.objective, sp.status, sp.version, sp.run_id,
+			       (
+			         SELECT d.decision_id
+			         FROM forja.decisions AS d
+			         WHERE d.tenant_id=sp.tenant_id
+			           AND d.repository_id=sp.repository_id
+			           AND d.sprint_id=sp.sprint_id
+			           AND d.status='pending'
+			         LIMIT 1
+			       ),
+			       sp.created_at, sp.updated_at
+			FROM forja.sprints AS sp
+			WHERE sp.tenant_id=$1 AND sp.repository_id=$2 AND sp.run_id=$3
+			FOR UPDATE OF sp`,
+		s.tenantID,
+		s.repositoryID,
+		id.String(),
+	))
 	run, err := scanRun(tx.QueryRow(ctx, `
 		SELECT run_id::text, objective, state, version, created_at, updated_at
 		FROM forja.runs
@@ -345,6 +374,33 @@ func (s *Store) TransitionRun(
 			),
 		)
 	}
+	if isPrivilegedResumeTransition(run.State, target) {
+		return contracts.Run{}, fault.New(
+			fault.CodePermissionDenied,
+			"postgres.TransitionRun",
+			"resume transitions require the governed ResumeRun command",
+		)
+	}
+	var cancellingSprint *control.Sprint
+	switch {
+	case errors.Is(sprintErr, pgx.ErrNoRows):
+	case sprintErr != nil:
+		return contracts.Run{}, databaseError("postgres.TransitionRun.selectSprint", sprintErr)
+	case sprint.Status == string(control.SprintAwaitingApproval) || sprint.PendingDecisionID != nil:
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.TransitionRun",
+			"resolve the pending decision before transitioning its run",
+		)
+	case sprint.Status == string(control.SprintProposed) && target != runstate.StateCancelling:
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.TransitionRun",
+			"submit the proposed Sprint before transitioning its run",
+		)
+	case target == runstate.StateCancelling:
+		cancellingSprint = &sprint
+	}
 	updated, err := s.machine.Transition(run, target)
 	if err != nil {
 		return contracts.Run{}, err
@@ -372,6 +428,50 @@ func (s *Store) TransitionRun(
 			"run version changed concurrently",
 		)
 	}
+	if cancellingSprint != nil &&
+		(cancellingSprint.Status == string(control.SprintProposed) ||
+			cancellingSprint.Status == string(control.SprintApproved)) {
+		previousVersion := cancellingSprint.Version
+		cancellingSprint.Status = string(control.SprintCancelling)
+		cancellingSprint.Version++
+		cancellingSprint.UpdatedAt = updated.UpdatedAt
+		tag, err = tx.Exec(ctx, `
+			UPDATE forja.sprints
+			SET status=$1, version=$2, updated_at=$3
+			WHERE tenant_id=$4 AND repository_id=$5
+			  AND sprint_id=$6::uuid AND version=$7`,
+			cancellingSprint.Status,
+			cancellingSprint.Version,
+			cancellingSprint.UpdatedAt,
+			s.tenantID,
+			s.repositoryID,
+			strings.TrimPrefix(cancellingSprint.SprintID, "sprint_"),
+			previousVersion,
+		)
+		if err != nil {
+			return contracts.Run{}, databaseError("postgres.TransitionRun.updateSprint", err)
+		}
+		if tag.RowsAffected() != 1 {
+			return contracts.Run{}, fault.New(
+				fault.CodeConflict,
+				"postgres.TransitionRun.updateSprint",
+				"sprint version changed concurrently",
+			)
+		}
+		if err := s.appendControlEvent(
+			ctx,
+			tx,
+			"sprint",
+			cancellingSprint.SprintID,
+			cancellingSprint.Version,
+			"sprint.cancellation_requested",
+			cancellingSprint.UpdatedAt,
+			*cancellingSprint,
+			metadata,
+		); err != nil {
+			return contracts.Run{}, err
+		}
+	}
 	if err := s.appendRunEvent(
 		ctx,
 		tx,
@@ -379,6 +479,9 @@ func (s *Store) TransitionRun(
 		updated,
 		metadata,
 	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := s.appendSuccessToolAudit(ctx, tx, metadata, scope, updated.UpdatedAt, false); err != nil {
 		return contracts.Run{}, err
 	}
 	if err := saveRunReplay(
@@ -395,6 +498,146 @@ func (s *Store) TransitionRun(
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return contracts.Run{}, databaseError("postgres.TransitionRun.commit", err)
+	}
+	return updated, nil
+}
+
+// ResumeRun atomically derives the permitted resume target and stores a
+// command-specific receipt before another controller can advance the Run.
+func (s *Store) ResumeRun(
+	ctx context.Context,
+	id identity.RunID,
+	expectedVersion int,
+	metadata runstate.CommandMetadata,
+) (contracts.Run, error) {
+	if expectedVersion < 1 {
+		return contracts.Run{}, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.ResumeRun",
+			"expected version must be at least 1",
+		)
+	}
+	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	requestHash := hashCommand(
+		metadata,
+		"resume_run",
+		id.String(),
+		fmt.Sprint(expectedVersion),
+	)
+	scope := "resume_run:" + s.repositoryID + ":" + id.String()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return contracts.Run{}, databaseError("postgres.ResumeRun.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockIdempotency(ctx, tx, s.tenantID, scope, metadata.IdempotencyKey); err != nil {
+		return contracts.Run{}, err
+	}
+	if replay, found, err := loadRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+	); err != nil {
+		return contracts.Run{}, err
+	} else if found {
+		if err := s.appendSuccessToolAudit(ctx, tx, metadata, scope, postgresTimestamp(s.clock.Now()), true); err != nil {
+			return contracts.Run{}, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return contracts.Run{}, databaseError("postgres.ResumeRun.commitReplayAudit", err)
+		}
+		return replay, nil
+	}
+	run, err := scanRun(tx.QueryRow(ctx, `
+		SELECT run_id::text, objective, state, version, created_at, updated_at
+		FROM forja.runs
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3
+		FOR UPDATE`,
+		s.tenantID,
+		s.repositoryID,
+		id.String(),
+	))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contracts.Run{}, fault.New(fault.CodeNotFound, "postgres.ResumeRun", fmt.Sprintf("run %s was not found", id))
+		}
+		return contracts.Run{}, databaseError("postgres.ResumeRun.select", err)
+	}
+	if run.Version != expectedVersion {
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.ResumeRun",
+			fmt.Sprintf("run %s version mismatch: expected %d, current %d", id, expectedVersion, run.Version),
+		)
+	}
+	var pending bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM forja.decisions
+			WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3 AND status='pending'
+		)`, s.tenantID, s.repositoryID, id.String()).Scan(&pending); err != nil {
+		return contracts.Run{}, databaseError("postgres.ResumeRun.pendingDecision", err)
+	}
+	if pending {
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.ResumeRun",
+			"resolve the pending decision before resuming its run",
+		)
+	}
+	target, err := resumeTarget(run)
+	if err != nil {
+		return contracts.Run{}, err
+	}
+	updated, err := s.machine.Transition(run, target)
+	if err != nil {
+		return contracts.Run{}, err
+	}
+	updated.UpdatedAt = postgresTimestamp(updated.UpdatedAt)
+	tag, err := tx.Exec(ctx, `
+		UPDATE forja.runs
+		SET state=$1, version=$2, updated_at=$3
+		WHERE tenant_id=$4 AND repository_id=$5 AND run_id=$6 AND version=$7`,
+		updated.State,
+		updated.Version,
+		updated.UpdatedAt,
+		s.tenantID,
+		s.repositoryID,
+		updated.RunID,
+		expectedVersion,
+	)
+	if err != nil {
+		return contracts.Run{}, databaseError("postgres.ResumeRun.update", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return contracts.Run{}, fault.New(fault.CodeConflict, "postgres.ResumeRun", "run version changed concurrently")
+	}
+	if err := s.appendRunEvent(ctx, tx, "run.transitioned", updated, metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := s.appendSuccessToolAudit(ctx, tx, metadata, scope, updated.UpdatedAt, false); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := saveRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+		200,
+		updated,
+	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return contracts.Run{}, databaseError("postgres.ResumeRun.commit", err)
 	}
 	return updated, nil
 }
@@ -543,12 +786,11 @@ func hashCommand(metadata runstate.CommandMetadata, parts ...string) []byte {
 	if metadata.CausationID != nil {
 		causation = *metadata.CausationID
 	}
-	return hashRequest(append(
-		parts,
-		metadata.ActorType,
-		metadata.ActorID,
-		causation,
-	)...)
+	parts = append(parts, metadata.ActorType, metadata.ActorID, causation)
+	if metadata.AuditToolName != "" {
+		parts = append(parts, metadata.AuditToolName)
+	}
+	return hashRequest(parts...)
 }
 
 func postgresTimestamp(value time.Time) time.Time {
@@ -713,4 +955,9 @@ func databaseError(operation string, err error) error {
 		}
 	}
 	return fault.Wrap(fault.CodeUnavailable, operation, "database operation failed", err)
+}
+
+func isPrivilegedResumeTransition(source string, target runstate.State) bool {
+	return (source == string(runstate.StateFailedRetryable) && target == runstate.StateQueued) ||
+		(source == string(runstate.StateAwaitingDecision) && target == runstate.StateRunning)
 }

@@ -1,0 +1,1130 @@
+[
+  {
+    "description": "Approve exactly one pending decision by ID and version; conversational assent is never accepted.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "decision_id": {
+          "description": "exact pending decision identifier",
+          "type": "string"
+        },
+        "expected_version": {
+          "description": "optimistic decision version",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "reason": {
+          "description": "durable approval or rejection reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "expected_version",
+        "reason",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.approve_decision",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "decided_at": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decided_by": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decision_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "requested_by": {
+              "type": "string"
+            },
+            "risk_class": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "decision_id",
+            "schema_version",
+            "sprint_id",
+            "run_id",
+            "action",
+            "risk_class",
+            "status",
+            "version",
+            "requested_by",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "sprint": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "pending_decision_id": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sequence_number": {
+              "type": "integer"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sprint_id",
+            "schema_version",
+            "sequence_number",
+            "title",
+            "objective",
+            "status",
+            "version",
+            "run_id",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sprint",
+        "decision",
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Request cancellation of a run through its state machine.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "expected_version": {
+          "description": "optimistic run version",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "stable run identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "expected_version",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.cancel_run",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read one canonical run by stable identifier.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "stable audit and replay key",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "stable run identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.get_run",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Read one canonical Sprint by stable identifier.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "stable audit and replay key",
+          "type": "string"
+        },
+        "sprint_id": {
+          "description": "stable sprint identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sprint_id",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.get_sprint",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "sprint": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "pending_decision_id": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sequence_number": {
+              "type": "integer"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sprint_id",
+            "schema_version",
+            "sequence_number",
+            "title",
+            "objective",
+            "status",
+            "version",
+            "run_id",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sprint"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Create a governed Sprint proposal and its draft run. This does not approve execution.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "objective": {
+          "description": "governed Sprint objective",
+          "type": "string"
+        },
+        "title": {
+          "description": "short Sprint title",
+          "type": "string"
+        }
+      },
+      "required": [
+        "title",
+        "objective",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.plan_sprint",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "sprint": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "pending_decision_id": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sequence_number": {
+              "type": "integer"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sprint_id",
+            "schema_version",
+            "sequence_number",
+            "title",
+            "objective",
+            "status",
+            "version",
+            "run_id",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sprint",
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Reject exactly one pending decision by ID and version.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "decision_id": {
+          "description": "exact pending decision identifier",
+          "type": "string"
+        },
+        "expected_version": {
+          "description": "optimistic decision version",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "reason": {
+          "description": "durable approval or rejection reason",
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision_id",
+        "expected_version",
+        "reason",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.reject_decision",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "decided_at": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decided_by": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decision_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "requested_by": {
+              "type": "string"
+            },
+            "risk_class": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "decision_id",
+            "schema_version",
+            "sprint_id",
+            "run_id",
+            "action",
+            "risk_class",
+            "status",
+            "version",
+            "requested_by",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "sprint": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "pending_decision_id": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sequence_number": {
+              "type": "integer"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sprint_id",
+            "schema_version",
+            "sequence_number",
+            "title",
+            "objective",
+            "status",
+            "version",
+            "run_id",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sprint",
+        "decision",
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Resume a failed-retryable or awaiting-decision run through its state machine.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "expected_version": {
+          "description": "optimistic run version",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "run_id": {
+          "description": "stable run identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "expected_version",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.resume_run",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "run"
+      ],
+      "type": "object"
+    }
+  },
+  {
+    "description": "Submit a proposed Sprint and create a stable pending decision. This does not approve it.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "causation_id": {
+          "description": "optional causal action identifier",
+          "type": [
+            "null",
+            "string"
+          ]
+        },
+        "correlation_id": {
+          "description": "stable trace correlation identifier",
+          "type": "string"
+        },
+        "expected_version": {
+          "description": "optimistic Sprint version",
+          "type": "integer"
+        },
+        "idempotency_key": {
+          "description": "stable replay key for this tool action",
+          "type": "string"
+        },
+        "risk_class": {
+          "description": "low medium high or critical",
+          "type": "string"
+        },
+        "sprint_id": {
+          "description": "stable sprint identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sprint_id",
+        "expected_version",
+        "risk_class",
+        "idempotency_key",
+        "correlation_id"
+      ],
+      "type": "object"
+    },
+    "name": "forja.submit_sprint",
+    "outputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "additionalProperties": false,
+          "properties": {
+            "action": {
+              "type": "string"
+            },
+            "created_at": {
+              "type": "string"
+            },
+            "decided_at": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decided_by": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "decision_id": {
+              "type": "string"
+            },
+            "reason": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "requested_by": {
+              "type": "string"
+            },
+            "risk_class": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "decision_id",
+            "schema_version",
+            "sprint_id",
+            "run_id",
+            "action",
+            "risk_class",
+            "status",
+            "version",
+            "requested_by",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "run": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "state": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "run_id",
+            "schema_version",
+            "objective",
+            "state",
+            "version",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        },
+        "sprint": {
+          "additionalProperties": false,
+          "properties": {
+            "created_at": {
+              "type": "string"
+            },
+            "objective": {
+              "type": "string"
+            },
+            "pending_decision_id": {
+              "type": [
+                "null",
+                "string"
+              ]
+            },
+            "run_id": {
+              "type": "string"
+            },
+            "schema_version": {
+              "type": "string"
+            },
+            "sequence_number": {
+              "type": "integer"
+            },
+            "sprint_id": {
+              "type": "string"
+            },
+            "status": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updated_at": {
+              "type": "string"
+            },
+            "version": {
+              "type": "integer"
+            }
+          },
+          "required": [
+            "sprint_id",
+            "schema_version",
+            "sequence_number",
+            "title",
+            "objective",
+            "status",
+            "version",
+            "run_id",
+            "created_at",
+            "updated_at"
+          ],
+          "type": "object"
+        }
+      },
+      "required": [
+        "sprint",
+        "decision",
+        "run"
+      ],
+      "type": "object"
+    }
+  }
+]

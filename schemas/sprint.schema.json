@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/sprint.schema.json",
+  "title": "Forja Sprint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "sprint_id",
+    "schema_version",
+    "sequence_number",
+    "title",
+    "objective",
+    "status",
+    "version",
+    "run_id",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "sprint_id": {
+      "type": "string",
+      "pattern": "^sprint_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "sequence_number": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500
+    },
+    "objective": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 8000
+    },
+    "status": {
+      "enum": [
+        "proposed",
+        "awaiting_approval",
+        "approved",
+        "rejected",
+        "cancelling"
+      ]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "pending_decision_id": {
+      "type": "string",
+      "pattern": "^decision_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "awaiting_approval"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "pending_decision_id"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "pending_decision_id"
+          ]
+        }
+      }
+    }
+  ]
+}

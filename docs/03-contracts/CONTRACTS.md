@@ -28,14 +28,21 @@ contracts.
 | Schema | Responsibility |
 | --- | --- |
 | [`run.schema.json`](../../schemas/run.schema.json) | Canonical run aggregate |
+| [`sprint.schema.json`](../../schemas/sprint.schema.json) | Governed Sprint aggregate |
+| [`decision.schema.json`](../../schemas/decision.schema.json) | Stable pending and resolved decisions |
 | [`run-event.schema.json`](../../schemas/run-event.schema.json) | Immutable state transition and audit event |
 | [`artifact.schema.json`](../../schemas/artifact.schema.json) | Durable artifact metadata and provenance |
 | [`context-request.schema.json`](../../schemas/context-request.schema.json) | Scoped request for contextual evidence |
 | [`context-pack.schema.json`](../../schemas/context-pack.schema.json) | Bounded evidence package returned to an agent |
 
-The Go kernel embeds these schemas, compiles them at startup, and
-validates run aggregates at its HTTP and CLI boundaries. See the
-[kernel API](KERNEL_API.md).
+The Go kernel embeds these schemas, compiles them at startup, and validates run
+aggregates at its HTTP and CLI boundaries. The MCP adapter uses typed generated
+schemas and compatibility fixtures. See the [kernel API](KERNEL_API.md) and
+[MCP control API](MCP_CONTROL_API.md).
+
+The Sprint schema encodes the approval coupling directly: only
+`awaiting_approval` requires and permits `pending_decision_id`. Proposed,
+approved, rejected, and cancelling documents must not carry a pending decision.
 
 ## Stable IDs
 
@@ -52,7 +59,7 @@ worker_
 artifact_
 event_
 entity_
-approval_
+decision_
 ```
 
 IDs must not encode credentials, local paths, customer names, or mutable

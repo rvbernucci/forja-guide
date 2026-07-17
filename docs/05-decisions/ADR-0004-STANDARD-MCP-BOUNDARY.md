@@ -35,3 +35,10 @@ Negative:
 MCP calls create commands and decisions. They do not directly mutate worker,
 Git, graph, vector, or deployment state.
 
+## Implementation
+
+Sprint 03 implements the decision with `github.com/modelcontextprotocol/go-sdk`
+v1.6.1, a stdio server, eight typed tools, compatibility-pinned schemas,
+principal capability and repository-scope checks, durable pending decisions,
+and correlated audits. Streamable HTTP remains undeployed behind a required
+bearer-verification boundary.

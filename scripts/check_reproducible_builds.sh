@@ -18,7 +18,7 @@ build_set() {
   local architecture command
   mkdir -p "$destination"
   for architecture in amd64 arm64; do
-    for command in forja forjad; do
+    for command in forja forjad forja-mcp; do
       CGO_ENABLED=0 GOOS=linux GOARCH="$architecture" \
         go build \
           -trimpath \

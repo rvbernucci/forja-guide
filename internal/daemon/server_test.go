@@ -14,6 +14,7 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
@@ -38,6 +39,27 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	return server
+}
+
+func TestHTTPMapsAuthenticationAndAuthorizationErrors(t *testing.T) {
+	t.Parallel()
+	server := newTestServer(t)
+	for _, test := range []struct {
+		name string
+		err  error
+		want int
+	}{
+		{name: "unauthenticated", err: fault.New(fault.CodeUnauthenticated, "test", "authenticate"), want: http.StatusUnauthorized},
+		{name: "permission denied", err: fault.New(fault.CodePermissionDenied, "test", "authorize"), want: http.StatusForbidden},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			server.writeError(recorder, test.err)
+			if recorder.Code != test.want {
+				t.Fatalf("status=%d want=%d body=%s", recorder.Code, test.want, recorder.Body.String())
+			}
+		})
+	}
 }
 
 func TestHTTPCreateInspectAndTransition(t *testing.T) {
