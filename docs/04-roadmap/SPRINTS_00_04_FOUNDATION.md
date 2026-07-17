@@ -92,9 +92,8 @@ recoverable in PostgreSQL.
 **Outcome:** allow a Co-architect in an MCP client to create governed plans and
 control runs through stable tools.
 
-**Status:** implementation complete; closure candidate recorded in
-[`docs/evidence/sprint-03`](../evidence/sprint-03/). Sprint 04 remains blocked
-until an independent review is bound to the immutable candidate commit.
+**Status:** Closed. See the
+[Sprint 03 evidence package](../evidence/sprint-03/close-receipt.json).
 
 ### Scope
 
@@ -121,6 +120,8 @@ until an independent review is bound to the immutable candidate commit.
 
 **Outcome:** execute Codex CLI workers as bounded, cancellable, and observable
 processes.
+
+**Status:** Authorized and ready. Implementation has not started.
 
 ### Scope
 
