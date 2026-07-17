@@ -84,6 +84,11 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	if err != nil {
 		return err
 	}
+	if appliedCount > 0 && appliedCount < len(migrations) {
+		if err := lockIncrementalMigrationWriters(ctx, tx); err != nil {
+			return err
+		}
+	}
 	for _, item := range migrations[appliedCount:] {
 		if _, err := tx.Exec(ctx, item.up); err != nil {
 			return fmt.Errorf("apply migration %d (%s): %w", item.version, item.name, err)
@@ -101,6 +106,41 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit migrations: %w", err)
+	}
+	return nil
+}
+
+// lockIncrementalMigrationWriters prevents runtime commands and standalone
+// audit writers from overlapping an upgrade that may create outbox records.
+// Updated commands cross the idempotency barrier before locking aggregates.
+// Previous-version writers and projection rebuilds use incompatible lock
+// orders, so a live incremental upgrade cannot safely wait for them. Acquire
+// the shared event watermark first and every migration-sensitive relation in
+// one fail-fast statement: deployment must quiesce active writers and retry
+// instead of allowing a lock cycle or publishing a stale projection snapshot.
+func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
+	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '1ms'"); err != nil {
+		return fmt.Errorf("configure incremental migration lock timeout: %w", err)
+	}
+	if _, err := tx.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1)",
+		advisoryLockKey(outboxWatermarkLock),
+	); err != nil {
+		return fmt.Errorf("lock incremental migration watermark: %w", err)
+	}
+	if _, err := tx.Exec(ctx, "SET LOCAL lock_timeout = '0'"); err != nil {
+		return fmt.Errorf("reset incremental migration lock timeout: %w", err)
+	}
+	if _, err := tx.Exec(ctx, `
+		LOCK TABLE
+			forja.idempotency_keys,
+			forja.sprints,
+			forja.runs,
+			forja.events,
+			forja.outbox
+		IN ACCESS EXCLUSIVE MODE NOWAIT`); err != nil {
+		return fmt.Errorf("lock incremental migration writers: %w", err)
 	}
 	return nil
 }

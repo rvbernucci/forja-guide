@@ -301,22 +301,26 @@ def verify_receipt(receipt, events):
             and event["payload"].get("tool_name") == "forja.cancel_run"
             and event["payload"].get("command_scope") == receipt["scope"]
         ]
+        cancellation_events = [
+            event
+            for event in candidates
+            if event_identity(event) == event_identity(primary)
+            and event["aggregate_type"] == "sprint"
+            and event["event_type"] == "sprint.cancellation_requested"
+            and isinstance(event["payload"], dict)
+            and event["payload"].get("run_id") == run_id
+        ]
+        if len(cancellation_events) > 1:
+            raise ValueError(
+                "transition_run command has ambiguous Sprint cancellation events"
+            )
+        if cancellation_events and response.get("state") != "cancelling":
+            raise ValueError(
+                "Sprint cancellation event disagrees with the Run transition state"
+            )
+        domain_events.extend(cancellation_events)
         if cancel_audits:
             tool_name = "forja.cancel_run"
-            cancellation_events = [
-                event
-                for event in candidates
-                if event_identity(event) == event_identity(primary)
-                and event["aggregate_type"] == "sprint"
-                and event["event_type"] == "sprint.cancellation_requested"
-                and isinstance(event["payload"], dict)
-                and event["payload"].get("run_id") == run_id
-            ]
-            if len(cancellation_events) > 1:
-                raise ValueError(
-                    "cancel_run command has ambiguous Sprint cancellation events"
-                )
-            domain_events.extend(cancellation_events)
     elif command == "create_attempt":
         run_id = scope_parts[2]
         primary = find_event(candidates, "attempt", "attempt.created", response)

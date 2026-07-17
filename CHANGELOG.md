@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Serialize incremental migrations against command and standalone audit writers
+  before any migration-generated outbox records can be allocated.
+- Acquire the command-side migration barrier before aggregate locks, including
+  the lease-fenced attempt path, to prevent lock-order inversion.
+- Fail incremental migration fast when previous-version writers or projection
+  rebuilds are active, requiring deployment quiescence instead of risking a
+  mixed-version lock cycle.
+- Accept identity-bound Sprint cancellation evidence from the generic Run
+  transition path during receipt and recovery verification.
+
 All notable public changes to Forja Guide are recorded here.
 
 The project follows semantic versioning for published planning and
