@@ -33,9 +33,10 @@ candidate, requires the attestation introduction commit to be its direct child,
 allowlists the exact promotion paths, and rejects later receipt mutation. The
 owning roadmap is derived from the numeric Sprint range.
 
-Sprint 00-02 receipts remain valid under the legacy format. Every closure
-candidate uses protocol v2; legacy compatibility applies only to already
-closed receipts and cannot create a downgraded candidate.
+Sprint 00-02 receipts remain valid under the legacy format only when their path
+and content hash match the three receipts already published. Every closure
+candidate uses protocol v2; legacy compatibility cannot admit a new,
+reformatted, mutated, or downgraded receipt.
 
 ## Consequences
 

@@ -72,6 +72,18 @@ SPRINT_ROADMAP_RANGES = (
     (10, 14, "docs/04-roadmap/SPRINTS_10_14_PRODUCTION.md"),
 )
 
+LEGACY_RECEIPT_SHA256 = {
+    "docs/evidence/sprint-00/close-receipt.json": (
+        "867cc9fc6b8687bf898fe4c4fcec571ac1f7ee11e355e811fb617a1e7e7385da"
+    ),
+    "docs/evidence/sprint-01/close-receipt.json": (
+        "fc521019920163bfb219d74f2b4855fb94bce7354b5e12cac05752a9d2d4c9f3"
+    ),
+    "docs/evidence/sprint-02/close-receipt.json": (
+        "45a26a9e040592470290bdc4b30006fa524f9c943075485a75c044d6a95d9fc8"
+    ),
+}
+
 
 def sprint_roadmap_path(sprint_id: str) -> str | None:
     """Return the detailed roadmap that owns a canonical numeric Sprint ID."""
@@ -149,9 +161,6 @@ def validate_evidence_sets(errors: list[str]) -> None:
             continue
 
         expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
-        requires_v2 = (
-            expected_sprint_id.isdigit() and int(expected_sprint_id) >= 3
-        )
         close_path = sprint_dir / "close-receipt.json"
         candidate_path = sprint_dir / CLOSURE_CANDIDATE_FILE
         closure_paths = [
@@ -247,17 +256,19 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"{close_path.relative_to(ROOT)}"
                 )
             protocol_version = close_receipt.get("closure_protocol_version")
-            if requires_v2 and protocol_version != "2.0":
-                errors.append(
-                    f"Sprint close receipt requires closure protocol 2.0: "
-                    f"{close_path.relative_to(ROOT)}"
-                )
-            elif protocol_version not in (None, "2.0"):
+            if protocol_version is None:
+                relative = close_path.relative_to(ROOT).as_posix()
+                digest = hashlib.sha256(close_path.read_bytes()).hexdigest()
+                if LEGACY_RECEIPT_SHA256.get(relative) != digest:
+                    errors.append(
+                        f"unrecognized legacy Sprint close receipt: {relative}"
+                    )
+            elif protocol_version != "2.0":
                 errors.append(
                     f"unsupported Sprint closure protocol: "
                     f"{close_path.relative_to(ROOT)}"
                 )
-            elif protocol_version == "2.0":
+            else:
                 validate_v2_close_receipt(
                     close_receipt,
                     close_path,

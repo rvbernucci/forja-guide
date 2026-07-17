@@ -196,6 +196,37 @@ class EvidenceValidationTests(unittest.TestCase):
                 errors,
             )
 
+    def test_new_legacy_receipt_is_rejected_for_legacy_sprint_id(self) -> None:
+        """Only the exact historical legacy receipts are grandfathered."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-02"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES:
+                payload = {
+                    "evidence_version": "1.0",
+                    "sprint_id": "02",
+                    "status": (
+                        "closed" if filename == "close-receipt.json" else "ok"
+                    ),
+                }
+                if filename == "close-receipt.json":
+                    payload["next_sprint_authorized"] = "99"
+                (sprint / filename).write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "unrecognized legacy Sprint close receipt: "
+                "docs/evidence/sprint-02/close-receipt.json",
+                errors,
+            )
+
     def test_v2_close_receipt_requires_immutable_review_binding(self) -> None:
         """A v2 close receipt cannot authorize work without a passed review."""
         with tempfile.TemporaryDirectory() as directory:
@@ -258,7 +289,7 @@ class EvidenceValidationTests(unittest.TestCase):
                 VALIDATOR.validate_evidence_sets(errors)
 
             self.assertIn(
-                "Sprint close receipt requires closure protocol 2.0: "
+                "unrecognized legacy Sprint close receipt: "
                 "docs/evidence/sprint-03/close-receipt.json",
                 errors,
             )

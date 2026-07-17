@@ -129,3 +129,15 @@
 - Resolution: every closure candidate now requires protocol v2. Legacy
   compatibility remains restricted to the closed receipts for Sprints 00-02,
   and a regression test proves that it cannot downgrade a candidate.
+
+## Pass 11: Legacy Receipt Promotion Downgrade
+
+- Reviewed commit: `3ebfb86d0df3de9ce7ce818b377bc6b22206373e`.
+- Finding: 1 P1 closure-integrity issue from an isolated Codex CLI review.
+- Finding detail: a protocol-v2 candidate using a legacy Sprint ID could still
+  be replaced by a new receipt without a protocol version, bypassing immutable
+  review and authorizing arbitrary downstream work.
+- Resolution: legacy receipt compatibility is now content-addressed. Only the
+  exact three historical receipts at their canonical paths are accepted; every
+  new or changed receipt must use protocol v2. A regression test exercises the
+  previously accepted downgrade.
