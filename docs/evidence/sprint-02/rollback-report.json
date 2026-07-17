@@ -8,7 +8,7 @@
   "tests": [
     {
       "name": "code rollback target",
-      "command": "git worktree add --detach <temporary-directory> 47112ddc24b250429650bc2cb059156a5bebb388 && make validate",
+      "command": "git worktree add --detach <temporary-directory> 47112ddc24b250429650bc2cb059156a5bebb388 && make -C <temporary-directory> validate",
       "result": "passed",
       "summary": "The exact pre-Sprint-02 main commit passed its complete validation gate in an isolated worktree."
     },

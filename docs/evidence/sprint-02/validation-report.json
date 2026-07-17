@@ -36,14 +36,15 @@
     }
   ],
   "resolved_review_findings": {
-    "count": 19,
+    "count": 21,
     "sources": {
       "pull_request_5_coderabbit_threads": 9,
       "post_merge_independent_audit": 3,
       "pre_pull_request_6_independent_review": 2,
       "follow_up_independent_review": 2,
       "pull_request_6_coderabbit_actionable_threads": 1,
-      "closure_ci_hardening": 2
+      "closure_ci_hardening": 2,
+      "final_closure_evidence_review": 2
     },
     "themes": [
       "migration immutability and upgrade compatibility",
@@ -52,7 +53,8 @@
       "credential-free process arguments and multi-host URI preservation",
       "legacy attempt timestamp backfill and macOS Bash compatibility",
       "architecture decision documentation and future-proof migration tests",
-      "portable TTL serialization and host-speed-independent commit-fence fixtures"
+      "portable TTL serialization and host-speed-independent commit-fence fixtures",
+      "self-contained rollback and database coverage reproduction commands"
     ]
   },
   "operational_observability": {

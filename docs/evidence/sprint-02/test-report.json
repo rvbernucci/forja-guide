@@ -18,7 +18,7 @@
     },
     {
       "name": "PostgreSQL integration coverage",
-      "command": "FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
       "result": "passed",
       "statement_coverage_percent": 75.2
     },

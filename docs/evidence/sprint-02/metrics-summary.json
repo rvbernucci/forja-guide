@@ -17,7 +17,7 @@
     "linux_arm64_forja_bytes": 6750334,
     "linux_arm64_forjad_bytes": 10748030,
     "known_reachable_vulnerabilities": 0,
-    "independent_review_findings_resolved": 19,
+    "independent_review_findings_resolved": 21,
     "independent_final_review_findings": 0
   },
   "official_database_target": "PostgreSQL 18.3",
