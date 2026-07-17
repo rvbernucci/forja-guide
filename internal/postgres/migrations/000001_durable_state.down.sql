@@ -1,0 +1,16 @@
+DROP TABLE IF EXISTS forja.run_projections;
+DROP TABLE IF EXISTS forja.projection_dead_letters;
+DROP TABLE IF EXISTS forja.projection_checkpoints;
+DROP TABLE IF EXISTS forja.outbox;
+DROP FUNCTION IF EXISTS forja.enforce_outbox_claim_at_commit();
+DROP TABLE IF EXISTS forja.leases;
+DROP TABLE IF EXISTS forja.idempotency_keys;
+DROP TABLE IF EXISTS forja.events;
+DROP FUNCTION IF EXISTS forja.reject_event_mutation();
+DROP TABLE IF EXISTS forja.attempts;
+DROP FUNCTION IF EXISTS forja.enforce_attempt_commit_fence();
+DROP TABLE IF EXISTS forja.runs;
+DROP TABLE IF EXISTS forja.tasks;
+DROP TABLE IF EXISTS forja.sprints;
+DROP TABLE IF EXISTS forja.repositories;
+DROP TABLE IF EXISTS forja.tenants;

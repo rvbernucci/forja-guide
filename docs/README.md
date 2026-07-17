@@ -14,7 +14,8 @@ language.
 7. [Master development plan](04-roadmap/MASTER_DEVELOPMENT_PLAN.md)
 8. [Architecture decisions](05-decisions/)
 9. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
-10. [Sprint evidence](evidence/)
+10. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
+11. [Sprint evidence](evidence/)
 
 ## Documentation States
 

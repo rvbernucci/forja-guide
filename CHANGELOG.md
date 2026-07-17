@@ -15,6 +15,17 @@ implementation releases.
 - Structured JSON logging with automatic secret redaction.
 - Graceful shutdown, contract fixtures, fuzz seeds, race tests, and
   reproducible Linux cross-build checks.
+- PostgreSQL migrations for canonical planning, run, attempt, event, lease,
+  idempotency, outbox, checkpoint, dead-letter, and projection state.
+- Atomic run commands with optimistic concurrency and replay-safe responses.
+- Fenced worker, scheduler, file, and worktree leases.
+- Competing transactional outbox claims with `SKIP LOCKED`.
+- Deterministic run projection rebuild and corruption detection.
+- Validated PostgreSQL backup/restore and kill/restart acceptance tooling.
+- Exact schema readiness, migration drift/forward-version rejection, and
+  release-matched restore verification.
+- Commit-ordered outbox checkpoint fencing, semantic FSM replay validation, and
+  database-enforced tenant relationship boundaries.
 
 ## [0.1.0] - 2026-07-16
 

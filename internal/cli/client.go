@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/identity"
 )
 
 // Client calls the forjad HTTP boundary.
@@ -105,6 +106,14 @@ func (c *Client) doRun(
 	}
 	if payload != nil {
 		request.Header.Set("Content-Type", "application/json")
+		commandID, err := identity.NewRunID()
+		if err != nil {
+			return contracts.Run{}, fmt.Errorf("generate command identifier: %w", err)
+		}
+		request.Header.Set("Idempotency-Key", commandID.String())
+		request.Header.Set("Forja-Correlation-ID", commandID.String())
+		request.Header.Set("Forja-Actor-Type", "human")
+		request.Header.Set("Forja-Actor-ID", "forja")
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {

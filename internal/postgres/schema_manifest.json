@@ -1,0 +1,34 @@
+{
+  "version": "1.0",
+  "tables": {
+    "attempts": "attempt_id:text:NO:NO::,tenant_id:uuid:NO:NO::,run_id:text:NO:NO::,ordinal:int4:NO:NO::,status:text:NO:NO::,lease_resource_type:text:NO:NO::,lease_resource_id:text:NO:NO::,worker_id:text:NO:NO::,fencing_token:int8:NO:NO::,started_at:timestamptz:YES:NO::,finished_at:timestamptz:YES:NO::,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
+    "events": "event_id:text:NO:NO::,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,aggregate_type:text:NO:NO::,aggregate_id:text:NO:NO::,aggregate_version:int4:NO:NO::,event_type:text:NO:NO::,schema_version:text:NO:NO::,occurred_at:timestamptz:NO:NO::,actor_type:text:NO:NO::,actor_id:text:NO:NO::,correlation_id:text:NO:NO::,causation_id:text:YES:NO::,idempotency_key:text:NO:NO::,payload:jsonb:NO:NO::",
+    "idempotency_keys": "tenant_id:uuid:NO:NO::,scope:text:NO:NO::,idempotency_key:text:NO:NO::,request_hash:bytea:NO:NO::,response_status:int4:NO:NO::,response_body:jsonb:NO:NO::,created_at:timestamptz:NO:NO::clock_timestamp(),expires_at:timestamptz:YES:NO::",
+    "leases": "tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,resource_type:text:NO:NO::,resource_id:text:NO:NO::,owner_id:text:NO:NO::,fencing_token:int8:NO:NO::,acquired_at:timestamptz:NO:NO::,expires_at:timestamptz:NO:NO::,updated_at:timestamptz:NO:NO::",
+    "outbox": "outbox_id:int8:NO:YES:ALWAYS:,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,event_id:text:NO:NO::,state:text:NO:NO::'pending'::text,available_at:timestamptz:NO:NO::clock_timestamp(),locked_by:text:YES:NO::,locked_until:timestamptz:YES:NO::,fencing_token:int8:NO:NO::0,attempts:int4:NO:NO::0,last_error:text:YES:NO::,created_at:timestamptz:NO:NO::clock_timestamp(),published_at:timestamptz:YES:NO::",
+    "projection_checkpoints": "tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,projector_name:text:NO:NO::,last_outbox_id:int8:NO:NO::0,updated_at:timestamptz:NO:NO::clock_timestamp()",
+    "projection_dead_letters": "dead_letter_id:int8:NO:YES:ALWAYS:,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,projector_name:text:NO:NO::,outbox_id:int8:YES:NO::,event_id:text:NO:NO::,error_class:text:NO:NO::,error_message:text:NO:NO::,payload:jsonb:NO:NO::,failed_at:timestamptz:NO:NO::clock_timestamp(),resolved_at:timestamptz:YES:NO::",
+    "repositories": "repository_id:uuid:NO:NO::,tenant_id:uuid:NO:NO::,canonical_name:text:NO:NO::,default_branch:text:NO:NO::'main'::text,created_at:timestamptz:NO:NO::clock_timestamp()",
+    "run_projections": "tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,projector_name:text:NO:NO::,run_id:text:NO:NO::,objective:text:NO:NO::,state:text:NO:NO::,aggregate_version:int4:NO:NO::,source_event_id:text:NO:NO::,updated_at:timestamptz:NO:NO::",
+    "runs": "run_id:text:NO:NO::,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,sprint_id:uuid:YES:NO::,objective:text:NO:NO::,state:text:NO:NO::,version:int4:NO:NO::,created_at:timestamptz:NO:NO::,updated_at:timestamptz:NO:NO::",
+    "schema_migrations": "version:int8:NO:NO::,name:text:NO:NO::,checksum:text:NO:NO::,applied_at:timestamptz:NO:NO::clock_timestamp()",
+    "sprints": "sprint_id:uuid:NO:NO::,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,sequence_number:int4:NO:NO::,title:text:NO:NO::,status:text:NO:NO::'proposed'::text,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
+    "tasks": "task_id:uuid:NO:NO::,tenant_id:uuid:NO:NO::,sprint_id:uuid:NO:NO::,title:text:NO:NO::,status:text:NO:NO::'pending'::text,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
+    "tenants": "tenant_id:uuid:NO:NO::,slug:text:NO:NO::,display_name:text:NO:NO::,created_at:timestamptz:NO:NO::clock_timestamp()"
+  },
+  "constraints_sha256": "d07781c1a21eef2fcc50937f162b40d83799debf0e51c799a5a5681d7cb2901d",
+  "indexes_sha256": "8898b85fa39368173acc317c4452a5bf8542dd344be2e72419c2bd8db5b4fcd4",
+  "triggers_sha256": "6e8f45fb97a771ba5f6cb4d0ac03d2726cb3be717cf364b404157440bc274e45",
+  "trigger": {
+    "relation": "forja.events",
+    "name": "events_are_append_only",
+    "enabled": "O",
+    "function": "forja.reject_event_mutation",
+    "trigger_type": 27,
+    "function_language": "plpgsql",
+    "function_security_definer": false,
+    "function_volatility": "v",
+    "function_source_sha256": "6d6fd48c68d4348afd3341c0bd29669d85b49865f0561fee8e3497379d7cdcf1",
+    "definition": "CREATE TRIGGER events_are_append_only BEFORE DELETE OR UPDATE ON forja.events FOR EACH ROW EXECUTE FUNCTION forja.reject_event_mutation()"
+  }
+}

@@ -1,12 +1,13 @@
 # Kernel HTTP API
 
-Status: Implemented in Sprint 01
+Status: Implemented through Sprint 02
 
 ## Boundary
 
-`forjad` exposes a small HTTP boundary for the in-memory kernel. It is intended
-for local operation and contract testing until the governed MCP surface is
-introduced in Sprint 03.
+`forjad` exposes a small HTTP boundary for the kernel. It uses PostgreSQL when
+`FORJA_DATABASE_URL` is configured and otherwise starts with explicit
+ephemeral in-memory state. It remains a local control boundary until the
+governed MCP surface is introduced in Sprint 03.
 
 All request bodies:
 
@@ -50,6 +51,39 @@ Transition request:
 
 The expected version prevents concurrent writers from silently overwriting a
 newer aggregate state.
+
+## Command Identity
+
+POST requests accept these headers:
+
+| Header | Purpose |
+| --- | --- |
+| `Idempotency-Key` | Stable command key; 8-200 characters |
+| `Forja-Correlation-ID` | Trace and event correlation |
+| `Forja-Causation-ID` | Optional parent command or event |
+| `Forja-Actor-Type` | `human`, `agent`, `worker`, or `system` |
+| `Forja-Actor-ID` | Stable actor identity |
+
+The daemon generates safe fallback command metadata when headers are omitted
+and returns the effective `Idempotency-Key`. The CLI always sends fresh command
+identity. In PostgreSQL mode, replaying the same key and request returns the
+stored response; reusing a key for a different command fails with `conflict`.
+Keys are scoped by tenant, repository, and command scope, so unrelated
+aggregates and repositories do not collide. The request fingerprint also binds
+the actor and causation identity, so a key cannot silently replay a command
+issued by a different authority. Correlation remains transport observability
+and may differ across a legitimate retry.
+
+Each accepted durable command commits the aggregate state, immutable event,
+transactional outbox row, and idempotency receipt in one transaction.
+
+In PostgreSQL mode, `/readyz` verifies exact parity with the embedded migration
+ledger and a versioned semantic schema manifest. The manifest pins every
+canonical table's ordered columns, data types, nullability, defaults and
+identity generation; the complete constraint and index sets; and the
+complete trigger set, enabled states, function attributes, and function bodies.
+Readiness also verifies the bound tenant/repository authority. Connectivity
+alone is not considered command readiness.
 
 ## Error Contract
 

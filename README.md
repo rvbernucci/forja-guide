@@ -10,14 +10,16 @@ It is designed around one principle:
 
 ## Status
 
-This repository now includes the **Sprint 01 experimental Go kernel** alongside
-the public architecture and roadmap. It is not yet a production-ready
+This repository now includes the **Sprint 02 experimental durable kernel**
+alongside the public architecture and roadmap. It is not yet a production-ready
 multi-agent runtime.
 
 The implemented kernel provides `forjad`, `forja`, canonical contract
-validation, a deterministic in-memory run state machine, structured redacted
-logs, graceful shutdown, and reproducible Linux builds. Durable PostgreSQL
-state, MCP tools, and Codex worker execution remain planned for later Sprints.
+validation, a deterministic run state machine, PostgreSQL-backed aggregates and
+events, command idempotency, fenced leases, a transactional outbox, projection
+replay, repository-scoped authority, semantic schema readiness, backup/restore
+tooling, structured redacted logs, graceful shutdown, and reproducible Linux
+builds. MCP tools and Codex worker execution remain planned for later Sprints.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -99,6 +101,14 @@ make validate
 The gate runs Go formatting, module, vet, unit, race, reproducible build, and
 process-level smoke checks before validating public files, JSON schemas,
 internal Markdown links, private paths, and common credential patterns.
+
+With a disposable PostgreSQL database available, run the durability,
+concurrency, backup/restore, and process-restart acceptance suite:
+
+```bash
+export FORJA_TEST_DATABASE_URL='postgres:///forja_test?host=/tmp'
+make test-integration
+```
 
 ## Contributing
 

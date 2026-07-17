@@ -12,6 +12,23 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    env:
+      FORJA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
+      PGPASSWORD: postgres
+    services:
+      postgres:
+        image: postgres:18.3-alpine@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7
+        env:
+          POSTGRES_DB: forja_test
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_USER: postgres
+        options: >-
+          --health-cmd "pg_isready -U postgres -d forja_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -31,3 +48,6 @@ jobs:
 
       - name: Validate public repository
         run: make validate
+
+      - name: Validate PostgreSQL durability
+        run: make test-integration

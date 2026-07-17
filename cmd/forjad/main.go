@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/config"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/daemon"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/logging"
+	"github.com/rvbernucci/forja-guide/internal/postgres"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -33,8 +35,45 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize contract registry: %w", err)
 	}
+	var repository runstate.Repository = runstate.NewStore(nil)
+	var closeDatabase func()
+	if cfg.DatabaseURL != "" {
+		connectContext, cancelConnect := context.WithTimeout(
+			context.Background(),
+			15*time.Second,
+		)
+		defer cancelConnect()
+		pool, openErr := postgres.Open(
+			connectContext,
+			cfg.DatabaseURL,
+			int32(cfg.DatabaseMaxConn),
+		)
+		if openErr != nil {
+			return fmt.Errorf("open PostgreSQL: %w", openErr)
+		}
+		closeDatabase = pool.Close
+		defer closeDatabase()
+		if cfg.DatabaseMigrate {
+			if migrateErr := postgres.Migrate(connectContext, pool); migrateErr != nil {
+				return fmt.Errorf("migrate PostgreSQL: %w", migrateErr)
+			}
+		}
+		durable, storeErr := postgres.NewStore(
+			pool,
+			nil,
+			postgres.DefaultTenantID,
+			postgres.DefaultRepositoryID,
+		)
+		if storeErr != nil {
+			return fmt.Errorf("initialize PostgreSQL store: %w", storeErr)
+		}
+		repository = durable
+		logger.Info("durable PostgreSQL state enabled")
+	} else {
+		logger.Warn("using ephemeral in-memory state", "hint", "set FORJA_DATABASE_URL")
+	}
 	server, err := daemon.New(
-		runstate.NewStore(nil),
+		repository,
 		registry,
 		identity.NewRunID,
 		logger,

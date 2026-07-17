@@ -1,0 +1,716 @@
+// Package postgres implements Forja's canonical PostgreSQL repositories.
+package postgres
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/rvbernucci/forja-guide/internal/clock"
+	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/fault"
+	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/runstate"
+)
+
+const (
+	// DefaultTenantID and DefaultRepositoryID bootstrap the single-user runtime.
+	DefaultTenantID     = "00000000-0000-4000-8000-000000000001"
+	DefaultRepositoryID = "00000000-0000-4000-8000-000000000002"
+	outboxWatermarkLock = "forja:event-outbox-commit-order:v1"
+)
+
+// Store implements durable run, lease, outbox, and projection repositories.
+type Store struct {
+	pool         *pgxpool.Pool
+	clock        clock.Clock
+	machine      *runstate.Machine
+	tenantID     string
+	repositoryID string
+}
+
+// Open validates a pool configuration and establishes bounded connections.
+func Open(ctx context.Context, databaseURL string, maxConnections int32) (*pgxpool.Pool, error) {
+	if strings.TrimSpace(databaseURL) == "" {
+		return nil, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.Open",
+			"database URL is required",
+		)
+	}
+	if maxConnections < 1 || maxConnections > 100 {
+		return nil, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.Open",
+			"max connections must be between 1 and 100",
+		)
+	}
+	config, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return nil, fault.Wrap(
+			fault.CodeInvalidArgument,
+			"postgres.Open",
+			"parse database URL",
+			err,
+		)
+	}
+	config.MaxConns = maxConnections
+	config.MinConns = 0
+	config.MaxConnIdleTime = 5 * time.Minute
+	config.MaxConnLifetime = time.Hour
+	config.HealthCheckPeriod = 30 * time.Second
+	pool, err := pgxpool.NewWithConfig(ctx, config)
+	if err != nil {
+		return nil, fault.Wrap(
+			fault.CodeUnavailable,
+			"postgres.Open",
+			"create connection pool",
+			err,
+		)
+	}
+	if err := pool.Ping(ctx); err != nil {
+		pool.Close()
+		return nil, fault.Wrap(
+			fault.CodeUnavailable,
+			"postgres.Open",
+			"ping database",
+			err,
+		)
+	}
+	return pool, nil
+}
+
+// NewStore binds repositories to one tenant and repository authority.
+func NewStore(
+	pool *pgxpool.Pool,
+	source clock.Clock,
+	tenantID string,
+	repositoryID string,
+) (*Store, error) {
+	if pool == nil {
+		return nil, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.NewStore",
+			"pool is required",
+		)
+	}
+	if source == nil {
+		source = clock.Real{}
+	}
+	if tenantID == "" || repositoryID == "" {
+		return nil, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.NewStore",
+			"tenant and repository IDs are required",
+		)
+	}
+	return &Store{
+		pool:         pool,
+		clock:        source,
+		machine:      runstate.NewMachine(source),
+		tenantID:     tenantID,
+		repositoryID: repositoryID,
+	}, nil
+}
+
+// Ready reports whether the canonical database can accept requests.
+func (s *Store) Ready(ctx context.Context) error {
+	if err := VerifySchema(
+		ctx,
+		s.pool,
+		s.tenantID,
+		s.repositoryID,
+	); err != nil {
+		return fault.Wrap(
+			fault.CodeUnavailable,
+			"postgres.Ready",
+			"canonical schema is not ready",
+			err,
+		)
+	}
+	return nil
+}
+
+// CreateRun atomically commits an aggregate, immutable event, outbox row, and
+// replay receipt.
+func (s *Store) CreateRun(
+	ctx context.Context,
+	id identity.RunID,
+	objective string,
+	metadata runstate.CommandMetadata,
+) (contracts.Run, error) {
+	if err := validateObjective(objective); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	// The generated aggregate ID is an outcome, not part of the caller's
+	// command identity. Retries may arrive after the daemon generates a new
+	// candidate ID and must still replay the first committed response.
+	scope := "create_run:" + s.repositoryID
+	requestHash := hashCommand(
+		metadata,
+		"create_run",
+		s.repositoryID,
+		objective,
+	)
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return contracts.Run{}, databaseError("postgres.CreateRun.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := lockIdempotency(ctx, tx, s.tenantID, scope, metadata.IdempotencyKey); err != nil {
+		return contracts.Run{}, err
+	}
+	if replay, found, err := loadRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+	); err != nil {
+		return contracts.Run{}, err
+	} else if found {
+		return replay, nil
+	}
+
+	now := postgresTimestamp(s.clock.Now())
+	run := contracts.Run{
+		RunID:         id.String(),
+		SchemaVersion: "1.0",
+		Objective:     objective,
+		State:         string(runstate.StateDraft),
+		Version:       1,
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, objective, state, version,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+		run.RunID,
+		s.tenantID,
+		s.repositoryID,
+		run.Objective,
+		run.State,
+		run.Version,
+		run.CreatedAt,
+		run.UpdatedAt,
+	); err != nil {
+		return contracts.Run{}, databaseError("postgres.CreateRun.insert", err)
+	}
+	if err := s.appendRunEvent(
+		ctx,
+		tx,
+		"run.created",
+		run,
+		metadata,
+	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := saveRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+		201,
+		run,
+	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return contracts.Run{}, databaseError("postgres.CreateRun.commit", err)
+	}
+	return run, nil
+}
+
+// GetRun reads the canonical aggregate.
+func (s *Store) GetRun(ctx context.Context, id identity.RunID) (contracts.Run, error) {
+	run, err := scanRun(s.pool.QueryRow(ctx, `
+		SELECT run_id::text, objective, state, version, created_at, updated_at
+		FROM forja.runs
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3`,
+		s.tenantID,
+		s.repositoryID,
+		id.String(),
+	))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contracts.Run{}, fault.New(
+				fault.CodeNotFound,
+				"postgres.GetRun",
+				fmt.Sprintf("run %s was not found", id),
+			)
+		}
+		return contracts.Run{}, databaseError("postgres.GetRun", err)
+	}
+	return run, nil
+}
+
+// TransitionRun applies optimistic concurrency and event persistence in one
+// transaction.
+func (s *Store) TransitionRun(
+	ctx context.Context,
+	id identity.RunID,
+	expectedVersion int,
+	target runstate.State,
+	metadata runstate.CommandMetadata,
+) (contracts.Run, error) {
+	if expectedVersion < 1 {
+		return contracts.Run{}, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.TransitionRun",
+			"expected version must be at least 1",
+		)
+	}
+	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	requestHash := hashCommand(
+		metadata,
+		"transition_run",
+		id.String(),
+		fmt.Sprint(expectedVersion),
+		string(target),
+	)
+	scope := "transition_run:" + s.repositoryID + ":" + id.String()
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return contracts.Run{}, databaseError("postgres.TransitionRun.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	if err := lockIdempotency(ctx, tx, s.tenantID, scope, metadata.IdempotencyKey); err != nil {
+		return contracts.Run{}, err
+	}
+	if replay, found, err := loadRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+	); err != nil {
+		return contracts.Run{}, err
+	} else if found {
+		return replay, nil
+	}
+
+	run, err := scanRun(tx.QueryRow(ctx, `
+		SELECT run_id::text, objective, state, version, created_at, updated_at
+		FROM forja.runs
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3
+		FOR UPDATE`,
+		s.tenantID,
+		s.repositoryID,
+		id.String(),
+	))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contracts.Run{}, fault.New(
+				fault.CodeNotFound,
+				"postgres.TransitionRun",
+				fmt.Sprintf("run %s was not found", id),
+			)
+		}
+		return contracts.Run{}, databaseError("postgres.TransitionRun.select", err)
+	}
+	if run.Version != expectedVersion {
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.TransitionRun",
+			fmt.Sprintf(
+				"run %s version mismatch: expected %d, current %d",
+				id,
+				expectedVersion,
+				run.Version,
+			),
+		)
+	}
+	updated, err := s.machine.Transition(run, target)
+	if err != nil {
+		return contracts.Run{}, err
+	}
+	updated.UpdatedAt = postgresTimestamp(updated.UpdatedAt)
+	tag, err := tx.Exec(ctx, `
+		UPDATE forja.runs
+		SET state=$1, version=$2, updated_at=$3
+		WHERE tenant_id=$4 AND repository_id=$5 AND run_id=$6 AND version=$7`,
+		updated.State,
+		updated.Version,
+		updated.UpdatedAt,
+		s.tenantID,
+		s.repositoryID,
+		updated.RunID,
+		expectedVersion,
+	)
+	if err != nil {
+		return contracts.Run{}, databaseError("postgres.TransitionRun.update", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return contracts.Run{}, fault.New(
+			fault.CodeConflict,
+			"postgres.TransitionRun",
+			"run version changed concurrently",
+		)
+	}
+	if err := s.appendRunEvent(
+		ctx,
+		tx,
+		"run.transitioned",
+		updated,
+		metadata,
+	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := saveRunReplay(
+		ctx,
+		tx,
+		s.tenantID,
+		scope,
+		metadata.IdempotencyKey,
+		requestHash,
+		200,
+		updated,
+	); err != nil {
+		return contracts.Run{}, err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return contracts.Run{}, databaseError("postgres.TransitionRun.commit", err)
+	}
+	return updated, nil
+}
+
+func (s *Store) appendRunEvent(
+	ctx context.Context,
+	tx pgx.Tx,
+	eventType string,
+	run contracts.Run,
+	metadata runstate.CommandMetadata,
+) error {
+	payload, err := json.Marshal(run)
+	if err != nil {
+		return fault.Wrap(
+			fault.CodeInternal,
+			"postgres.appendRunEvent",
+			"encode event payload",
+			err,
+		)
+	}
+	return s.appendEvent(
+		ctx,
+		tx,
+		"run",
+		run.RunID,
+		run.Version,
+		eventType,
+		run.UpdatedAt,
+		payload,
+		metadata,
+	)
+}
+
+func (s *Store) appendEvent(
+	ctx context.Context,
+	tx pgx.Tx,
+	aggregateType string,
+	aggregateID string,
+	aggregateVersion int,
+	eventType string,
+	occurredAt time.Time,
+	payload []byte,
+	metadata runstate.CommandMetadata,
+) error {
+	// All canonical event/outbox writers and checkpoint rebuilds share this
+	// transaction lock. Identity values can be allocated out of commit order;
+	// serializing this boundary makes max(outbox_id) a safe committed watermark.
+	if _, err := tx.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1)",
+		advisoryLockKey(outboxWatermarkLock),
+	); err != nil {
+		return databaseError("postgres.appendEvent.lockWatermark", err)
+	}
+	eventID, err := newPrefixedID("event")
+	if err != nil {
+		return fault.Wrap(
+			fault.CodeInternal,
+			"postgres.appendEvent",
+			"generate event ID",
+			err,
+		)
+	}
+	tag, err := tx.Exec(ctx, `
+		WITH inserted AS (
+			INSERT INTO forja.events (
+				event_id, tenant_id, repository_id, aggregate_type, aggregate_id,
+				aggregate_version, event_type, schema_version, occurred_at,
+				actor_type, actor_id, correlation_id, causation_id,
+				idempotency_key, payload
+			) VALUES (
+				$1, $2, $3, $4, $5, $6, $7, '1.0', $8,
+				$9, $10, $11, $12, $13, $14
+			)
+			RETURNING event_id, tenant_id, repository_id
+		)
+		INSERT INTO forja.outbox (event_id, tenant_id, repository_id)
+		SELECT event_id, tenant_id, repository_id FROM inserted`,
+		eventID,
+		s.tenantID,
+		s.repositoryID,
+		aggregateType,
+		aggregateID,
+		aggregateVersion,
+		eventType,
+		occurredAt,
+		metadata.ActorType,
+		metadata.ActorID,
+		metadata.CorrelationID,
+		metadata.CausationID,
+		metadata.IdempotencyKey,
+		payload,
+	)
+	if err != nil {
+		return databaseError("postgres.appendEvent", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fault.New(
+			fault.CodeInternal,
+			"postgres.appendEvent",
+			"event/outbox insert did not create exactly one message",
+		)
+	}
+	return nil
+}
+
+type rowScanner interface {
+	Scan(...any) error
+}
+
+func scanRun(row rowScanner) (contracts.Run, error) {
+	var run contracts.Run
+	err := row.Scan(
+		&run.RunID,
+		&run.Objective,
+		&run.State,
+		&run.Version,
+		&run.CreatedAt,
+		&run.UpdatedAt,
+	)
+	run.SchemaVersion = "1.0"
+	run.CreatedAt = run.CreatedAt.UTC()
+	run.UpdatedAt = run.UpdatedAt.UTC()
+	return run, err
+}
+
+func validateObjective(objective string) error {
+	length := utf8.RuneCountInString(objective)
+	if length < 3 || length > 8000 {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.validateObjective",
+			"objective length must be between 3 and 8000 characters",
+		)
+	}
+	return nil
+}
+
+func hashRequest(parts ...string) []byte {
+	digest := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
+	return digest[:]
+}
+
+func hashCommand(metadata runstate.CommandMetadata, parts ...string) []byte {
+	causation := ""
+	if metadata.CausationID != nil {
+		causation = *metadata.CausationID
+	}
+	return hashRequest(append(
+		parts,
+		metadata.ActorType,
+		metadata.ActorID,
+		causation,
+	)...)
+}
+
+func postgresTimestamp(value time.Time) time.Time {
+	return value.UTC().Truncate(time.Microsecond)
+}
+
+func lockIdempotency(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID string,
+	scope string,
+	key string,
+) error {
+	_, err := tx.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1)",
+		advisoryLockKey(tenantID+"\x00"+scope+"\x00"+key),
+	)
+	if err != nil {
+		return databaseError("postgres.lockIdempotency", err)
+	}
+	return nil
+}
+
+func newPrefixedID(prefix string) (string, error) {
+	id, err := identity.NewRunID()
+	if err != nil {
+		return "", err
+	}
+	return prefix + "_" + strings.TrimPrefix(id.String(), "run_"), nil
+}
+
+func advisoryLockKey(value string) int64 {
+	digest := sha256.Sum256([]byte(value))
+	return int64(binary.BigEndian.Uint64(digest[:8]))
+}
+
+func loadRunReplay(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID string,
+	scope string,
+	key string,
+	requestHash []byte,
+) (contracts.Run, bool, error) {
+	var storedHash []byte
+	var response []byte
+	err := tx.QueryRow(ctx, `
+		SELECT request_hash, response_body
+		FROM forja.idempotency_keys
+		WHERE tenant_id=$1 AND scope=$2 AND idempotency_key=$3`,
+		tenantID,
+		scope,
+		key,
+	).Scan(&storedHash, &response)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contracts.Run{}, false, nil
+	}
+	if err != nil {
+		return contracts.Run{}, false, databaseError("postgres.loadRunReplay", err)
+	}
+	if !bytes.Equal(storedHash, requestHash) {
+		return contracts.Run{}, false, fault.New(
+			fault.CodeConflict,
+			"postgres.loadRunReplay",
+			"idempotency key was already used for a different command",
+		)
+	}
+	run, err := decodeStoredRun(response)
+	if err != nil {
+		return contracts.Run{}, false, fault.Wrap(
+			fault.CodeInternal,
+			"postgres.loadRunReplay",
+			"decode stored command response",
+			err,
+		)
+	}
+	return run, true, nil
+}
+
+func decodeStoredRun(data []byte) (contracts.Run, error) {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var run contracts.Run
+	if err := decoder.Decode(&run); err != nil {
+		return contracts.Run{}, err
+	}
+	var extra any
+	if err := decoder.Decode(&extra); err != io.EOF {
+		if err == nil {
+			err = fmt.Errorf("multiple JSON documents")
+		}
+		return contracts.Run{}, err
+	}
+	id, err := identity.ParseRunID(run.RunID)
+	if err != nil || id.String() != run.RunID {
+		return contracts.Run{}, fmt.Errorf("invalid stored run ID")
+	}
+	if run.SchemaVersion != "1.0" {
+		return contracts.Run{}, fmt.Errorf("invalid stored schema version")
+	}
+	if err := validateObjective(run.Objective); err != nil {
+		return contracts.Run{}, err
+	}
+	if _, err := runstate.ParseState(run.State); err != nil {
+		return contracts.Run{}, err
+	}
+	if run.Version < 1 ||
+		!runstate.ValidTimestamp(run.CreatedAt) ||
+		!runstate.ValidTimestamp(run.UpdatedAt) ||
+		run.UpdatedAt.Before(run.CreatedAt) {
+		return contracts.Run{}, fmt.Errorf("invalid stored run version or timestamps")
+	}
+	return run, nil
+}
+
+func saveRunReplay(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID string,
+	scope string,
+	key string,
+	requestHash []byte,
+	status int,
+	run contracts.Run,
+) error {
+	response, err := json.Marshal(run)
+	if err != nil {
+		return fault.Wrap(
+			fault.CodeInternal,
+			"postgres.saveRunReplay",
+			"encode command response",
+			err,
+		)
+	}
+	_, err = tx.Exec(ctx, `
+		INSERT INTO forja.idempotency_keys (
+			tenant_id, scope, idempotency_key, request_hash,
+			response_status, response_body
+		) VALUES ($1, $2, $3, $4, $5, $6)`,
+		tenantID,
+		scope,
+		key,
+		requestHash,
+		status,
+		response,
+	)
+	if err != nil {
+		return databaseError("postgres.saveRunReplay", err)
+	}
+	return nil
+}
+
+func databaseError(operation string, err error) error {
+	var pgError *pgconn.PgError
+	if errors.As(err, &pgError) {
+		switch pgError.Code {
+		case "23505", "23503", "40001", "40P01":
+			return fault.Wrap(fault.CodeConflict, operation, "database conflict", err)
+		case "23514", "22P02":
+			return fault.Wrap(fault.CodeInvalidArgument, operation, "database rejected input", err)
+		}
+	}
+	return fault.Wrap(fault.CodeUnavailable, operation, "database operation failed", err)
+}

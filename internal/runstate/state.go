@@ -1,7 +1,9 @@
-// Package runstate implements the deterministic in-memory run state machine.
+// Package runstate implements the deterministic run state machine and storage
+// boundary.
 package runstate
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"time"
@@ -78,6 +80,76 @@ var allowedTransitions = map[State]map[State]struct{}{
 	},
 }
 
+// CommandMetadata carries replay and audit identity across a command boundary.
+type CommandMetadata struct {
+	IdempotencyKey string
+	ActorType      string
+	ActorID        string
+	CorrelationID  string
+	CausationID    *string
+}
+
+// Repository persists run aggregates without exposing storage mechanics.
+type Repository interface {
+	CreateRun(
+		context.Context,
+		identity.RunID,
+		string,
+		CommandMetadata,
+	) (contracts.Run, error)
+	GetRun(context.Context, identity.RunID) (contracts.Run, error)
+	TransitionRun(
+		context.Context,
+		identity.RunID,
+		int,
+		State,
+		CommandMetadata,
+	) (contracts.Run, error)
+}
+
+// ValidateCommandMetadata enforces the canonical durable event identity
+// contract independently of the selected repository.
+func ValidateCommandMetadata(metadata CommandMetadata) error {
+	if length := utf8.RuneCountInString(metadata.IdempotencyKey); length < 8 || length > 200 {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"runstate.ValidateCommandMetadata",
+			"idempotency key length must be between 8 and 200 characters",
+		)
+	}
+	switch metadata.ActorType {
+	case "human", "agent", "worker", "system":
+	default:
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"runstate.ValidateCommandMetadata",
+			"actor type must be human, agent, worker, or system",
+		)
+	}
+	if length := utf8.RuneCountInString(metadata.ActorID); length < 1 || length > 160 {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"runstate.ValidateCommandMetadata",
+			"actor ID length must be between 1 and 160 characters",
+		)
+	}
+	if length := utf8.RuneCountInString(metadata.CorrelationID); length < 3 || length > 160 {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"runstate.ValidateCommandMetadata",
+			"correlation ID length must be between 3 and 160 characters",
+		)
+	}
+	if metadata.CausationID != nil && utf8.RuneCountInString(*metadata.CausationID) > 160 {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"runstate.ValidateCommandMetadata",
+			"causation ID must not exceed 160 characters",
+		)
+	}
+	return nil
+}
+
 // ParseState validates a state string.
 func ParseState(value string) (State, error) {
 	state := State(value)
@@ -142,11 +214,15 @@ func (m *Machine) Transition(run contracts.Run, target State) (contracts.Run, er
 	}
 	run.State = string(target)
 	run.Version++
-	run.UpdatedAt = m.clock.Now()
+	now := m.clock.Now()
+	if now.Before(run.UpdatedAt) {
+		now = run.UpdatedAt
+	}
+	run.UpdatedAt = now
 	return run, nil
 }
 
-// Store is a concurrency-safe in-memory run repository for Sprint 01.
+// Store is the concurrency-safe ephemeral run repository.
 type Store struct {
 	mu      sync.RWMutex
 	runs    map[identity.RunID]contracts.Run
@@ -250,6 +326,41 @@ func (s *Store) Transition(
 	}
 	s.runs[id] = updated
 	return updated, nil
+}
+
+// CreateRun implements Repository for deterministic in-memory operation.
+func (s *Store) CreateRun(
+	_ context.Context,
+	id identity.RunID,
+	objective string,
+	metadata CommandMetadata,
+) (contracts.Run, error) {
+	if err := ValidateCommandMetadata(metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	return s.Create(id, objective)
+}
+
+// GetRun implements Repository for deterministic in-memory operation.
+func (s *Store) GetRun(
+	_ context.Context,
+	id identity.RunID,
+) (contracts.Run, error) {
+	return s.Get(id)
+}
+
+// TransitionRun implements Repository for deterministic in-memory operation.
+func (s *Store) TransitionRun(
+	_ context.Context,
+	id identity.RunID,
+	expectedVersion int,
+	target State,
+	metadata CommandMetadata,
+) (contracts.Run, error) {
+	if err := ValidateCommandMetadata(metadata); err != nil {
+		return contracts.Run{}, err
+	}
+	return s.Transition(id, expectedVersion, target)
 }
 
 // Terminal reports whether the state cannot transition further.

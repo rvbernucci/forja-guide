@@ -165,6 +165,37 @@ func TestReadinessCanFailClosed(t *testing.T) {
 	}
 }
 
+type unavailableRepository struct {
+	*runstate.Store
+}
+
+func (unavailableRepository) Ready(context.Context) error {
+	return context.DeadlineExceeded
+}
+
+func TestReadinessChecksDurableDependency(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(
+		unavailableRepository{Store: runstate.NewStore(nil)},
+		registry,
+		nil,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestListenAndServeGracefulShutdown(t *testing.T) {
 	t.Parallel()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

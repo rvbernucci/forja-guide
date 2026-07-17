@@ -19,6 +19,9 @@ const (
 	envEnvironment     = "FORJA_ENVIRONMENT"
 	envLogLevel        = "FORJA_LOG_LEVEL"
 	envShutdownTimeout = "FORJA_SHUTDOWN_TIMEOUT"
+	envDatabaseURL     = "FORJA_DATABASE_URL"
+	envDatabaseMaxConn = "FORJA_DATABASE_MAX_CONNECTIONS"
+	envDatabaseMigrate = "FORJA_DATABASE_AUTO_MIGRATE"
 )
 
 // LookupEnv matches os.LookupEnv and enables deterministic tests.
@@ -31,6 +34,9 @@ type Config struct {
 	LogLevel        string
 	ShutdownTimeout time.Duration
 	ConfigFile      string
+	DatabaseURL     string
+	DatabaseMaxConn int
+	DatabaseMigrate bool
 }
 
 type fileConfig struct {
@@ -38,6 +44,9 @@ type fileConfig struct {
 	Environment     *string `json:"environment"`
 	LogLevel        *string `json:"log_level"`
 	ShutdownTimeout *string `json:"shutdown_timeout"`
+	DatabaseURL     *string `json:"database_url"`
+	DatabaseMaxConn *int    `json:"database_max_connections"`
+	DatabaseMigrate *bool   `json:"database_auto_migrate"`
 }
 
 // Defaults returns safe local development defaults.
@@ -47,6 +56,8 @@ func Defaults() Config {
 		Environment:     "development",
 		LogLevel:        "info",
 		ShutdownTimeout: 5 * time.Second,
+		DatabaseMaxConn: 4,
+		DatabaseMigrate: true,
 	}
 }
 
@@ -131,6 +142,15 @@ func applyFile(cfg *Config, path string) error {
 		}
 		cfg.ShutdownTimeout = duration
 	}
+	if file.DatabaseURL != nil {
+		cfg.DatabaseURL = *file.DatabaseURL
+	}
+	if file.DatabaseMaxConn != nil {
+		cfg.DatabaseMaxConn = *file.DatabaseMaxConn
+	}
+	if file.DatabaseMigrate != nil {
+		cfg.DatabaseMigrate = *file.DatabaseMigrate
+	}
 	return nil
 }
 
@@ -162,6 +182,23 @@ func applyEnvironment(cfg *Config, lookup LookupEnv) error {
 		}
 		cfg.ShutdownTimeout = duration
 	}
+	if value, ok := lookup(envDatabaseURL); ok {
+		cfg.DatabaseURL = value
+	}
+	if value, ok := lookup(envDatabaseMaxConn); ok && value != "" {
+		count, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", envDatabaseMaxConn, err)
+		}
+		cfg.DatabaseMaxConn = count
+	}
+	if value, ok := lookup(envDatabaseMigrate); ok && value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return fmt.Errorf("parse %s: %w", envDatabaseMigrate, err)
+		}
+		cfg.DatabaseMigrate = enabled
+	}
 	return nil
 }
 
@@ -177,6 +214,24 @@ func applyFlags(cfg *Config, args []string) error {
 		"shutdown-timeout",
 		cfg.ShutdownTimeout,
 		"graceful shutdown timeout",
+	)
+	set.StringVar(
+		&cfg.DatabaseURL,
+		"database-url",
+		cfg.DatabaseURL,
+		"PostgreSQL connection URL (prefer FORJA_DATABASE_URL)",
+	)
+	set.IntVar(
+		&cfg.DatabaseMaxConn,
+		"database-max-connections",
+		cfg.DatabaseMaxConn,
+		"maximum PostgreSQL pool connections",
+	)
+	set.BoolVar(
+		&cfg.DatabaseMigrate,
+		"database-auto-migrate",
+		cfg.DatabaseMigrate,
+		"apply embedded database migrations at startup",
 	)
 	if err := set.Parse(args); err != nil {
 		return fmt.Errorf("parse flags: %w", err)
@@ -210,6 +265,9 @@ func Validate(cfg Config) error {
 	}
 	if cfg.ShutdownTimeout <= 0 || cfg.ShutdownTimeout > time.Minute {
 		return fmt.Errorf("shutdown timeout must be greater than zero and at most one minute")
+	}
+	if cfg.DatabaseMaxConn < 1 || cfg.DatabaseMaxConn > 100 {
+		return fmt.Errorf("database max connections must be between 1 and 100")
 	}
 	return nil
 }

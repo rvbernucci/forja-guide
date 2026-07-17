@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
+	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 )
@@ -107,6 +108,72 @@ func TestTerminalAndTimestamps(t *testing.T) {
 	}
 	if !ValidTimestamp(time.Now().UTC()) || ValidTimestamp(time.Time{}) {
 		t.Fatal("unexpected timestamp validation")
+	}
+}
+
+func TestMachineDoesNotMoveAggregateTimeBackward(t *testing.T) {
+	t.Parallel()
+	createdAt := time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)
+	machine := NewMachine(clock.Fixed{Time: createdAt.Add(-time.Minute)})
+	run := contracts.Run{
+		RunID:         testRunID.String(),
+		SchemaVersion: "1.0",
+		Objective:     "Preserve monotonic aggregate time",
+		State:         string(StateDraft),
+		Version:       1,
+		CreatedAt:     createdAt,
+		UpdatedAt:     createdAt,
+	}
+	updated, err := machine.Transition(run, StateAwaitingApproval)
+	if err != nil {
+		t.Fatalf("transition with a regressed clock: %v", err)
+	}
+	if updated.UpdatedAt != createdAt {
+		t.Fatalf("updated_at moved backward: got %s want %s", updated.UpdatedAt, createdAt)
+	}
+}
+
+func TestCommandMetadataValidation(t *testing.T) {
+	t.Parallel()
+	valid := CommandMetadata{
+		IdempotencyKey: "command-123",
+		ActorType:      "agent",
+		ActorID:        "co-architect",
+		CorrelationID:  "correlation-123",
+	}
+	if err := ValidateCommandMetadata(valid); err != nil {
+		t.Fatalf("valid metadata rejected: %v", err)
+	}
+	cases := []CommandMetadata{
+		{},
+		{
+			IdempotencyKey: "short",
+			ActorType:      "agent",
+			ActorID:        "agent",
+			CorrelationID:  "correlation",
+		},
+		{
+			IdempotencyKey: "command-123",
+			ActorType:      "administrator",
+			ActorID:        "agent",
+			CorrelationID:  "correlation",
+		},
+		{
+			IdempotencyKey: "command-123",
+			ActorType:      "agent",
+			CorrelationID:  "correlation",
+		},
+		{
+			IdempotencyKey: "command-123",
+			ActorType:      "agent",
+			ActorID:        "agent",
+			CorrelationID:  "x",
+		},
+	}
+	for _, metadata := range cases {
+		if err := ValidateCommandMetadata(metadata); err == nil {
+			t.Fatalf("invalid metadata accepted: %#v", metadata)
+		}
 	}
 }
 

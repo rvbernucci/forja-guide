@@ -3,7 +3,7 @@ package contracts
 
 import "time"
 
-// Run is the Sprint 01 in-memory run aggregate contract.
+// Run is the canonical run aggregate contract.
 type Run struct {
 	RunID         string    `json:"run_id"`
 	SchemaVersion string    `json:"schema_version"`
