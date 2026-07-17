@@ -46,6 +46,12 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Match PostgreSQL client to server
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends postgresql-client-18
+          test "$(pg_dump --version | awk '{print $3}' | cut -d. -f1)" = "18"
+
       - name: Validate public repository
         run: make validate
 
