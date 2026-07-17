@@ -41,5 +41,5 @@
     "Remote authentication and user-facing authorization are deferred to the governed MCP boundary in Sprint 03.",
     "Migrations are applied transactionally; online zero-downtime index orchestration is intentionally outside Sprint 02 and requires an operator maintenance plan."
   ],
-  "recorded_at": "2026-07-17T02:41:13Z"
+  "recorded_at": "2026-07-17T02:51:00Z"
 }

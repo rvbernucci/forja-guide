@@ -64,5 +64,5 @@
     }
   ],
   "compatibility_note": "PostgreSQL 14.19 on macOS passed as an additional local compatibility check; PostgreSQL 18.3 is the official CI and supported target.",
-  "recorded_at": "2026-07-17T02:41:13Z"
+  "recorded_at": "2026-07-17T02:51:00Z"
 }

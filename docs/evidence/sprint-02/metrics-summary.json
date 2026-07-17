@@ -22,5 +22,5 @@
   },
   "official_database_target": "PostgreSQL 18.3",
   "additional_local_compatibility": "PostgreSQL 14.19 on macOS",
-  "recorded_at": "2026-07-17T02:41:13Z"
+  "recorded_at": "2026-07-17T02:51:00Z"
 }
