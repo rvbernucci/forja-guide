@@ -62,3 +62,17 @@
 - Resolution: original recording timestamps remain immutable historical facts;
   each amended document now carries an explicit `amended_at` timestamp after
   this finding.
+
+## Pass 6: Attestation Integrity
+
+- Reviewed commit: `50f2d97242ba64edfa59cdaff8609865a53618b8`.
+- Findings: 2 P1 closure-integrity issues.
+- Finding details: protocol v2 could be bypassed by omitting its version, and
+  the validator proved only that the cited candidate SHA existed rather than
+  proving that the final attestation was a minimal child of that candidate.
+- Resolution: Sprint 03 and later receipts must use protocol v2. The validator
+  now requires the reviewed candidate to be the attestation's direct parent,
+  verifies its fail-closed candidate document, permits only declared promotion
+  paths in the child diff, and pins the final receipt to its introduction
+  commit. Sprint 04 remains blocked until the corrected candidate passes an
+  immutable review.

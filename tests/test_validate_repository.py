@@ -100,6 +100,7 @@ class EvidenceValidationTests(unittest.TestCase):
                         "evidence_version": "1.0",
                         "sprint_id": "03",
                         "status": "candidate",
+                        "closure_protocol_version": "2.0",
                         "authoritative": False,
                         "next_sprint_authorized": None,
                     }
@@ -136,6 +137,7 @@ class EvidenceValidationTests(unittest.TestCase):
                         "evidence_version": "1.0",
                         "sprint_id": "03",
                         "status": "candidate",
+                        "closure_protocol_version": "2.0",
                         "authoritative": False,
                         "next_sprint_authorized": "04",
                     }
@@ -186,6 +188,35 @@ class EvidenceValidationTests(unittest.TestCase):
 
             self.assertIn(
                 "Sprint v2 close receipt is not review-bound: "
+                "docs/evidence/sprint-03/close-receipt.json",
+                errors,
+            )
+
+    def test_sprint03_close_receipt_cannot_downgrade_protocol(self) -> None:
+        """Sprint 03 and later cannot fall back to the legacy receipt shape."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES:
+                payload = {
+                    "evidence_version": "1.0",
+                    "sprint_id": "03",
+                    "status": (
+                        "closed" if filename == "close-receipt.json" else "ok"
+                    ),
+                }
+                (sprint / filename).write_text(
+                    json.dumps(payload),
+                    encoding="utf-8",
+                )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "Sprint close receipt requires closure protocol 2.0: "
                 "docs/evidence/sprint-03/close-receipt.json",
                 errors,
             )

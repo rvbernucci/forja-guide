@@ -102,6 +102,9 @@ def validate_evidence_sets(errors: list[str]) -> None:
             continue
 
         expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
+        requires_v2 = (
+            expected_sprint_id.isdigit() and int(expected_sprint_id) >= 3
+        )
         close_path = sprint_dir / "close-receipt.json"
         candidate_path = sprint_dir / CLOSURE_CANDIDATE_FILE
         closure_paths = [
@@ -196,7 +199,18 @@ def validate_evidence_sets(errors: list[str]) -> None:
                     f"Sprint close receipt is not closed: "
                     f"{close_path.relative_to(ROOT)}"
                 )
-            if close_receipt.get("closure_protocol_version") == "2.0":
+            protocol_version = close_receipt.get("closure_protocol_version")
+            if requires_v2 and protocol_version != "2.0":
+                errors.append(
+                    f"Sprint close receipt requires closure protocol 2.0: "
+                    f"{close_path.relative_to(ROOT)}"
+                )
+            elif protocol_version not in (None, "2.0"):
+                errors.append(
+                    f"unsupported Sprint closure protocol: "
+                    f"{close_path.relative_to(ROOT)}"
+                )
+            elif protocol_version == "2.0":
                 validate_v2_close_receipt(
                     close_receipt,
                     close_path,
@@ -213,6 +227,10 @@ def validate_evidence_sets(errors: list[str]) -> None:
                 candidate.get("status") != "candidate"
                 or candidate.get("authoritative") is not False
                 or candidate.get("next_sprint_authorized") is not None
+                or (
+                    requires_v2
+                    and candidate.get("closure_protocol_version") != "2.0"
+                )
             ):
                 errors.append(
                     f"Sprint closure candidate is not fail-closed: "
@@ -249,7 +267,7 @@ def validate_v2_close_receipt(
         errors.append(f"Sprint v2 close receipt is not review-bound: {label}")
         return
     if (ROOT / ".git").exists():
-        result = subprocess.run(
+        candidate_result = subprocess.run(
             [
                 "git",
                 "-C",
@@ -262,11 +280,131 @@ def validate_v2_close_receipt(
             capture_output=True,
             text=True,
         )
-        if result.returncode != 0:
+        if candidate_result.returncode != 0:
             errors.append(
                 f"unresolvable reviewed_candidate_commit in {label}: "
                 f"{candidate_commit}"
             )
+            return
+
+        candidate_path = path.parent / CLOSURE_CANDIDATE_FILE
+        candidate_relative = candidate_path.relative_to(ROOT).as_posix()
+        candidate_document = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "show",
+                f"{candidate_commit}:{candidate_relative}",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        try:
+            candidate = json.loads(candidate_document.stdout)
+        except json.JSONDecodeError:
+            candidate = None
+        if (
+            candidate_document.returncode != 0
+            or not isinstance(candidate, dict)
+            or candidate.get("status") != "candidate"
+            or candidate.get("authoritative") is not False
+            or candidate.get("next_sprint_authorized") is not None
+            or candidate.get("closure_protocol_version") != "2.0"
+        ):
+            errors.append(
+                f"reviewed commit lacks a fail-closed closure candidate: {label}"
+            )
+            return
+
+        receipt_relative = path.relative_to(ROOT).as_posix()
+        introduction = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "log",
+                "--diff-filter=A",
+                "--no-renames",
+                "--format=%H",
+                "--",
+                receipt_relative,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        commits = introduction.stdout.splitlines()
+        if introduction.returncode != 0 or not commits:
+            errors.append(f"cannot resolve v2 attestation commit: {label}")
+            return
+        attestation_commit = commits[0]
+        parent = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "rev-parse",
+                f"{attestation_commit}^",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if parent.returncode != 0 or parent.stdout.strip() != candidate_commit:
+            errors.append(
+                f"v2 attestation is not a direct child of its candidate: {label}"
+            )
+            return
+
+        review_path = review["artifact_path"]
+        review_prefix = (path.parent / "reviews").relative_to(ROOT).as_posix() + "/"
+        if not review_path.startswith(review_prefix):
+            errors.append(f"v2 review artifact is outside Sprint evidence: {label}")
+            return
+        changed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "diff",
+                "--name-only",
+                "--no-renames",
+                candidate_commit,
+                attestation_commit,
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        expected_paths = {
+            candidate_relative,
+            receipt_relative,
+            review_path,
+            "docs/04-roadmap/MASTER_DEVELOPMENT_PLAN.md",
+            "docs/04-roadmap/SPRINTS_00_04_FOUNDATION.md",
+        }
+        if changed.returncode != 0 or set(changed.stdout.splitlines()) != expected_paths:
+            errors.append(f"v2 attestation contains non-promotion changes: {label}")
+            return
+
+        committed_receipt = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "show",
+                f"{attestation_commit}:{receipt_relative}",
+            ],
+            check=False,
+            capture_output=True,
+        )
+        if (
+            committed_receipt.returncode != 0
+            or committed_receipt.stdout != path.read_bytes()
+        ):
+            errors.append(f"v2 close receipt changed after attestation: {label}")
 
 
 def validate_artifact_references(

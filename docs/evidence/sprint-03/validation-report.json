@@ -42,11 +42,11 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "1e2991978a5b1ab6cd2baa25be4636dc256d9145908760bf101d121754a870ef"
+      "artifact_sha256": "47c4a46a819b24cba9bc20af17fc4cad22fd9e49809edfeeaca86f5e95afa378"
     }
   ],
   "resolved_review_findings": {
-    "count": 9,
+    "count": 11,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
@@ -55,7 +55,8 @@
       "closure_gate_semantics_review": 1,
       "closure_immutable_binding_review": 1,
       "closure_capability_gate_consistency_review": 1,
-      "closure_evidence_chronology_review": 1
+      "closure_evidence_chronology_review": 1,
+      "closure_attestation_integrity_review": 2
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -66,7 +67,8 @@
       "non-circular separation of closure evidence from external PR publication controls",
       "immutable binding between independent review and the exact closure candidate",
       "preservation of capability gates established by authoritative prior receipts",
-      "chronologically credible amendments to audit evidence"
+      "chronologically credible amendments to audit evidence",
+      "protocol downgrade prevention and minimal attestation diffs"
     ]
   },
   "acceptance": [
@@ -97,5 +99,5 @@
     ]
   },
   "recorded_at": "2026-07-17T21:06:37Z",
-  "amended_at": "2026-07-17T21:19:03Z"
+  "amended_at": "2026-07-17T21:26:09Z"
 }
