@@ -38,6 +38,8 @@ EVIDENCE_FILES = (
     "close-receipt.json",
 )
 
+CLOSURE_CANDIDATE_FILE = "closure-candidate.json"
+
 SKIPPED_DIRECTORIES = {
     ".git",
     ".cache",
@@ -100,12 +102,31 @@ def validate_evidence_sets(errors: list[str]) -> None:
             continue
 
         expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
-        for filename in EVIDENCE_FILES:
-            path = sprint_dir / filename
+        close_path = sprint_dir / "close-receipt.json"
+        candidate_path = sprint_dir / CLOSURE_CANDIDATE_FILE
+        closure_paths = [
+            path for path in (close_path, candidate_path) if path.is_file()
+        ]
+        if not closure_paths:
+            errors.append(
+                f"incomplete Sprint evidence set: {sprint_dir.relative_to(ROOT)} "
+                "is missing a closure receipt or candidate"
+            )
+        elif len(closure_paths) > 1:
+            errors.append(
+                f"ambiguous Sprint closure state: {sprint_dir.relative_to(ROOT)} "
+                "contains both a receipt and a candidate"
+            )
+
+        document_paths = [
+            sprint_dir / filename for filename in EVIDENCE_FILES[:-1]
+        ]
+        document_paths.extend(closure_paths)
+        for path in document_paths:
             if not path.is_file():
                 errors.append(
                     f"incomplete Sprint evidence set: {sprint_dir.relative_to(ROOT)} "
-                    f"is missing {filename}"
+                    f"is missing {path.name}"
                 )
                 continue
 
@@ -159,7 +180,6 @@ def validate_evidence_sets(errors: list[str]) -> None:
                         )
             validate_artifact_references(payload, path, errors)
 
-        close_path = sprint_dir / "close-receipt.json"
         if close_path.is_file():
             try:
                 close_receipt = json.loads(close_path.read_text(encoding="utf-8"))
@@ -175,6 +195,22 @@ def validate_evidence_sets(errors: list[str]) -> None:
                 errors.append(
                     f"Sprint close receipt is not closed: "
                     f"{close_path.relative_to(ROOT)}"
+                )
+        if candidate_path.is_file():
+            try:
+                candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(candidate, dict):
+                continue
+            if (
+                candidate.get("status") != "candidate"
+                or candidate.get("authoritative") is not False
+                or candidate.get("next_sprint_authorized") is not None
+            ):
+                errors.append(
+                    f"Sprint closure candidate is not fail-closed: "
+                    f"{candidate_path.relative_to(ROOT)}"
                 )
 
 

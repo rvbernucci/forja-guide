@@ -92,19 +92,23 @@ recoverable in PostgreSQL.
 **Outcome:** allow a Co-architect in an MCP client to create governed plans and
 control runs through stable tools.
 
+**Status:** implementation complete; closure candidate recorded in
+[`docs/evidence/sprint-03`](../evidence/sprint-03/). Sprint 04 remains blocked
+until an independent review is bound to the immutable candidate commit.
+
 ### Scope
 
-- [ ] Integrate the official Go MCP SDK.
-- [ ] Implement stdio transport for local clients.
-- [ ] Define the authenticated HTTP transport boundary for later deployment.
-- [ ] Implement `plan_sprint`, `submit_sprint`, `get_sprint`, and `get_run`.
-- [ ] Implement `approve_decision`, `reject_decision`, `cancel_run`, and
+- [x] Integrate the official Go MCP SDK.
+- [x] Implement stdio transport for local clients.
+- [x] Define the authenticated HTTP transport boundary for later deployment.
+- [x] Implement `plan_sprint`, `submit_sprint`, `get_sprint`, and `get_run`.
+- [x] Implement `approve_decision`, `reject_decision`, `cancel_run`, and
   `resume_run`.
-- [ ] Bind approvals to stable pending-decision IDs.
-- [ ] Add tool input/output schemas and compatibility fixtures.
-- [ ] Separate conversational explanations from canonical commands.
-- [ ] Add authorization checks before command persistence.
-- [ ] Add end-to-end MCP tests using a deterministic fake client.
+- [x] Bind approvals to stable pending-decision IDs.
+- [x] Add tool input/output schemas and compatibility fixtures.
+- [x] Separate conversational explanations from canonical commands.
+- [x] Add authorization checks before command persistence.
+- [x] Add end-to-end MCP tests using a deterministic fake client.
 
 ### Acceptance
 

@@ -1,0 +1,76 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "status": "passed",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Module verification, vet, unit tests, race tests, reproducible cross-architecture builds, kernel smoke, MCP smoke, Python tests, and repository validation passed."
+    },
+    {
+      "name": "PostgreSQL durability and restart gate",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> make test-integration",
+      "result": "passed",
+      "database": "PostgreSQL 14.19 local compatibility",
+      "summary": "The full PostgreSQL integration suite passed in 27.5 seconds and a daemon process restart preserved canonical state."
+    },
+    {
+      "name": "PostgreSQL integration coverage",
+      "command": "FORJA_TEST_DATABASE_URL=<disposable-local-database> FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
+      "result": "passed",
+      "statement_coverage_percent": 73.9
+    },
+    {
+      "name": "governed MCP acceptance",
+      "result": "passed",
+      "coverage": [
+        "propose, inspect, submit, approve, reject, cancel, and resume behavior",
+        "stdio command transport with deterministic fake client",
+        "stable tool schema compatibility fixture",
+        "idempotent replay with fresh correlation identity",
+        "pending decisions cannot be bypassed by generic transitions",
+        "every successful and failed tool mutation carries correlated audit evidence"
+      ]
+    },
+    {
+      "name": "authentication and authorization boundary",
+      "result": "passed",
+      "coverage": [
+        "the entire /v1 namespace authenticates before routing or parsing",
+        "actor identity is derived only from the authenticated principal",
+        "missing permissions and cross-scope principals fail before persistence",
+        "bearer credentials are never sent to remote plaintext endpoints or redirects"
+      ]
+    },
+    {
+      "name": "migration concurrency and rollback safety",
+      "result": "passed",
+      "coverage": [
+        "one concurrent decision resolution winner",
+        "fail-fast migration lock acquisition",
+        "rollback command barriers prevent concurrent writers",
+        "pending decisions block unsafe downgrade",
+        "cancellation receipts remain mechanically verifiable"
+      ]
+    },
+    {
+      "name": "official PostgreSQL 18.3 main CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29612776423",
+      "head_sha": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+      "summary": "The protected main workflow passed repository validation and PostgreSQL durability against the digest-pinned PostgreSQL 18.3 service."
+    },
+    {
+      "name": "HTTP boundary hardening pull request CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29612638985",
+      "head_sha": "3e7cde9103507810971b94062a9c14957a0b9103",
+      "summary": "The complete hardening change passed before merge in pull request 12."
+    }
+  ],
+  "compatibility_note": "PostgreSQL 18.3 is the official supported CI target; PostgreSQL 14.19 passed as an additional local compatibility check.",
+  "recorded_at": "2026-07-17T21:00:03Z"
+}

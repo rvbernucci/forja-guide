@@ -1,0 +1,48 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "status": "passed",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-03/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "b5ae54ddcfa4cb39e85f84ad2d9e43556bd817c480eaab2a71bab63bfc29353b"
+    },
+    {
+      "name": "MCP authorization before persistence",
+      "result": "passed",
+      "summary": "Every tool resolves a server-configured principal and checks capability plus exact tenant and repository scope before a command reaches durable persistence."
+    },
+    {
+      "name": "stable approval authority",
+      "result": "passed",
+      "summary": "Approval and rejection require an exact pending decision ID; generic run transitions cannot consume or bypass that decision."
+    },
+    {
+      "name": "legacy HTTP authentication",
+      "result": "passed",
+      "summary": "The complete /v1 namespace fails closed behind a bounded static bearer authenticator, actor headers are ignored, and comparisons are constant-time."
+    },
+    {
+      "name": "bearer transport protection",
+      "result": "passed",
+      "summary": "The CLI permits plaintext HTTP only to numeric loopback addresses, refuses remote plaintext endpoints, and never forwards credentials across redirects."
+    },
+    {
+      "name": "migration and command concurrency",
+      "result": "passed",
+      "summary": "Fail-fast migration locks, stable lock ordering, optimistic versions, command barriers, and append-only evidence prevent split authority and unsafe downgrade."
+    }
+  ],
+  "residual_risks": [
+    "Static bearer authentication is a local deployment primitive, not an internet-facing identity system; production remote access requires an authenticated TLS proxy or replacement transport identity.",
+    "The stdio MCP principal is deployment-configured and therefore inherits the security of the host process and client configuration.",
+    "Worker sandboxing, process-tree cancellation, and output secret redaction are intentionally deferred to Sprint 04."
+  ],
+  "recorded_at": "2026-07-17T21:00:03Z"
+}

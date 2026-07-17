@@ -1,0 +1,24 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "status": "recorded",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "metrics": {
+    "tracked_files_before_evidence": 154,
+    "go_files": 50,
+    "go_test_files": 19,
+    "test_and_fuzz_entry_points": 139,
+    "postgres_statement_coverage_percent": 73.9,
+    "canonical_json_schemas": 7,
+    "postgres_migration_versions": 3,
+    "reproducible_linux_binaries": 6,
+    "governed_mcp_tools": 8,
+    "canonical_postgres_tables": 15,
+    "known_reachable_vulnerabilities": 0,
+    "independent_review_findings_resolved": 7,
+    "independent_post_merge_findings": 0
+  },
+  "official_database_target": "PostgreSQL 18.3",
+  "additional_local_compatibility": "PostgreSQL 14.19 on macOS",
+  "recorded_at": "2026-07-17T21:00:03Z"
+}

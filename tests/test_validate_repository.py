@@ -77,6 +77,81 @@ class EvidenceValidationTests(unittest.TestCase):
             ]
             self.assertEqual(6, len(missing_errors))
 
+    def test_fail_closed_closure_candidate_is_accepted(self) -> None:
+        """A candidate can be validated without authorizing the next Sprint."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "03",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            (sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "evidence_version": "1.0",
+                        "sprint_id": "03",
+                        "status": "candidate",
+                        "authoritative": False,
+                        "next_sprint_authorized": None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertEqual([], errors)
+
+    def test_closure_candidate_cannot_authorize_next_sprint(self) -> None:
+        """A mutable candidate must remain explicitly non-authoritative."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "03",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            (sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "evidence_version": "1.0",
+                        "sprint_id": "03",
+                        "status": "candidate",
+                        "authoritative": False,
+                        "next_sprint_authorized": "04",
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertEqual(
+                1,
+                sum("candidate is not fail-closed" in error for error in errors),
+            )
+
     def test_invalid_basis_commit_is_rejected(self) -> None:
         """Evidence commit references must use immutable full SHA-1 values."""
         with tempfile.TemporaryDirectory() as directory:
