@@ -9,8 +9,8 @@
 - Fail incremental migration fast when previous-version writers or projection
   rebuilds are active, requiring deployment quiescence instead of risking a
   mixed-version lock cycle.
-- Accept identity-bound Sprint cancellation evidence from the generic Run
-  transition path during receipt and recovery verification.
+- Accept only contract-valid, identity-bound Sprint cancellation evidence from
+  the generic Run transition path during receipt and recovery verification.
 
 All notable public changes to Forja Guide are recorded here.
 

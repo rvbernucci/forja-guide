@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Verify durable command receipts against their canonical event evidence."""
 
+import datetime
 import hashlib
 import json
 import pathlib
+import re
 import sys
 from collections import defaultdict
 
@@ -17,6 +19,12 @@ MUTATING_TOOLS = {
     "forja.cancel_run",
     "forja.resume_run",
 }
+SPRINT_ID = re.compile(
+    r"^sprint_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+RUN_ID = re.compile(
+    r"^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
 
 
 def canonical_json(value):
@@ -255,6 +263,70 @@ def require_object(value, fields, label):
         raise ValueError(f"{label} must contain exactly {sorted(fields)}")
 
 
+def validate_sprint_cancellation_event(event, run_id):
+    payload = event["payload"]
+    required = {
+        "sprint_id",
+        "schema_version",
+        "sequence_number",
+        "title",
+        "objective",
+        "status",
+        "version",
+        "run_id",
+        "created_at",
+        "updated_at",
+    }
+    if not isinstance(payload, dict) or set(payload) != required:
+        raise ValueError(
+            "Sprint cancellation payload fields differ from the Sprint contract"
+        )
+    if not isinstance(payload["sprint_id"], str) or not SPRINT_ID.fullmatch(
+        payload["sprint_id"]
+    ):
+        raise ValueError("Sprint cancellation payload has an invalid Sprint ID")
+    if payload["sprint_id"] != event["aggregate_id"]:
+        raise ValueError("Sprint cancellation payload disagrees with its aggregate ID")
+    if payload["schema_version"] != "1.0":
+        raise ValueError("Sprint cancellation payload has an unsupported schema version")
+    if type(payload["sequence_number"]) is not int or payload["sequence_number"] < 0:
+        raise ValueError("Sprint cancellation payload has an invalid sequence number")
+    if not isinstance(payload["title"], str) or not 1 <= len(payload["title"]) <= 500:
+        raise ValueError("Sprint cancellation payload has an invalid title")
+    if not isinstance(payload["objective"], str) or not 3 <= len(
+        payload["objective"]
+    ) <= 8000:
+        raise ValueError("Sprint cancellation payload has an invalid objective")
+    if type(payload["version"]) is not int or payload["version"] < 1:
+        raise ValueError("Sprint cancellation payload has an invalid version")
+    if payload["version"] != event["aggregate_version"]:
+        raise ValueError("Sprint cancellation payload disagrees with its aggregate version")
+    if not isinstance(payload["run_id"], str) or not RUN_ID.fullmatch(
+        payload["run_id"]
+    ):
+        raise ValueError("Sprint cancellation payload has an invalid Run ID")
+    if payload["run_id"] != run_id:
+        raise ValueError("Sprint cancellation payload disagrees with the Run receipt")
+    if payload["status"] != "cancelling":
+        raise ValueError("Sprint cancellation payload is not cancelling")
+    timestamps = []
+    for field in ("created_at", "updated_at"):
+        value = payload[field]
+        if not isinstance(value, str) or not value.endswith("Z"):
+            raise ValueError("Sprint cancellation payload has a non-UTC timestamp")
+        try:
+            parsed = datetime.datetime.fromisoformat(value[:-1] + "+00:00")
+        except ValueError as error:
+            raise ValueError(
+                "Sprint cancellation payload has an invalid timestamp"
+            ) from error
+        if parsed.utcoffset() != datetime.timedelta(0):
+            raise ValueError("Sprint cancellation payload has a non-UTC timestamp")
+        timestamps.append(parsed)
+    if timestamps[1] < timestamps[0]:
+        raise ValueError("Sprint cancellation payload moves backward in time")
+
+
 def verify_receipt(receipt, events):
     scope_parts = parse_scope(receipt["scope"])
     command = scope_parts[0]
@@ -314,6 +386,8 @@ def verify_receipt(receipt, events):
             raise ValueError(
                 "transition_run command has ambiguous Sprint cancellation events"
             )
+        for cancellation_event in cancellation_events:
+            validate_sprint_cancellation_event(cancellation_event, run_id)
         if cancellation_events and response.get("state") != "cancelling":
             raise ValueError(
                 "Sprint cancellation event disagrees with the Run transition state"
