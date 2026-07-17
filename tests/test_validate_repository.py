@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import os
@@ -312,6 +313,348 @@ class EvidenceValidationTests(unittest.TestCase):
 
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("not-numeric"))
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("15"))
+
+    def test_canonical_sprint_successor_is_exact_and_terminal(self) -> None:
+        """Receipts authorize only the next planned Sprint; Sprint 14 is terminal."""
+        self.assertEqual((True, "04"), VALIDATOR.canonical_sprint_successor("03"))
+        self.assertEqual((True, "14"), VALIDATOR.canonical_sprint_successor("13"))
+        self.assertEqual((True, None), VALIDATOR.canonical_sprint_successor("14"))
+        self.assertEqual((False, None), VALIDATOR.canonical_sprint_successor("15"))
+        self.assertEqual(
+            (False, None),
+            VALIDATOR.canonical_sprint_successor("not-numeric"),
+        )
+
+    def test_receipt_promotion_preserves_reviewed_candidate_content(self) -> None:
+        """Attestation may add review fields but cannot rewrite reviewed evidence."""
+        review_path = "docs/evidence/sprint-03/reviews/immutable.md"
+        candidate = {
+            "evidence_version": "1.0",
+            "sprint_id": "03",
+            "name": "MCP Control Surface",
+            "status": "candidate",
+            "closure_protocol_version": "2.0",
+            "authoritative": False,
+            "basis_commit": "a" * 40,
+            "definition_of_done": {
+                "implementation_committed": True,
+                "independent_validation_recorded": False,
+            },
+            "acceptance": {"governed_lifecycle": True},
+            "evidence_files": ["plan.json"],
+            "supporting_artifacts": ["reviews/closure.md"],
+            "next_sprint_authorized": None,
+            "recorded_at": "2026-07-17T21:06:37Z",
+        }
+        review = {
+            "result": "passed",
+            "reviewed_commit": "b" * 40,
+            "artifact_path": review_path,
+            "artifact_sha256": "c" * 64,
+        }
+        receipt = {
+            **candidate,
+            "status": "closed",
+            "authoritative": True,
+            "definition_of_done": {
+                "implementation_committed": True,
+                "independent_validation_recorded": True,
+            },
+            "supporting_artifacts": ["reviews/closure.md", review_path],
+            "next_sprint_authorized": "04",
+            "candidate_recorded_at": candidate["recorded_at"],
+            "reviewed_candidate_commit": "b" * 40,
+            "immutable_review": review,
+            "closed_at": "2026-07-17T22:10:00Z",
+        }
+        del receipt["recorded_at"]
+
+        self.assertTrue(
+            VALIDATOR.receipt_preserves_candidate(candidate, receipt, review_path)
+        )
+        receipt["acceptance"] = {"governed_lifecycle": False}
+        self.assertFalse(
+            VALIDATOR.receipt_preserves_candidate(candidate, receipt, review_path)
+        )
+        receipt["acceptance"] = {"governed_lifecycle": 1}
+        self.assertFalse(
+            VALIDATOR.receipt_preserves_candidate(candidate, receipt, review_path)
+        )
+
+    def test_exact_two_phase_attestation_is_accepted(self) -> None:
+        """A minimal direct-child promotion passes every protocol-v2 guard."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(
+                ["git", "init", "--initial-branch=main", str(root)],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.name", "test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.email", "test@test"],
+                check=True,
+            )
+            sprint = root / "docs/evidence/sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "03",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            roadmap = root / "docs/04-roadmap"
+            roadmap.mkdir(parents=True)
+            master = roadmap / "MASTER_DEVELOPMENT_PLAN.md"
+            detail = roadmap / "SPRINTS_00_04_FOUNDATION.md"
+            master.write_text("candidate\n", encoding="utf-8")
+            detail.write_text("candidate\n", encoding="utf-8")
+            candidate = {
+                "evidence_version": "1.0",
+                "sprint_id": "03",
+                "name": "MCP Control Surface",
+                "status": "candidate",
+                "closure_protocol_version": "2.0",
+                "authoritative": False,
+                "definition_of_done": {
+                    "implementation_committed": True,
+                    "independent_validation_recorded": False,
+                },
+                "acceptance": {"governed_lifecycle": True},
+                "evidence_files": ["plan.json"],
+                "supporting_artifacts": [],
+                "next_sprint_authorized": None,
+                "recorded_at": "2026-07-17T21:06:37Z",
+            }
+            candidate_path = sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "."],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "candidate"],
+                check=True,
+                capture_output=True,
+            )
+            candidate_commit = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            review_path = "docs/evidence/sprint-03/reviews/immutable.md"
+            review_file = root / review_path
+            review_file.parent.mkdir()
+            review_file.write_text("No findings.\n", encoding="utf-8")
+            review_hash = hashlib.sha256(review_file.read_bytes()).hexdigest()
+            review = {
+                "result": "passed",
+                "reviewed_commit": candidate_commit,
+                "artifact_path": review_path,
+                "artifact_sha256": review_hash,
+            }
+            receipt = {
+                **candidate,
+                "status": "closed",
+                "authoritative": True,
+                "definition_of_done": {
+                    "implementation_committed": True,
+                    "independent_validation_recorded": True,
+                },
+                "supporting_artifacts": [review_path],
+                "next_sprint_authorized": "04",
+                "candidate_recorded_at": candidate["recorded_at"],
+                "reviewed_candidate_commit": candidate_commit,
+                "immutable_review": review,
+                "closed_at": "2026-07-17T22:10:00Z",
+            }
+            del receipt["recorded_at"]
+            candidate_path.unlink()
+            (sprint / "close-receipt.json").write_text(
+                json.dumps(receipt),
+                encoding="utf-8",
+            )
+            master.write_text("closed\n", encoding="utf-8")
+            detail.write_text("closed\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "-A"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "attestation"],
+                check=True,
+                capture_output=True,
+            )
+
+            errors: list[str] = []
+            environment = {
+                "FORJA_ENFORCE_TRUSTED_MAIN": "1",
+                "FORJA_TRUSTED_MAIN_SHA": candidate_commit,
+            }
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                environment,
+            ):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertEqual([], errors)
+
+    def test_v2_receipt_rejects_arbitrary_successor(self) -> None:
+        """A non-empty but noncanonical successor must not authorize work."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "docs/evidence/sprint-03/close-receipt.json"
+            path.parent.mkdir(parents=True)
+            receipt = {
+                "authoritative": True,
+                "reviewed_candidate_commit": "a" * 40,
+                "immutable_review": {
+                    "result": "passed",
+                    "reviewed_commit": "a" * 40,
+                    "artifact_path": (
+                        "docs/evidence/sprint-03/reviews/immutable.md"
+                    ),
+                    "artifact_sha256": "b" * 64,
+                },
+                "next_sprint_authorized": "99",
+                "closed_at": "2026-07-17T22:10:00Z",
+            }
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_v2_close_receipt(receipt, path, errors)
+
+            self.assertEqual(
+                [
+                    "Sprint v2 close receipt is not review-bound: "
+                    "docs/evidence/sprint-03/close-receipt.json"
+                ],
+                errors,
+            )
+
+    def test_v2_receipt_fails_closed_without_git_history(self) -> None:
+        """An archive cannot self-assert an authoritative protocol-v2 receipt."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "docs/evidence/sprint-03/close-receipt.json"
+            path.parent.mkdir(parents=True)
+            receipt = {
+                "authoritative": True,
+                "reviewed_candidate_commit": "a" * 40,
+                "immutable_review": {
+                    "result": "passed",
+                    "reviewed_commit": "a" * 40,
+                    "artifact_path": (
+                        "docs/evidence/sprint-03/reviews/immutable.md"
+                    ),
+                    "artifact_sha256": "b" * 64,
+                },
+                "next_sprint_authorized": "04",
+                "closed_at": "2026-07-17T22:10:00Z",
+            }
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_v2_close_receipt(receipt, path, errors)
+
+            self.assertEqual(
+                [
+                    "Sprint v2 close receipt requires Git history: "
+                    "docs/evidence/sprint-03/close-receipt.json"
+                ],
+                errors,
+            )
+
+    def test_closed_sprint_cannot_return_to_candidate_state(self) -> None:
+        """Once introduced, an authoritative receipt cannot be replaced by a candidate."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            subprocess.run(
+                ["git", "init", "--initial-branch=main", str(root)],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.name", "test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "config", "user.email", "test@test"],
+                check=True,
+            )
+            sprint = root / "docs/evidence/sprint-03"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "03",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            candidate = {
+                "evidence_version": "1.0",
+                "sprint_id": "03",
+                "status": "candidate",
+                "closure_protocol_version": "2.0",
+                "authoritative": False,
+                "next_sprint_authorized": None,
+            }
+            candidate_path = sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE
+            receipt_path = sprint / "close-receipt.json"
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "."],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "candidate"],
+                check=True,
+                capture_output=True,
+            )
+            candidate_path.unlink()
+            receipt_path.write_text("{}", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "-A"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "close"],
+                check=True,
+                capture_output=True,
+            )
+            receipt_path.unlink()
+            candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "-A"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "reopen"],
+                check=True,
+                capture_output=True,
+            )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "closed Sprint cannot return to candidate state: "
+                "docs/evidence/sprint-03/closure-candidate.json",
+                errors,
+            )
 
     def test_attestation_must_match_trusted_main_topology(self) -> None:
         """Protected CI rejects unpublished and stale-base attestations."""
