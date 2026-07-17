@@ -138,6 +138,38 @@ func TestValidateRejectsUnsafeConfiguration(t *testing.T) {
 	}
 }
 
+func TestValidateDaemonListenRequiresLoopback(t *testing.T) {
+	t.Parallel()
+	for _, listen := range []string{
+		"0.0.0.0:8080",
+		"192.0.2.1:8080",
+		"localhost:8080",
+	} {
+		if err := ValidateDaemonListen(listen); err == nil {
+			t.Fatalf("non-loopback listen %q succeeded", listen)
+		}
+	}
+	for _, listen := range []string{"127.0.0.1:8080", "[::1]:8080"} {
+		if err := ValidateDaemonListen(listen); err != nil {
+			t.Fatalf("loopback listen %q failed: %v", listen, err)
+		}
+	}
+}
+
+func TestSharedConfigAcceptsListenUnusedByStdioProcess(t *testing.T) {
+	t.Parallel()
+	cfg := Config{
+		Listen:          "0.0.0.0:8080",
+		Environment:     "test",
+		LogLevel:        "info",
+		ShutdownTimeout: time.Second,
+		DatabaseMaxConn: 4,
+	}
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("shared config rejected syntactically valid listen: %v", err)
+	}
+}
+
 func withConfig(base Config, mutate func(*Config)) Config {
 	mutate(&base)
 	return base

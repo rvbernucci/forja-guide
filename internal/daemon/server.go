@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
@@ -28,22 +29,28 @@ type IDGenerator func() (identity.RunID, error)
 
 // Server is the storage-neutral kernel daemon.
 type Server struct {
-	store     runstate.Repository
-	readiness readinessProbe
-	registry  *contracts.Registry
-	newID     IDGenerator
-	logger    *slog.Logger
-	ready     atomic.Bool
+	store         runstate.Repository
+	readiness     readinessProbe
+	registry      *contracts.Registry
+	newID         IDGenerator
+	logger        *slog.Logger
+	authenticator Authenticator
+	authority     control.Authority
+	ready         atomic.Bool
 }
 
 type readinessProbe interface {
 	Ready(context.Context) error
 }
 
+type principalContextKey struct{}
+
 // New creates a daemon with explicit dependencies.
 func New(
 	store runstate.Repository,
 	registry *contracts.Registry,
+	authenticator Authenticator,
+	authority control.Authority,
 	newID IDGenerator,
 	logger *slog.Logger,
 ) (*Server, error) {
@@ -53,6 +60,13 @@ func New(
 	if registry == nil {
 		return nil, fmt.Errorf("contract registry is required")
 	}
+	if authenticator == nil {
+		return nil, fmt.Errorf("HTTP authenticator is required")
+	}
+	if strings.TrimSpace(authority.TenantID) == "" ||
+		strings.TrimSpace(authority.RepositoryID) == "" {
+		return nil, fmt.Errorf("HTTP authority is required")
+	}
 	if newID == nil {
 		newID = identity.NewRunID
 	}
@@ -60,10 +74,12 @@ func New(
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
 	server := &Server{
-		store:    store,
-		registry: registry,
-		newID:    newID,
-		logger:   logger,
+		store:         store,
+		registry:      registry,
+		authenticator: authenticator,
+		authority:     authority,
+		newID:         newID,
+		logger:        logger,
 	}
 	if probe, ok := store.(readinessProbe); ok {
 		server.readiness = probe
@@ -78,10 +94,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("GET /version", s.handleVersion)
-	mux.HandleFunc("POST /v1/runs", s.handleCreateRun)
-	mux.HandleFunc("GET /v1/runs/{run_id}", s.handleGetRun)
-	mux.HandleFunc("POST /v1/runs/{run_id}/transitions", s.handleTransitionRun)
-	return requestLogMiddleware(s.logger, mux)
+	mux.Handle("POST /v1/runs", s.protect(control.PermissionLegacyRunWrite, s.handleCreateRun))
+	mux.Handle("GET /v1/runs/{run_id}", s.protect(control.PermissionRead, s.handleGetRun))
+	mux.Handle("POST /v1/runs/{run_id}/transitions", s.protect(control.PermissionLegacyRunWrite, s.handleTransitionRun))
+	return requestLogMiddleware(s.logger, s.authenticateV1(mux))
 }
 
 // SetReady changes readiness without changing liveness.
@@ -122,7 +138,62 @@ type createRunRequest struct {
 	Objective string `json:"objective"`
 }
 
-func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Request) {
+type protectedHandler func(http.ResponseWriter, *http.Request, control.Principal)
+
+func (s *Server) authenticateV1(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1" && !strings.HasPrefix(request.URL.Path, "/v1/") {
+			next.ServeHTTP(writer, request)
+			return
+		}
+		principal, err := s.authenticator.Authenticate(request)
+		if err != nil {
+			s.writeError(writer, err)
+			return
+		}
+		ctx := context.WithValue(request.Context(), principalContextKey{}, principal)
+		next.ServeHTTP(writer, request.WithContext(ctx))
+	})
+}
+
+func (s *Server) protect(permission control.Permission, next protectedHandler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		principal, ok := request.Context().Value(principalContextKey{}).(control.Principal)
+		if !ok {
+			s.writeError(writer, unauthenticated())
+			return
+		}
+		if err := s.authorize(principal, permission); err != nil {
+			s.writeError(writer, err)
+			return
+		}
+		next(writer, request, principal)
+	})
+}
+
+func (s *Server) authorize(principal control.Principal, permission control.Permission) error {
+	if principal.ActorType == "" || principal.ActorID == "" {
+		return unauthenticated()
+	}
+	if _, ok := principal.Permissions[permission]; !ok {
+		return fault.New(
+			fault.CodePermissionDenied,
+			"daemon.authorize",
+			fmt.Sprintf("permission %q is required", permission),
+		)
+	}
+	if principal.TenantID != s.authority.TenantID ||
+		principal.RepositoryID != s.authority.RepositoryID {
+		return fault.New(
+			fault.CodePermissionDenied,
+			"daemon.authorize",
+			"principal authority does not match the bound repository",
+		)
+	}
+	return nil
+}
+
+func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Request, principal control.Principal) {
 	var command createRunRequest
 	if err := decodeRequest(writer, request, &command); err != nil {
 		s.writeError(writer, err)
@@ -138,7 +209,7 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 		))
 		return
 	}
-	metadata := commandMetadata(request, id.String())
+	metadata := commandMetadata(request, id.String(), principal)
 	run, err := s.store.CreateRun(
 		request.Context(),
 		id,
@@ -157,7 +228,7 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 	writeJSON(writer, http.StatusCreated, run)
 }
 
-func (s *Server) handleGetRun(writer http.ResponseWriter, request *http.Request) {
+func (s *Server) handleGetRun(writer http.ResponseWriter, request *http.Request, _ control.Principal) {
 	id, err := identity.ParseRunID(request.PathValue("run_id"))
 	if err != nil {
 		s.writeError(writer, fault.Wrap(
@@ -185,7 +256,7 @@ type transitionRunRequest struct {
 	TargetState     string `json:"target_state"`
 }
 
-func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.Request) {
+func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.Request, principal control.Principal) {
 	id, err := identity.ParseRunID(request.PathValue("run_id"))
 	if err != nil {
 		s.writeError(writer, fault.Wrap(
@@ -224,7 +295,7 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 		))
 		return
 	}
-	metadata := commandMetadata(request, requestID.String())
+	metadata := commandMetadata(request, requestID.String(), principal)
 	run, err := s.store.TransitionRun(
 		request.Context(),
 		id,
@@ -244,18 +315,14 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 	writeJSON(writer, http.StatusOK, run)
 }
 
-func commandMetadata(request *http.Request, fallback string) runstate.CommandMetadata {
+func commandMetadata(
+	request *http.Request,
+	fallback string,
+	principal control.Principal,
+) runstate.CommandMetadata {
 	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
 	if key == "" {
 		key = "generated:" + fallback
-	}
-	actorType := strings.TrimSpace(request.Header.Get("Forja-Actor-Type"))
-	if actorType == "" {
-		actorType = "system"
-	}
-	actorID := strings.TrimSpace(request.Header.Get("Forja-Actor-ID"))
-	if actorID == "" {
-		actorID = "anonymous"
 	}
 	correlationID := strings.TrimSpace(request.Header.Get("Forja-Correlation-ID"))
 	if correlationID == "" {
@@ -267,8 +334,8 @@ func commandMetadata(request *http.Request, fallback string) runstate.CommandMet
 	}
 	return runstate.CommandMetadata{
 		IdempotencyKey: key,
-		ActorType:      actorType,
-		ActorID:        actorID,
+		ActorType:      principal.ActorType,
+		ActorID:        principal.ActorID,
 		CorrelationID:  correlationID,
 		CausationID:    causationID,
 	}
@@ -305,6 +372,7 @@ func (s *Server) writeError(writer http.ResponseWriter, err error) {
 		status = http.StatusBadRequest
 	case fault.CodeUnauthenticated:
 		status = http.StatusUnauthorized
+		writer.Header().Set("WWW-Authenticate", `Bearer realm="forjad"`)
 	case fault.CodePermissionDenied:
 		status = http.StatusForbidden
 	case fault.CodeNotFound:

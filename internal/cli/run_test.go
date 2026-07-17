@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -14,13 +15,34 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/daemon"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
+const cliTestBearerToken = "forja-cli-test-bearer-token-000001"
+
+var cliTestAuthority = control.Authority{
+	TenantID:     control.LocalTenantID,
+	RepositoryID: control.LocalRepositoryID,
+}
+
+func cliTestAuthenticator(t *testing.T) daemon.Authenticator {
+	t.Helper()
+	principal, err := control.NewPrincipal("human", "cli-test", control.AllPermissions...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticator, err := daemon.NewStaticBearerAuthenticator(cliTestBearerToken, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticator
+}
+
 func TestRunCreateAndInspect(t *testing.T) {
-	t.Parallel()
+	t.Setenv("FORJA_HTTP_BEARER_TOKEN", cliTestBearerToken)
 	registry, err := contracts.NewRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +53,8 @@ func TestRunCreateAndInspect(t *testing.T) {
 			Time: time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC),
 		}),
 		registry,
+		cliTestAuthenticator(t),
+		cliTestAuthority,
 		func() (identity.RunID, error) { return id, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -99,7 +123,7 @@ func TestRunRejectsIncompleteCommands(t *testing.T) {
 }
 
 func TestMutationOutputFailureReportsReusableIdempotencyKey(t *testing.T) {
-	t.Parallel()
+	t.Setenv("FORJA_HTTP_BEARER_TOKEN", cliTestBearerToken)
 	registry, err := contracts.NewRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +135,8 @@ func TestMutationOutputFailureReportsReusableIdempotencyKey(t *testing.T) {
 	api, err := daemon.New(
 		store,
 		registry,
+		cliTestAuthenticator(t),
+		cliTestAuthority,
 		func() (identity.RunID, error) { return runID, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -204,12 +230,67 @@ func TestDefaultClientDefersDeadlineToCommandContext(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	client, err := NewClient("http://127.0.0.1:8080", nil, registry)
+	client, err := NewClient("http://127.0.0.1:8080", cliTestBearerToken, nil, registry)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if client.httpClient.Timeout != 0 {
 		t.Fatalf("unexpected hidden client timeout: %s", client.httpClient.Timeout)
+	}
+}
+
+func TestClientProtectsBearerOnNetworkEndpoints(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, endpoint := range []string{
+		"http://example.com:8080",
+		"http://192.0.2.1:8080",
+		"http://localhost:8080",
+	} {
+		if _, err := NewClient(endpoint, cliTestBearerToken, nil, registry); err == nil {
+			t.Fatalf("plaintext remote endpoint %q succeeded", endpoint)
+		}
+	}
+	for _, endpoint := range []string{
+		"http://127.0.0.1:8080",
+		"http://[::1]:8080",
+		"https://example.com",
+	} {
+		if _, err := NewClient(endpoint, cliTestBearerToken, nil, registry); err != nil {
+			t.Fatalf("safe endpoint %q failed: %v", endpoint, err)
+		}
+	}
+}
+
+func TestClientNeverForwardsBearerAcrossRedirect(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reached := make(chan struct{}, 1)
+	target := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		reached <- struct{}{}
+	}))
+	defer target.Close()
+	origin := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer origin.Close()
+	client, err := NewClient(origin.URL, cliTestBearerToken, origin.Client(), registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.GetRun(t.Context(), "run_00010203-0405-4607-8809-0a0b0c0d0e0f"); err == nil {
+		t.Fatal("redirect response was accepted")
+	}
+	select {
+	case <-reached:
+		t.Fatal("client followed redirect with a reusable bearer")
+	default:
 	}
 }
 
@@ -230,6 +311,8 @@ func TestClientReusesCallerCommandMetadata(t *testing.T) {
 			Time: time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC),
 		}),
 		registry,
+		cliTestAuthenticator(t),
+		cliTestAuthority,
 		func() (identity.RunID, error) {
 			id := ids[next]
 			next++
@@ -242,7 +325,7 @@ func TestClientReusesCallerCommandMetadata(t *testing.T) {
 	}
 	server := httptest.NewServer(api.Handler())
 	defer server.Close()
-	client, err := NewClient(server.URL, server.Client(), registry)
+	client, err := NewClient(server.URL, cliTestBearerToken, server.Client(), registry)
 	if err != nil {
 		t.Fatal(err)
 	}

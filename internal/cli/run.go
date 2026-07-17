@@ -90,7 +90,7 @@ func runCreate(
 		fmt.Fprintln(stderr, "--objective is required")
 		return 2
 	}
-	client, err := NewClient(*endpoint, nil, registry)
+	client, err := NewClient(*endpoint, os.Getenv("FORJA_HTTP_BEARER_TOKEN"), nil, registry)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -125,7 +125,7 @@ func runGet(
 		fmt.Fprintln(stderr, "--id is required")
 		return 2
 	}
-	client, err := NewClient(*endpoint, nil, registry)
+	client, err := NewClient(*endpoint, os.Getenv("FORJA_HTTP_BEARER_TOKEN"), nil, registry)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2
@@ -162,7 +162,7 @@ func runTransition(
 		fmt.Fprintln(stderr, "--id, --expected-version, and --to are required")
 		return 2
 	}
-	client, err := NewClient(*endpoint, nil, registry)
+	client, err := NewClient(*endpoint, os.Getenv("FORJA_HTTP_BEARER_TOKEN"), nil, registry)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return 2

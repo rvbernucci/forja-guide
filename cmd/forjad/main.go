@@ -11,6 +11,7 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/config"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/daemon"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/logging"
@@ -30,7 +31,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	if err := config.ValidateDaemonListen(cfg.Listen); err != nil {
+		return err
+	}
 	logger := logging.New(os.Stdout, cfg.LogLevel)
+	authenticator, authority, err := httpTrustBoundary(os.Getenv)
+	if err != nil {
+		return err
+	}
 	registry, err := contracts.NewRegistry()
 	if err != nil {
 		return fmt.Errorf("initialize contract registry: %w", err)
@@ -81,6 +89,8 @@ func run() error {
 	server, err := daemon.New(
 		repository,
 		registry,
+		authenticator,
+		authority,
 		identity.NewRunID,
 		logger,
 	)
@@ -113,4 +123,35 @@ func run() error {
 		cfg.ShutdownTimeout,
 		logger,
 	)
+}
+
+func httpTrustBoundary(
+	lookup func(string) string,
+) (daemon.Authenticator, control.Authority, error) {
+	authority := control.Authority{
+		TenantID:     control.LocalTenantID,
+		RepositoryID: control.LocalRepositoryID,
+	}
+	actorType := lookup("FORJA_HTTP_ACTOR_TYPE")
+	if actorType == "" {
+		actorType = "human"
+	}
+	principal, err := control.NewScopedPrincipal(
+		actorType,
+		lookup("FORJA_HTTP_ACTOR_ID"),
+		authority.TenantID,
+		authority.RepositoryID,
+		control.AllPermissions...,
+	)
+	if err != nil {
+		return nil, control.Authority{}, fmt.Errorf("configure HTTP principal: %w", err)
+	}
+	authenticator, err := daemon.NewStaticBearerAuthenticator(
+		lookup("FORJA_HTTP_BEARER_TOKEN"),
+		principal,
+	)
+	if err != nil {
+		return nil, control.Authority{}, fmt.Errorf("configure HTTP authentication: %w", err)
+	}
+	return authenticator, authority, nil
 }

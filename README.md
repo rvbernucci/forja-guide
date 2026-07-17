@@ -19,7 +19,9 @@ validation, a deterministic run state machine, PostgreSQL-backed aggregates and
 events, command idempotency, fenced leases, a transactional outbox, projection
 replay, repository-scoped authority, semantic schema readiness, backup/restore
 tooling, structured redacted logs, graceful shutdown, and reproducible Linux
-builds. The official Go MCP SDK powers an authenticated stdio server with eight
+builds. Its legacy kernel HTTP surface is bearer-authenticated, scope-bound,
+and derives audit identity only from server configuration. The official Go MCP
+SDK powers an authenticated stdio server with eight
 typed, audited tools for Sprint planning, submission, decisions, inspection,
 cancellation, and resumption. Codex worker execution remains planned for Sprint
 04.
@@ -95,6 +97,11 @@ The default `agent` principal may plan, inspect, submit, and cancel work, but it
 cannot approve decisions or resume execution. Those capabilities require a
 separately authenticated `human` or `system` control boundary; model output
 cannot authorize its own execution.
+
+The lower-level `forjad`/`forja` HTTP path is also fail-closed. Set
+`FORJA_HTTP_BEARER_TOKEN` and `FORJA_HTTP_ACTOR_ID` in both process
+environments; health, readiness, and version are the only anonymous endpoints.
+See the [local development guide](docs/06-operations/LOCAL_DEVELOPMENT.md).
 
 ## Initial Technology Direction
 

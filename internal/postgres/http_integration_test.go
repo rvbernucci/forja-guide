@@ -10,9 +10,25 @@ import (
 	"testing"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/daemon"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 )
+
+const postgresHTTPTestBearerToken = "forja-postgres-http-test-token-0001"
+
+func postgresHTTPTestAuthenticator(t *testing.T) daemon.Authenticator {
+	t.Helper()
+	principal, err := control.NewPrincipal("system", "postgres-http-test", control.AllPermissions...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticator, err := daemon.NewStaticBearerAuthenticator(postgresHTTPTestBearerToken, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticator
+}
 
 func TestHTTPCreateRetryReplaysAcrossGeneratedIDs(t *testing.T) {
 	pool := migratedPool(t)
@@ -26,6 +42,8 @@ func TestHTTPCreateRetryReplaysAcrossGeneratedIDs(t *testing.T) {
 	server, err := daemon.New(
 		store,
 		registry,
+		postgresHTTPTestAuthenticator(t),
+		store.Authority(),
 		func() (identity.RunID, error) {
 			id := candidates[next]
 			next++
@@ -69,6 +87,8 @@ func TestHTTPReadinessFailsWhenPostgresPoolCloses(t *testing.T) {
 	server, err := daemon.New(
 		store,
 		registry,
+		postgresHTTPTestAuthenticator(t),
+		store.Authority(),
 		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -135,6 +155,7 @@ func postCreateRetry(t *testing.T, endpoint string) contracts.Run {
 		t.Fatalf("create request: %v", err)
 	}
 	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Authorization", "Bearer "+postgresHTTPTestBearerToken)
 	request.Header.Set("Idempotency-Key", "http-retry-0001")
 	request.Header.Set("Forja-Correlation-ID", "http-retry-0001")
 	response, err := http.DefaultClient.Do(request)

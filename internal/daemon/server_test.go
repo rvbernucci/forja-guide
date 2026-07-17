@@ -14,12 +14,20 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
 const fixedRunID = identity.RunID("run_00010203-0405-4607-8809-0a0b0c0d0e0f")
+
+const testBearerToken = "forja-test-bearer-token-00000001"
+
+var testAuthority = control.Authority{
+	TenantID:     control.LocalTenantID,
+	RepositoryID: control.LocalRepositoryID,
+}
 
 func newTestServer(t *testing.T) *Server {
 	t.Helper()
@@ -32,6 +40,8 @@ func newTestServer(t *testing.T) *Server {
 			Time: time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC),
 		}),
 		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
 		func() (identity.RunID, error) { return fixedRunID, nil },
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -39,6 +49,29 @@ func newTestServer(t *testing.T) *Server {
 		t.Fatal(err)
 	}
 	return server
+}
+
+func newTestAuthenticator(
+	t *testing.T,
+	authority control.Authority,
+	permissions ...control.Permission,
+) Authenticator {
+	t.Helper()
+	principal, err := control.NewScopedPrincipal(
+		"human",
+		"daemon-test",
+		authority.TenantID,
+		authority.RepositoryID,
+		permissions...,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authenticator, err := NewStaticBearerAuthenticator(testBearerToken, principal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authenticator
 }
 
 func TestHTTPMapsAuthenticationAndAuthorizationErrors(t *testing.T) {
@@ -57,6 +90,182 @@ func TestHTTPMapsAuthenticationAndAuthorizationErrors(t *testing.T) {
 			server.writeError(recorder, test.err)
 			if recorder.Code != test.want {
 				t.Fatalf("status=%d want=%d body=%s", recorder.Code, test.want, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestHTTPRoutesRequireAuthenticationBeforeParsing(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := runstate.NewStore(nil)
+	server, err := New(
+		store,
+		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
+		func() (identity.RunID, error) { return fixedRunID, nil },
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runs",
+		bytes.NewBufferString(`{"objective":"must not persist"}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if response.Header().Get("WWW-Authenticate") == "" {
+		t.Fatal("missing bearer challenge")
+	}
+	if _, err := store.Get(fixedRunID); !fault.IsCode(err, fault.CodeNotFound) {
+		t.Fatalf("unauthenticated request changed persistence: %v", err)
+	}
+}
+
+func TestHTTPAuthenticatesEntireV1NamespaceBeforeRouting(t *testing.T) {
+	t.Parallel()
+	handler := newTestServer(t).Handler()
+	for _, test := range []struct {
+		method string
+		path   string
+	}{
+		{method: http.MethodGet, path: "/v1/runs"},
+		{method: http.MethodGet, path: "/v1/unknown"},
+		{method: http.MethodGet, path: "/v1"},
+	} {
+		request := httptest.NewRequest(test.method, test.path, nil)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("%s %s status=%d body=%s", test.method, test.path, response.Code, response.Body.String())
+		}
+	}
+
+	authenticated := httptest.NewRequest(http.MethodGet, "/v1/unknown", nil)
+	authenticated.Header.Set("Authorization", "Bearer "+testBearerToken)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, authenticated)
+	if response.Code != http.StatusNotFound {
+		t.Fatalf("authenticated unknown route status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+type recordingRepository struct {
+	runstate.Repository
+	metadata runstate.CommandMetadata
+}
+
+func (r *recordingRepository) CreateRun(
+	ctx context.Context,
+	id identity.RunID,
+	objective string,
+	metadata runstate.CommandMetadata,
+) (contracts.Run, error) {
+	r.metadata = metadata
+	return r.Repository.CreateRun(ctx, id, objective, metadata)
+}
+
+func TestHTTPAuditIdentityComesOnlyFromAuthenticatedPrincipal(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := &recordingRepository{Repository: runstate.NewStore(nil)}
+	server, err := New(
+		store,
+		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
+		func() (identity.RunID, error) { return fixedRunID, nil },
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runs",
+		bytes.NewBufferString(`{"objective":"Preserve authenticated audit identity"}`),
+	)
+	request.Header.Set("Authorization", "Bearer "+testBearerToken)
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Forja-Actor-Type", "system")
+	request.Header.Set("Forja-Actor-ID", "spoofed-administrator")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusCreated {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if store.metadata.ActorType != "human" || store.metadata.ActorID != "daemon-test" {
+		t.Fatalf("persisted spoofed metadata: %#v", store.metadata)
+	}
+}
+
+func TestNewRequiresHTTPTrustBoundary(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(runstate.NewStore(nil), registry, nil, testAuthority, nil, nil); err == nil {
+		t.Fatal("daemon accepted a missing HTTP authenticator")
+	}
+	if _, err := New(
+		runstate.NewStore(nil),
+		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		control.Authority{},
+		nil,
+		nil,
+	); err == nil {
+		t.Fatal("daemon accepted a missing repository authority")
+	}
+}
+
+func TestHTTPRejectsMissingPermissionAndWrongScope(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, test := range []struct {
+		name        string
+		authority   control.Authority
+		permissions []control.Permission
+	}{
+		{name: "missing write permission", authority: testAuthority, permissions: []control.Permission{control.PermissionRead}},
+		{name: "wrong repository scope", authority: control.Authority{TenantID: control.LocalTenantID, RepositoryID: "other-repository"}, permissions: control.AllPermissions},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			server, err := New(
+				runstate.NewStore(nil),
+				registry,
+				newTestAuthenticator(t, test.authority, test.permissions...),
+				testAuthority,
+				nil,
+				nil,
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := httptest.NewRequest(http.MethodPost, "/v1/runs", bytes.NewBufferString(`{"objective":"must not persist"}`))
+			request.Header.Set("Authorization", "Bearer "+testBearerToken)
+			request.Header.Set("Content-Type", "application/json")
+			response := httptest.NewRecorder()
+			server.Handler().ServeHTTP(response, request)
+			if response.Code != http.StatusForbidden {
+				t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 			}
 		})
 	}
@@ -209,6 +418,8 @@ func TestReadinessChecksDurableDependency(t *testing.T) {
 	server, err := New(
 		unavailableRepository{Store: runstate.NewStore(nil)},
 		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
 		nil,
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	)
@@ -280,6 +491,7 @@ func requestJSON(
 	if body != "" {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	request.Header.Set("Authorization", "Bearer "+testBearerToken)
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)

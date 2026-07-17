@@ -51,7 +51,9 @@ HTTP constructor is provided.
 
 At the daemon HTTP boundary, missing authentication maps to `401`, denied
 capabilities map to `403`, malformed commands map to `400`, and conflicts map
-to `409`. Policy denials are never reported as retryable server failures.
+to `409`. Its bearer secret is environment-only, maps to a server-configured
+principal, and is compared in constant time. Caller-provided actor headers are
+ignored. Policy denials are never reported as retryable server failures.
 
 ## Run State Machine
 
