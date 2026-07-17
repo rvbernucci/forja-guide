@@ -157,3 +157,14 @@
   allowlist, rejects any candidate after receipt introduction, and requires Git
   history for authoritative v2 validation. Reproduction tests cover all four
   exploits.
+
+## Pass 13: Type-Strict Candidate Preservation
+
+- Reviewed commit: `cd75df3f8864ad6df32c36188fcb4b21541e0a76`.
+- Finding: 1 P1 closure-integrity issue from an isolated Codex CLI review.
+- Finding detail: Python dictionary equality considers JSON `true` equal to
+  `1`, and likewise conflates some integer and floating-point values, allowing
+  preserved receipt fields to change type during promotion.
+- Resolution: candidate and receipt projections are now compared as canonical,
+  finite JSON encodings. A regression assertion proves that `true` cannot be
+  promoted as `1`.

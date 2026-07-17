@@ -376,6 +376,10 @@ class EvidenceValidationTests(unittest.TestCase):
         self.assertFalse(
             VALIDATOR.receipt_preserves_candidate(candidate, receipt, review_path)
         )
+        receipt["acceptance"] = {"governed_lifecycle": 1}
+        self.assertFalse(
+            VALIDATOR.receipt_preserves_candidate(candidate, receipt, review_path)
+        )
 
     def test_exact_two_phase_attestation_is_accepted(self) -> None:
         """A minimal direct-child promotion passes every protocol-v2 guard."""

@@ -42,11 +42,11 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "61c066b15999fcba2613673a9eb942bb88d8447b0c9aa08eaac4668cf9d52318"
+      "artifact_sha256": "9e6e0df9b46a2c08fc8e22c1fd3868da7984e39913c14cacdc258918cc652ea1"
     }
   ],
   "resolved_review_findings": {
-    "count": 23,
+    "count": 24,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
@@ -62,7 +62,8 @@
       "closure_trusted_base_review": 2,
       "coderabbit_candidate_protocol_review": 1,
       "legacy_receipt_promotion_review": 1,
-      "promotion_integrity_and_irreversibility_review": 4
+      "promotion_integrity_and_irreversibility_review": 4,
+      "type_strict_promotion_review": 1
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -81,7 +82,8 @@
       "unconditional protocol-v2 candidates with legacy receipt compatibility",
       "content-addressed grandfathering of immutable historical receipts",
       "content-preserving receipt promotion and canonical successor authorization",
-      "irreversible closure state and mandatory Git-history verification"
+      "irreversible closure state and mandatory Git-history verification",
+      "type-strict canonical JSON preservation during receipt promotion"
     ]
   },
   "acceptance": [
@@ -112,5 +114,5 @@
     ]
   },
   "recorded_at": "2026-07-17T21:06:37Z",
-  "amended_at": "2026-07-17T22:12:00Z"
+  "amended_at": "2026-07-17T22:18:45Z"
 }

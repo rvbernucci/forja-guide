@@ -35,7 +35,8 @@ except the declared attestation fields, and rejects later receipt mutation or a
 return to candidate state. The owning roadmap and exact authorized successor
 are derived from the numeric Sprint range; Sprint 14 is terminal and authorizes
 no successor. An authoritative v2 receipt is invalid without complete Git
-history.
+history. Preserved candidate values are compared through canonical JSON so
+type-changing substitutions cannot exploit host-language equality rules.
 
 Sprint 00-02 receipts remain valid under the legacy format only when their path
 and content hash match the three receipts already published. Every closure

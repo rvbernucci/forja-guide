@@ -146,7 +146,24 @@ def receipt_preserves_candidate(
     )
     expected["immutable_review"] = receipt.get("immutable_review")
     expected["closed_at"] = receipt.get("closed_at")
-    return receipt == expected
+    try:
+        canonical_receipt = json.dumps(
+            receipt,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+        canonical_expected = json.dumps(
+            expected,
+            allow_nan=False,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        )
+    except (TypeError, ValueError):
+        return False
+    return canonical_receipt == canonical_expected
 
 
 def attestation_matches_trusted_main(
