@@ -77,11 +77,13 @@ psql "$database_url" \
   --no-align \
   --field-separator=$'\t' \
   --command="
+    -- Nullability is already part of the table signature. PostgreSQL 18 also
+    -- exposes NOT NULL constraints here, unlike earlier supported releases.
     SELECT c.conrelid::regclass::text || ':' || c.conname || ':' || c.contype::text,
            pg_get_constraintdef(c.oid, true)
     FROM pg_constraint AS c
     JOIN pg_namespace AS n ON n.oid=c.connamespace
-    WHERE n.nspname='forja'
+    WHERE n.nspname='forja' AND c.contype <> 'n'::\"char\"
     ORDER BY 1;
   " >"$work/constraints.txt"
 

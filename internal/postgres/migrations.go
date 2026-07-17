@@ -188,6 +188,8 @@ func VerifySchema(
 	if err := verifyTableSignatures(ctx, tx, manifest.Tables); err != nil {
 		return err
 	}
+	// PostgreSQL 18 exposes NOT NULL constraints in pg_constraint. Nullability
+	// is already covered by the cross-version table signatures above.
 	if err := verifySchemaObjectSet(
 		ctx,
 		tx,
@@ -196,7 +198,7 @@ func VerifySchema(
 		        pg_get_constraintdef(c.oid, true)
 		 FROM pg_constraint AS c
 		 JOIN pg_namespace AS n ON n.oid=c.connamespace
-		 WHERE n.nspname='forja'
+		 WHERE n.nspname='forja' AND c.contype <> 'n'::"char"
 		 ORDER BY 1`,
 		manifest.ConstraintsSHA256,
 	); err != nil {
