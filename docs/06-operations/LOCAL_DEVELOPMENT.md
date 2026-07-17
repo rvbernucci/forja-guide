@@ -44,6 +44,7 @@ Create and inspect a synthetic run:
 ```bash
 go run ./cmd/forja run create \
   --endpoint http://127.0.0.1:8080 \
+  --idempotency-key local-create-0001 \
   --objective "Build a governed Sprint"
 
 go run ./cmd/forja run get \
@@ -56,6 +57,7 @@ Transition it with optimistic concurrency:
 ```bash
 go run ./cmd/forja run transition \
   --endpoint http://127.0.0.1:8080 \
+  --idempotency-key local-transition-0001 \
   --id run_REPLACE_WITH_CREATED_ID \
   --expected-version 1 \
   --to awaiting_approval
@@ -64,7 +66,7 @@ go run ./cmd/forja run transition \
 ## Current Durable Prerequisites
 
 - Go 1.26.5;
-- PostgreSQL 14 or newer;
+- PostgreSQL 18;
 - `pg_dump`, `pg_restore`, and `psql` for recovery verification;
 - Python 3.9 or newer and `diff` for release-migration verification.
 

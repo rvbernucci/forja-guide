@@ -12,9 +12,6 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    env:
-      FORJA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
-      PGPASSWORD: postgres
     services:
       postgres:
         image: postgres:18.3-alpine@sha256:54451ecb8ab38c24c3ec123f2fd501303a3a1856a5c66e98cecf2460d5e1e9d7
@@ -74,4 +71,7 @@ jobs:
         run: make validate
 
       - name: Validate PostgreSQL durability
+        env:
+          FORJA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
+          PGPASSWORD: postgres
         run: make test-integration

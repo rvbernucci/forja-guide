@@ -22,16 +22,18 @@ INSERT INTO forja.events (
     2,
     'run.transitioned',
     '1.0',
-    clock_timestamp(),
+    '2026-01-01T00:00:00Z'::timestamptz,
     'system',
     'corruption-fixture',
     'corruption-fixture',
     'corruption-fixture',
     '{
       "run_id": "run_00000000-0000-4000-8000-000000000099",
+      "schema_version": "1.0",
       "objective": "corrupt event stream",
       "state": "running",
       "version": 2,
+      "created_at": "2026-01-01T00:00:00Z",
       "updated_at": "2026-01-01T00:00:00Z"
     }'::jsonb
 );

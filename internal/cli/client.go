@@ -13,7 +13,11 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
+
+// CommandMetadata is the stable identity reused for one logical command.
+type CommandMetadata = runstate.CommandMetadata
 
 // Client calls the forjad HTTP boundary.
 type Client struct {
@@ -52,19 +56,56 @@ func NewClient(
 	}, nil
 }
 
+// PrepareCommand creates or validates metadata before a command is attempted.
+// Callers can retain the result and reuse it after an ambiguous transport error.
+func PrepareCommand(idempotencyKey string) (CommandMetadata, error) {
+	commandID, err := identity.NewRunID()
+	if err != nil {
+		return CommandMetadata{}, fmt.Errorf("generate command identifier: %w", err)
+	}
+	key := strings.TrimSpace(idempotencyKey)
+	if key == "" {
+		key = commandID.String()
+	}
+	metadata := CommandMetadata{
+		IdempotencyKey: key,
+		ActorType:      "human",
+		ActorID:        "forja",
+		CorrelationID:  commandID.String(),
+	}
+	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
+		return CommandMetadata{}, fmt.Errorf("validate command metadata: %w", err)
+	}
+	return metadata, nil
+}
+
 // CreateRun creates a draft run.
 func (c *Client) CreateRun(ctx context.Context, objective string) (contracts.Run, error) {
+	metadata, err := PrepareCommand("")
+	if err != nil {
+		return contracts.Run{}, err
+	}
+	return c.CreateRunWithCommand(ctx, objective, metadata)
+}
+
+// CreateRunWithCommand creates a run using caller-retained command metadata.
+func (c *Client) CreateRunWithCommand(
+	ctx context.Context,
+	objective string,
+	metadata CommandMetadata,
+) (contracts.Run, error) {
 	return c.doRun(
 		ctx,
 		http.MethodPost,
 		"/v1/runs",
 		map[string]string{"objective": objective},
+		&metadata,
 	)
 }
 
 // GetRun retrieves a run.
 func (c *Client) GetRun(ctx context.Context, runID string) (contracts.Run, error) {
-	return c.doRun(ctx, http.MethodGet, "/v1/runs/"+url.PathEscape(runID), nil)
+	return c.doRun(ctx, http.MethodGet, "/v1/runs/"+url.PathEscape(runID), nil, nil)
 }
 
 // TransitionRun applies an optimistic state transition.
@@ -74,6 +115,27 @@ func (c *Client) TransitionRun(
 	expectedVersion int,
 	targetState string,
 ) (contracts.Run, error) {
+	metadata, err := PrepareCommand("")
+	if err != nil {
+		return contracts.Run{}, err
+	}
+	return c.TransitionRunWithCommand(
+		ctx,
+		runID,
+		expectedVersion,
+		targetState,
+		metadata,
+	)
+}
+
+// TransitionRunWithCommand transitions a run with reusable command metadata.
+func (c *Client) TransitionRunWithCommand(
+	ctx context.Context,
+	runID string,
+	expectedVersion int,
+	targetState string,
+	metadata CommandMetadata,
+) (contracts.Run, error) {
 	return c.doRun(
 		ctx,
 		http.MethodPost,
@@ -82,6 +144,7 @@ func (c *Client) TransitionRun(
 			"expected_version": expectedVersion,
 			"target_state":     targetState,
 		},
+		&metadata,
 	)
 }
 
@@ -90,6 +153,7 @@ func (c *Client) doRun(
 	method string,
 	path string,
 	payload any,
+	metadata *CommandMetadata,
 ) (contracts.Run, error) {
 	var body io.Reader
 	if payload != nil {
@@ -105,15 +169,20 @@ func (c *Client) doRun(
 		return contracts.Run{}, fmt.Errorf("create request: %w", err)
 	}
 	if payload != nil {
-		request.Header.Set("Content-Type", "application/json")
-		commandID, err := identity.NewRunID()
-		if err != nil {
-			return contracts.Run{}, fmt.Errorf("generate command identifier: %w", err)
+		if metadata == nil {
+			return contracts.Run{}, fmt.Errorf("command metadata is required")
 		}
-		request.Header.Set("Idempotency-Key", commandID.String())
-		request.Header.Set("Forja-Correlation-ID", commandID.String())
-		request.Header.Set("Forja-Actor-Type", "human")
-		request.Header.Set("Forja-Actor-ID", "forja")
+		if err := runstate.ValidateCommandMetadata(*metadata); err != nil {
+			return contracts.Run{}, fmt.Errorf("validate command metadata: %w", err)
+		}
+		request.Header.Set("Content-Type", "application/json")
+		request.Header.Set("Idempotency-Key", metadata.IdempotencyKey)
+		request.Header.Set("Forja-Correlation-ID", metadata.CorrelationID)
+		request.Header.Set("Forja-Actor-Type", metadata.ActorType)
+		request.Header.Set("Forja-Actor-ID", metadata.ActorID)
+		if metadata.CausationID != nil {
+			request.Header.Set("Forja-Causation-ID", *metadata.CausationID)
+		}
 	}
 	response, err := c.httpClient.Do(request)
 	if err != nil {

@@ -65,9 +65,11 @@ POST requests accept these headers:
 | `Forja-Actor-ID` | Stable actor identity |
 
 The daemon generates safe fallback command metadata when headers are omitted
-and returns the effective `Idempotency-Key`. The CLI always sends fresh command
-identity. In PostgreSQL mode, replaying the same key and request returns the
-stored response; reusing a key for a different command fails with `conflict`.
+and returns the effective `Idempotency-Key`. The CLI creates command identity
+before transport and accepts `--idempotency-key` so an ambiguous command can be
+retried with the same identity. A failed CLI command prints its effective key.
+Both repositories replay the stored response when the same key and request are
+reused; reusing a key for a different command fails with `conflict`.
 Keys are scoped by tenant, repository, and command scope, so unrelated
 aggregates and repositories do not collide. The request fingerprint also binds
 the actor and causation identity, so a key cannot silently replay a command

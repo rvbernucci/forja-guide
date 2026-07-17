@@ -157,7 +157,12 @@ func TestReadinessCanFailClosed(t *testing.T) {
 	t.Parallel()
 	daemon := newTestServer(t)
 	daemon.SetReady(false)
-	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/readyz",
+		nil,
+	)
 	response := httptest.NewRecorder()
 	daemon.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusServiceUnavailable {
@@ -188,7 +193,12 @@ func TestReadinessChecksDurableDependency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/readyz",
+		nil,
+	)
 	response := httptest.NewRecorder()
 	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusServiceUnavailable {
@@ -236,7 +246,12 @@ func requestJSON(
 	body string,
 ) *http.Response {
 	t.Helper()
-	request, err := http.NewRequest(method, url, bytes.NewBufferString(body))
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		method,
+		url,
+		bytes.NewBufferString(body),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

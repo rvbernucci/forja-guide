@@ -103,7 +103,16 @@ func TestHTTPReadinessFailsWhenPostgresPoolCloses(t *testing.T) {
 
 func assertReadyStatus(t *testing.T, endpoint string, want int) {
 	t.Helper()
-	response, err := http.Get(endpoint + "/readyz")
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		endpoint+"/readyz",
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("create readiness request: %v", err)
+	}
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatalf("call readiness endpoint: %v", err)
 	}
@@ -116,7 +125,8 @@ func assertReadyStatus(t *testing.T, endpoint string, want int) {
 
 func postCreateRetry(t *testing.T, endpoint string) contracts.Run {
 	t.Helper()
-	request, err := http.NewRequest(
+	request, err := http.NewRequestWithContext(
+		t.Context(),
 		http.MethodPost,
 		endpoint+"/v1/runs",
 		bytes.NewBufferString(`{"objective":"Replay an HTTP create command"}`),

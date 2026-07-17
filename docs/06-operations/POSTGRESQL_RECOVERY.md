@@ -40,20 +40,21 @@ scripts/postgres_restore.sh \
   /secure/backups/forja-2026-07-16.dump
 ```
 
-The restore command refuses any target containing user relations. It restores
-the archive as one transaction without destructive cleanup, requires exact
-version, name, and checksum parity with the release migration files, verifies
-all canonical column signatures, defaults, identities, constraints, and indexes
-against the same manifest embedded by the runtime, verifies the complete
-trigger set and every trigger function body, verifies bootstrap authority, and
-semantically replays run event streams. Replay rejects gaps, invalid payloads,
-envelope mismatches, changed immutable fields, timestamp drift, and illegal FSM
-transitions. It also requires replayed runs to equal canonical rows, every event
-to have its matching outbox message, every attempt to equal its complete
-fencing-authorized creation event, and every idempotency receipt to match the
-recomputed command fingerprint, response, and status. A failed validation can
-therefore affect only a disposable staging target, never replace a populated
-database.
+The restore command uses a schema-only archive to refuse any target containing
+dumpable user-defined objects, including functions and event triggers. It
+restores the archive as one transaction without destructive cleanup, requires
+exact version, name, and checksum parity with the release migration files,
+verifies all canonical column signatures, defaults, identities, constraints,
+and indexes against the same manifest embedded by the runtime, verifies the
+complete trigger set and every trigger function body, verifies bootstrap
+authority, and semantically replays run event streams. Replay rejects gaps,
+invalid payloads, envelope mismatches, changed immutable fields, timestamp
+drift, and illegal FSM transitions. It also requires replayed runs to equal
+canonical rows, every event to have its matching outbox message, every attempt
+to equal its complete fencing-authorized creation event, and every idempotency
+receipt to match the recomputed command fingerprint, response, and status. A
+failed validation can therefore affect only a disposable staging target, never
+replace a populated database.
 
 The same non-destructive verification can be run independently:
 

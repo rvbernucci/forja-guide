@@ -42,19 +42,25 @@ func run() error {
 			context.Background(),
 			15*time.Second,
 		)
-		defer cancelConnect()
 		pool, openErr := postgres.Open(
 			connectContext,
 			cfg.DatabaseURL,
 			int32(cfg.DatabaseMaxConn),
 		)
+		cancelConnect()
 		if openErr != nil {
 			return fmt.Errorf("open PostgreSQL: %w", openErr)
 		}
 		closeDatabase = pool.Close
 		defer closeDatabase()
 		if cfg.DatabaseMigrate {
-			if migrateErr := postgres.Migrate(connectContext, pool); migrateErr != nil {
+			migrationContext, cancelMigration := context.WithTimeout(
+				context.Background(),
+				15*time.Second,
+			)
+			migrateErr := postgres.Migrate(migrationContext, pool)
+			cancelMigration()
+			if migrateErr != nil {
 				return fmt.Errorf("migrate PostgreSQL: %w", migrateErr)
 			}
 		}

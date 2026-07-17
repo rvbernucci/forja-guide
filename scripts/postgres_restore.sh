@@ -9,6 +9,12 @@ fi
 database_url="$1"
 backup_file="$2"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+guard_dump="$(mktemp "${TMPDIR:-/tmp}/forja-restore-guard.XXXXXX")"
+
+cleanup() {
+  rm -f "$guard_dump"
+}
+trap cleanup EXIT
 
 if [[ ! -r "$backup_file" ]]; then
   echo "backup is not readable: $backup_file" >&2
@@ -17,22 +23,18 @@ fi
 
 pg_restore --list "$backup_file" >/dev/null
 
-relation_count="$(
-  psql "$database_url" \
-    --no-psqlrc \
-    --set=ON_ERROR_STOP=1 \
-    --tuples-only \
-    --no-align \
-    --command="
-      SELECT count(*)
-      FROM pg_class AS c
-      JOIN pg_namespace AS n ON n.oid=c.relnamespace
-      WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
-        AND n.nspname !~ '^pg_toast'
-        AND c.relkind IN ('r', 'p', 'v', 'm', 'S', 'f');
-    "
+pg_dump \
+  --format=custom \
+  --schema-only \
+  --no-owner \
+  --no-acl \
+  --file="$guard_dump" \
+  "$database_url"
+object_count="$(
+  pg_restore --list "$guard_dump" |
+    awk 'substr($0, 1, 1) != ";" && NF { count++ } END { print count + 0 }'
 )"
-if [[ "$relation_count" != "0" ]]; then
+if [[ "$object_count" != "0" ]]; then
   echo "refusing destructive restore: target database is not empty" >&2
   echo "restore into a dedicated empty staging database, validate it, then promote it" >&2
   exit 1

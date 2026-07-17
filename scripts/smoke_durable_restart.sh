@@ -48,7 +48,12 @@ start_daemon() {
         head -n 1
     )"
     if [[ -n "$endpoint" ]] &&
-      curl --fail --silent "$endpoint/readyz" >/dev/null; then
+      curl \
+        --connect-timeout 0.5 \
+        --max-time 2 \
+        --fail \
+        --silent \
+        "$endpoint/readyz" >/dev/null; then
       return 0
     fi
     if ! kill -0 "$daemon_pid" 2>/dev/null; then
@@ -105,4 +110,3 @@ if created != recovered:
 ' "$work/create.json" "$work/get.json"
 
 echo "Durable restart smoke test passed: process restart preserved canonical state."
-

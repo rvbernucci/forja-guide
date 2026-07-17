@@ -12,6 +12,7 @@ import (
 )
 
 const testRunID = identity.RunID("run_00010203-0405-4607-8809-0a0b0c0d0e0f")
+const secondTestRunID = identity.RunID("run_11111111-2222-4333-8444-555555555555")
 
 func TestStoreLifecycle(t *testing.T) {
 	t.Parallel()
@@ -174,6 +175,109 @@ func TestCommandMetadataValidation(t *testing.T) {
 		if err := ValidateCommandMetadata(metadata); err == nil {
 			t.Fatalf("invalid metadata accepted: %#v", metadata)
 		}
+	}
+}
+
+func TestInMemoryRepositoryReplaysSuccessfulCommands(t *testing.T) {
+	t.Parallel()
+	store := NewStore(clock.Fixed{
+		Time: time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC),
+	})
+	createMetadata := testCommandMetadata("create-command-0001")
+	created, err := store.CreateRun(
+		t.Context(),
+		testRunID,
+		"Replay this in-memory command",
+		createMetadata,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	replayed, err := store.CreateRun(
+		t.Context(),
+		secondTestRunID,
+		"Replay this in-memory command",
+		createMetadata,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if replayed != created {
+		t.Fatalf("create replay = %#v, want %#v", replayed, created)
+	}
+	if _, err := store.CreateRun(
+		t.Context(),
+		secondTestRunID,
+		"Different command body",
+		createMetadata,
+	); !fault.IsCode(err, fault.CodeConflict) {
+		t.Fatalf("expected create idempotency conflict, got %v", err)
+	}
+
+	transitionMetadata := testCommandMetadata("transition-command-0001")
+	transitioned, err := store.TransitionRun(
+		t.Context(),
+		testRunID,
+		1,
+		StateAwaitingApproval,
+		transitionMetadata,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transitionReplay, err := store.TransitionRun(
+		t.Context(),
+		testRunID,
+		1,
+		StateAwaitingApproval,
+		transitionMetadata,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if transitionReplay != transitioned {
+		t.Fatalf("transition replay = %#v, want %#v", transitionReplay, transitioned)
+	}
+	if _, err := store.TransitionRun(
+		t.Context(),
+		testRunID,
+		1,
+		StateCancelling,
+		transitionMetadata,
+	); !fault.IsCode(err, fault.CodeConflict) {
+		t.Fatalf("expected transition idempotency conflict, got %v", err)
+	}
+}
+
+func TestInMemoryRepositoryScopesIdempotencyByCommand(t *testing.T) {
+	t.Parallel()
+	store := NewStore(clock.Fixed{Time: time.Now().UTC()})
+	metadata := testCommandMetadata("shared-command-key")
+	if _, err := store.CreateRun(
+		t.Context(),
+		testRunID,
+		"Create with a scoped key",
+		metadata,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.TransitionRun(
+		t.Context(),
+		testRunID,
+		1,
+		StateAwaitingApproval,
+		metadata,
+	); err != nil {
+		t.Fatalf("scoped key rejected across command types: %v", err)
+	}
+}
+
+func testCommandMetadata(key string) CommandMetadata {
+	return CommandMetadata{
+		IdempotencyKey: key,
+		ActorType:      "agent",
+		ActorID:        "co-architect",
+		CorrelationID:  key,
 	}
 }
 

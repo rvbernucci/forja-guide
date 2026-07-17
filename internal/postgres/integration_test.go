@@ -2128,6 +2128,32 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if _, err := pool.Exec(t.Context(), "DROP SCHEMA forja CASCADE"); err != nil {
 		t.Fatalf("destroy source before restore: %v", err)
 	}
+	if _, err := pool.Exec(t.Context(), `
+			CREATE FUNCTION public.forja_restore_guard_probe()
+			RETURNS void
+			LANGUAGE plpgsql
+			AS $$
+			BEGIN
+			  NULL;
+			END
+			$$`); err != nil {
+		t.Fatalf("create non-relation restore hazard: %v", err)
+	}
+	refuseFunction := exec.CommandContext(
+		t.Context(),
+		"../../scripts/postgres_restore.sh",
+		integrationDatabaseURL(t),
+		backupPath,
+	)
+	if output, err := refuseFunction.CombinedOutput(); err == nil {
+		t.Fatalf("restore accepted a target with a user-defined function\n%s", output)
+	}
+	if _, err := pool.Exec(
+		t.Context(),
+		"DROP FUNCTION public.forja_restore_guard_probe()",
+	); err != nil {
+		t.Fatalf("remove non-relation restore hazard: %v", err)
+	}
 	restore := exec.CommandContext(
 		t.Context(),
 		"../../scripts/postgres_restore.sh",
