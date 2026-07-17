@@ -1,0 +1,113 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "validators": [
+    {
+      "name": "protected main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29612776423",
+      "head_sha": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "HTTP boundary hardening pull request workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29612638985",
+      "head_sha": "3e7cde9103507810971b94062a9c14957a0b9103",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "isolated Codex CLI post-merge implementation review",
+      "type": "independent",
+      "result": "passed",
+      "model": "gpt-5.6-sol",
+      "reviewed_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+      "artifact_path": "docs/evidence/sprint-03/reviews/merged-implementation-review.md",
+      "artifact_sha256": "be957018b5d2429f10c90bf40484e6edb96731c7bc641a5ec54c1838f08c9190",
+      "summary": "No actionable regression was found after independent review of authentication, authorization, scope, audit identity, bearer transport, and the complete validation suite."
+    },
+    {
+      "name": "CodeRabbit pull request status context",
+      "type": "automated_status",
+      "result": "completed_without_review_due_to_rate_limit",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/12",
+      "summary": "The required status completed successfully; no review findings were posted because the service reported a rate limit. Independent Codex reviews supplied the substantive review lane."
+    },
+    {
+      "name": "independent closure evidence review",
+      "type": "independent",
+      "result": "findings_resolved_pending_immutable_review",
+      "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
+      "artifact_sha256": "88febed2a80cac6837d05f65b31d72f3a84b955e9fccc92ad7586c5de66a0cdd"
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 19,
+    "sources": {
+      "pre_hardening_post_merge_review": 1,
+      "first_http_boundary_review": 2,
+      "follow_up_http_boundary_review": 1,
+      "closure_completion_integrity_review": 1,
+      "closure_gate_semantics_review": 1,
+      "closure_immutable_binding_review": 1,
+      "closure_capability_gate_consistency_review": 1,
+      "closure_evidence_chronology_review": 1,
+      "closure_attestation_integrity_review": 2,
+      "closure_publication_topology_review": 2,
+      "closure_publication_enforcement_review": 2,
+      "closure_trusted_base_review": 2,
+      "coderabbit_candidate_protocol_review": 1,
+      "legacy_receipt_promotion_review": 1
+    },
+    "themes": [
+      "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
+      "remote plaintext bearer transport",
+      "authentication before routing across the complete /v1 namespace",
+      "daemon-only loopback validation without breaking stdio MCP configuration",
+      "closure review provenance and premature next-Sprint authorization",
+      "non-circular separation of closure evidence from external PR publication controls",
+      "immutable binding between independent review and the exact closure candidate",
+      "preservation of capability gates established by authoritative prior receipts",
+      "chronologically credible amendments to audit evidence",
+      "protocol downgrade prevention and minimal attestation diffs",
+      "squash-stable two-phase publication and Sprint-specific roadmap ownership",
+      "published-main ancestry enforcement and decision-record governance",
+      "immutable CI base injection and stale-main rejection",
+      "unconditional protocol-v2 candidates with legacy receipt compatibility",
+      "content-addressed grandfathering of immutable historical receipts"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "a client can propose, inspect, approve, and cancel a synthetic Sprint",
+      "result": "proven"
+    },
+    {
+      "criterion": "replayed MCP calls are idempotent",
+      "result": "proven"
+    },
+    {
+      "criterion": "free-form chat text cannot bypass a pending approval contract",
+      "result": "proven"
+    },
+    {
+      "criterion": "every tool action emits correlated audit events",
+      "result": "proven"
+    }
+  ],
+  "operational_observability": {
+    "result": "passed",
+    "signals": [
+      "structured success and failure audit events include tool, actor, correlation, causation, and replay identity",
+      "HTTP faults distinguish unauthenticated, forbidden, conflict, invalid input, unavailable dependency, and internal failure",
+      "readiness fails when the durable dependency or canonical schema is unavailable",
+      "command receipts can be verified mechanically against domain and audit event evidence"
+    ]
+  },
+  "recorded_at": "2026-07-17T21:06:37Z",
+  "amended_at": "2026-07-17T22:03:00Z"
+}

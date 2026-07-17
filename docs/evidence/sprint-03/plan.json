@@ -1,0 +1,27 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "name": "MCP Control Surface",
+  "status": "completed",
+  "objective": "Allow a Co-architect to plan, inspect, submit, decide, cancel, and resume governed work through stable MCP tools without bypassing authorization or approval contracts.",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "scope": [
+    "official Go MCP SDK integration and stdio transport",
+    "eight versioned governed control tools and compatibility fixtures",
+    "pending-decision-bound approval and rejection",
+    "tenant- and repository-scoped authorization before persistence",
+    "replay-safe commands with correlated success and failure audit events",
+    "transactional PostgreSQL migration for Sprints, decisions, and governed command evidence",
+    "fail-closed authenticated loopback HTTP boundary for the legacy kernel API",
+    "deterministic fake clients, PostgreSQL integration tests, and migration concurrency tests"
+  ],
+  "out_of_scope": [
+    "worker process supervision and Codex CLI execution",
+    "remote public HTTP exposure or TLS termination",
+    "worktree isolation and delivery leases",
+    "semantic retrieval, graph projection, and context brokering"
+  ],
+  "author": "codex",
+  "independent_validator": "GitHub Actions, CodeRabbit status context, and isolated Codex CLI reviews",
+  "completed_at": "2026-07-17T21:00:03Z"
+}

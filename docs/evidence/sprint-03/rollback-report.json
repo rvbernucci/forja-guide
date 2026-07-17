@@ -1,0 +1,42 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "03",
+  "status": "passed",
+  "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
+  "strategy": "Stop MCP and legacy HTTP command intake, drain in-flight commands, verify no pending decision blocks downgrade, apply migration 000003 down under the command barrier, then deploy the exact pre-Sprint-03 commit. Prefer forward repair after governed Sprint or decision data becomes operationally authoritative.",
+  "rollback_target": "8a91fe9f654764d3717b831a3c6e4df01ec0f481",
+  "tests": [
+    {
+      "name": "code rollback target",
+      "command": "git worktree add --detach <temporary-directory> 8a91fe9f654764d3717b831a3c6e4df01ec0f481 && make -C <temporary-directory> validate",
+      "result": "passed",
+      "summary": "The exact pre-Sprint-03 main commit passed its complete validation gate in an isolated worktree."
+    },
+    {
+      "name": "governed migration rollback after feature use",
+      "test": "TestGovernedMigrationRollsBackAfterFeatureUse",
+      "result": "passed"
+    },
+    {
+      "name": "pending decision downgrade guard",
+      "test": "TestGovernedMigrationRollbackRefusesPendingDecision",
+      "result": "passed"
+    },
+    {
+      "name": "concurrent writer rollback barriers",
+      "tests": [
+        "TestGovernedRollbackWaitsAtCommandBarrierBeforeParentLocks",
+        "TestGovernedRollbackLocksCommandWritersBeforeSafetyCheck"
+      ],
+      "result": "passed"
+    },
+    {
+      "name": "clean rollback and re-upgrade",
+      "test": "TestMigrationsCleanRollbackAndUpgrade",
+      "result": "passed"
+    }
+  ],
+  "data_migration_required": true,
+  "runtime_state_impact": "Migration 000003 owns Sprint, task, and decision state plus governed receipt constraints. Downgrade is supported only through its guarded down migration; reverting code while retaining an incompatible live schema is unsupported.",
+  "recorded_at": "2026-07-17T21:00:03Z"
+}
