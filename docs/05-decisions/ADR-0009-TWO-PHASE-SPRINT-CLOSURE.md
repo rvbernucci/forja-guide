@@ -37,6 +37,9 @@ are derived from the numeric Sprint range; Sprint 14 is terminal and authorizes
 no successor. An authoritative v2 receipt is invalid without complete Git
 history. Preserved candidate values are compared through canonical JSON so
 type-changing substitutions cannot exploit host-language equality rules.
+Numeric tokens are decoded losslessly for promotion comparison. Authoritative
+validation rejects shallow repositories, noncanonical Sprint identifiers, and
+any receipt path with more than one introduction across full merge history.
 
 Sprint 00-02 receipts remain valid under the legacy format only when their path
 and content hash match the three receipts already published. Every closure
@@ -64,4 +67,5 @@ CI must fetch full Git history. Tests must reject unpublished candidates,
 candidate or receipt protocol downgrade, ambiguous closure files, noncanonical
 successors, reviewed-content changes, closure reopening, non-promotion changes,
 review artifacts outside the Sprint evidence directory, history-free v2
-receipts, and receipts modified after their attestation commit.
+receipts, shallow history, repeated receipt introductions across merged
+branches, and receipts modified after their attestation commit.

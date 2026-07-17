@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import subprocess
@@ -65,6 +66,7 @@ FORBIDDEN_PATTERNS = {
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
+CANONICAL_SPRINT_ID = re.compile(r"^(?:0[0-9]|1[0-4])$")
 
 SPRINT_ROADMAP_RANGES = (
     (0, 4, "docs/04-roadmap/SPRINTS_00_04_FOUNDATION.md"),
@@ -85,9 +87,72 @@ LEGACY_RECEIPT_SHA256 = {
 }
 
 
+class LosslessJSONNumber:
+    """Preserve the exact JSON number token during attestation comparison."""
+
+    __slots__ = ("kind", "lexeme")
+
+    def __init__(self, kind: str, lexeme: str) -> None:
+        self.kind = kind
+        self.lexeme = lexeme
+
+    def __eq__(self, other: object) -> bool:
+        return (
+            isinstance(other, LosslessJSONNumber)
+            and self.kind == other.kind
+            and self.lexeme == other.lexeme
+        )
+
+
+def reject_json_constant(value: str) -> None:
+    """Reject non-standard NaN and infinity constants in reviewed evidence."""
+    raise ValueError(f"non-standard JSON constant: {value}")
+
+
+def load_lossless_json(value: str) -> object:
+    """Decode JSON without rounding or conflating numeric representations."""
+    return json.loads(
+        value,
+        parse_int=lambda token: LosslessJSONNumber("integer", token),
+        parse_float=lambda token: LosslessJSONNumber("float", token),
+        parse_constant=reject_json_constant,
+    )
+
+
+def json_values_equal(left: object, right: object) -> bool:
+    """Compare JSON-compatible values without host-language type coercion."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        if left.keys() != right.keys():
+            return False
+        return all(json_values_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(
+            json_values_equal(left_item, right_item)
+            for left_item, right_item in zip(left, right, strict=True)
+        )
+    if isinstance(left, float):
+        return math.isfinite(left) and math.isfinite(right) and left.hex() == right.hex()
+    return left == right
+
+
+def repository_has_complete_history() -> bool:
+    """Require a Git repository whose visible history is not shallow."""
+    if not (ROOT / ".git").exists():
+        return False
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-parse", "--is-shallow-repository"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "false"
+
+
 def sprint_roadmap_path(sprint_id: str) -> str | None:
     """Return the detailed roadmap that owns a canonical numeric Sprint ID."""
-    if not sprint_id.isdigit():
+    if CANONICAL_SPRINT_ID.fullmatch(sprint_id) is None:
         return None
     sprint_number = int(sprint_id)
     for first, last, roadmap in SPRINT_ROADMAP_RANGES:
@@ -98,7 +163,7 @@ def sprint_roadmap_path(sprint_id: str) -> str | None:
 
 def canonical_sprint_successor(sprint_id: str) -> tuple[bool, str | None]:
     """Return whether a Sprint is planned and its exact authorized successor."""
-    if not sprint_id.isdigit():
+    if CANONICAL_SPRINT_ID.fullmatch(sprint_id) is None:
         return False, None
     sprint_number = int(sprint_id)
     if not 0 <= sprint_number <= 14:
@@ -146,24 +211,7 @@ def receipt_preserves_candidate(
     )
     expected["immutable_review"] = receipt.get("immutable_review")
     expected["closed_at"] = receipt.get("closed_at")
-    try:
-        canonical_receipt = json.dumps(
-            receipt,
-            allow_nan=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-        canonical_expected = json.dumps(
-            expected,
-            allow_nan=False,
-            ensure_ascii=False,
-            separators=(",", ":"),
-            sort_keys=True,
-        )
-    except (TypeError, ValueError):
-        return False
-    return canonical_receipt == canonical_expected
+    return json_values_equal(receipt, expected)
 
 
 def attestation_matches_trusted_main(
@@ -231,6 +279,11 @@ def validate_evidence_sets(errors: list[str]) -> None:
             continue
 
         expected_sprint_id = sprint_dir.name.removeprefix("sprint-")
+        if CANONICAL_SPRINT_ID.fullmatch(expected_sprint_id) is None:
+            errors.append(
+                "noncanonical Sprint evidence directory: "
+                f"{sprint_dir.relative_to(ROOT)}"
+            )
         close_path = sprint_dir / "close-receipt.json"
         candidate_path = sprint_dir / CLOSURE_CANDIDATE_FILE
         closure_paths = [
@@ -369,6 +422,7 @@ def validate_evidence_sets(errors: list[str]) -> None:
                         "-C",
                         str(ROOT),
                         "log",
+                        "--full-history",
                         "--diff-filter=A",
                         "--no-renames",
                         "--format=%H",
@@ -421,8 +475,10 @@ def validate_v2_close_receipt(
     if not valid:
         errors.append(f"Sprint v2 close receipt is not review-bound: {label}")
         return
-    if not (ROOT / ".git").exists():
-        errors.append(f"Sprint v2 close receipt requires Git history: {label}")
+    if not repository_has_complete_history():
+        errors.append(
+            f"Sprint v2 close receipt requires complete Git history: {label}"
+        )
         return
 
     candidate_result = subprocess.run(
@@ -459,8 +515,8 @@ def validate_v2_close_receipt(
         text=True,
     )
     try:
-        candidate = json.loads(candidate_document.stdout)
-    except json.JSONDecodeError:
+        candidate = load_lossless_json(candidate_document.stdout)
+    except (json.JSONDecodeError, ValueError):
         candidate = None
     if (
         candidate_document.returncode != 0
@@ -482,6 +538,7 @@ def validate_v2_close_receipt(
             "-C",
             str(ROOT),
             "log",
+            "--full-history",
             "--diff-filter=A",
             "--no-renames",
             "--format=%H",
@@ -495,6 +552,9 @@ def validate_v2_close_receipt(
     commits = introduction.stdout.splitlines()
     if introduction.returncode != 0 or not commits:
         errors.append(f"cannot resolve v2 attestation commit: {label}")
+        return
+    if len(commits) != 1:
+        errors.append(f"v2 close receipt has multiple introductions: {label}")
         return
     attestation_commit = commits[0]
     if not attestation_matches_trusted_main(
@@ -526,7 +586,15 @@ def validate_v2_close_receipt(
     if not review_path.startswith(review_prefix):
         errors.append(f"v2 review artifact is outside Sprint evidence: {label}")
         return
-    if not receipt_preserves_candidate(candidate, receipt, review_path):
+    try:
+        lossless_receipt = load_lossless_json(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
+        lossless_receipt = None
+    if not isinstance(lossless_receipt, dict) or not receipt_preserves_candidate(
+        candidate,
+        lossless_receipt,
+        review_path,
+    ):
         errors.append(f"v2 receipt changes reviewed candidate content: {label}")
         return
     detailed_roadmap = sprint_roadmap_path(sprint_id)
