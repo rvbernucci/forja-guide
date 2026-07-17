@@ -26,6 +26,13 @@ import (
 func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) < 2 {
+		t.Fatalf("migration count = %d, want at least 2", len(migrations))
+	}
 
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate clean database: %v", err)
@@ -40,8 +47,8 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	).Scan(&count); err != nil {
 		t.Fatalf("count migrations: %v", err)
 	}
-	if count != 2 {
-		t.Fatalf("migration count = %d, want 2", count)
+	if count != len(migrations) {
+		t.Fatalf("migration count = %d, want %d", count, len(migrations))
 	}
 	if _, err := pool.Exec(
 		t.Context(),
@@ -55,10 +62,6 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("rollback accepted modified migration history")
 	}
-	migrations, err := loadMigrations()
-	if err != nil {
-		t.Fatalf("load migrations: %v", err)
-	}
 	if _, err := pool.Exec(
 		t.Context(),
 		"UPDATE forja.schema_migrations SET checksum=$1 WHERE version=1",
@@ -66,8 +69,10 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	); err != nil {
 		t.Fatalf("restore migration checksum: %v", err)
 	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback latest migration: %v", err)
+	for index := len(migrations) - 1; index > 0; index-- {
+		if err := RollbackLast(t.Context(), pool); err != nil {
+			t.Fatalf("rollback migration %d: %v", migrations[index].version, err)
+		}
 	}
 	var runsTableExists bool
 	if err := pool.QueryRow(t.Context(), `
@@ -79,7 +84,7 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 		t.Fatalf("inspect tables after incremental rollback: %v", err)
 	}
 	if !runsTableExists {
-		t.Fatal("base schema was removed while rolling back migration 000002")
+		t.Fatal("base schema was removed while rolling back incremental migrations")
 	}
 	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback base migration: %v", err)
@@ -107,8 +112,8 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load migrations: %v", err)
 	}
-	if len(migrations) != 2 {
-		t.Fatalf("migration count = %d, want 2", len(migrations))
+	if len(migrations) < 2 {
+		t.Fatalf("migration count = %d, want at least 2", len(migrations))
 	}
 	if _, err := pool.Exec(t.Context(), migrations[0].up); err != nil {
 		t.Fatalf("apply version one schema: %v", err)

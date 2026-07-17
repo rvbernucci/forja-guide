@@ -31,6 +31,8 @@ destination, so a known-good recovery point cannot be silently overwritten.
 The credential-bearing URL is accepted only through the environment. Before a
 client starts, any embedded password is separated into `PGPASSWORD`; only the
 sanitized, password-free URI can appear in a PostgreSQL client argument.
+See [ADR-0006](../05-decisions/ADR-0006-POSTGRES-CREDENTIAL-BOUNDARY.md) for
+the threat model and trust-boundary decision.
 
 ## Restore Drill
 
