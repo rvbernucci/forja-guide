@@ -69,6 +69,14 @@ Embedded migrations run by default under a PostgreSQL advisory lock. Set
 `FORJA_DATABASE_AUTO_MIGRATE=false` only when a deployment pipeline applies
 migrations separately.
 
+Incremental migrations require a quiescent writer window. Their relation lock
+barrier uses `NOWAIT`, and their projection-watermark lock uses a bounded lock
+timeout. Startup fails immediately when an older process, projection rebuild,
+or command transaction is active. Drain writers and retry; do not loop
+migrations while the previous release is still accepting work.
+See [ADR-0007](../05-decisions/ADR-0007-FAIL-FAST-INCREMENTAL-MIGRATIONS.md)
+for the complete lock protocol and compatibility boundary.
+
 Create and inspect a synthetic run:
 
 ```bash

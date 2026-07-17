@@ -266,6 +266,10 @@ func TestTransitionRunLocksSprintBeforeRun(t *testing.T) {
 	if err := <-transitionResult; err != nil {
 		t.Fatalf("transition after lock release: %v", err)
 	}
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
+	if output, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("verify generic Sprint cancellation evidence: %v\n%s", err, output)
+	}
 }
 
 func TestDurableResumeReplaysAfterRunAdvances(t *testing.T) {
@@ -1169,7 +1173,11 @@ func TestGovernedRollbackLocksCommandWritersBeforeSafetyCheck(t *testing.T) {
 		})
 		submitResult <- submitErr
 	}()
-	waitForLockQuery(t, pool, "%FROM forja.idempotency_keys%")
+	waitForLockQuery(
+		t,
+		pool,
+		"%LOCK TABLE forja.idempotency_keys IN ACCESS SHARE MODE%",
+	)
 
 	if err := blocker.Rollback(t.Context()); err != nil {
 		t.Fatal(err)

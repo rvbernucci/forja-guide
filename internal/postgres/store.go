@@ -804,6 +804,16 @@ func lockIdempotency(
 	scope string,
 	key string,
 ) error {
+	// Incremental migrations acquire this relation exclusively before touching
+	// aggregate tables. Take the compatible command-side barrier before any
+	// command can lock an aggregate, including CreateAttempt's delayed replay
+	// lookup after lease validation.
+	if _, err := tx.Exec(
+		ctx,
+		"LOCK TABLE forja.idempotency_keys IN ACCESS SHARE MODE",
+	); err != nil {
+		return databaseError("postgres.lockIdempotency.lockMigrationBarrier", err)
+	}
 	_, err := tx.Exec(
 		ctx,
 		"SELECT pg_advisory_xact_lock($1)",

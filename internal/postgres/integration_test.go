@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
@@ -274,6 +275,362 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err != nil {
 		t.Fatalf("verify generated migration evidence: %v\n%s", err, output)
+	}
+}
+
+func prepareVersionTwoIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) *Store {
+	t.Helper()
+	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) < 3 {
+		t.Fatalf("migration count = %d, want at least 3", len(migrations))
+	}
+	for _, item := range migrations[:2] {
+		if _, err := pool.Exec(t.Context(), item.up); err != nil {
+			t.Fatalf("apply migration %d: %v", item.version, err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			INSERT INTO forja.schema_migrations (version, name, checksum)
+			VALUES ($1, $2, $3)`, item.version, item.name, item.checksum); err != nil {
+			t.Fatalf("record migration %d: %v", item.version, err)
+		}
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.sprints (
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			status, version, created_at, updated_at
+		) VALUES (
+			'00000000-0000-4000-8000-000000000099', $1, $2, 99,
+			'Migration ordering', 'proposed', 1,
+			statement_timestamp(), statement_timestamp()
+		)`, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return store
+}
+
+func TestIncrementalMigrationSerializesOutboxWriters(t *testing.T) {
+	pool := integrationPool(t)
+	store := prepareVersionTwoIncrementalUpgrade(t, pool)
+
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen := true
+	defer func() {
+		if blockerOpen {
+			_ = blocker.Rollback(t.Context())
+		}
+	}()
+	if _, err := blocker.Exec(t.Context(), "LOCK TABLE forja.schema_migrations IN SHARE MODE"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	migrationResult := make(chan error, 1)
+	go func() { migrationResult <- Migrate(ctx, pool) }()
+	waitForLockQuery(
+		t,
+		pool,
+		"%INSERT INTO forja.schema_migrations%",
+	)
+
+	auditResult := make(chan error, 1)
+	go func() {
+		auditResult <- store.RecordToolAudit(ctx, control.AuditRecord{
+			ToolName:       "forja.get_run",
+			Outcome:        "succeeded",
+			ActorType:      "agent",
+			ActorID:        "migration-order-auditor",
+			CorrelationID:  "corr-migration-order-audit",
+			IdempotencyKey: "migration-order-audit",
+		})
+	}()
+	waitForLockQuery(t, pool, "%SELECT pg_advisory_xact_lock%")
+	select {
+	case err := <-auditResult:
+		t.Fatalf("audit writer bypassed the incremental migration barrier: %v", err)
+	default:
+	}
+
+	if err := blocker.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen = false
+	if err := <-migrationResult; err != nil {
+		t.Fatalf("incremental migration after barrier release: %v", err)
+	}
+	if err := <-auditResult; err != nil {
+		t.Fatalf("audit writer after migration commit: %v", err)
+	}
+
+	var migrationOutboxMax, auditOutboxID int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT
+			COALESCE(max(o.outbox_id) FILTER (WHERE e.actor_id='migration-003'), 0),
+			COALESCE(max(o.outbox_id) FILTER (WHERE e.actor_id='migration-order-auditor'), 0)
+		FROM forja.outbox AS o
+		JOIN forja.events AS e
+		  ON e.tenant_id=o.tenant_id
+		 AND e.repository_id=o.repository_id
+		 AND e.event_id=o.event_id`).Scan(&migrationOutboxMax, &auditOutboxID); err != nil {
+		t.Fatal(err)
+	}
+	if migrationOutboxMax == 0 || auditOutboxID == 0 || migrationOutboxMax >= auditOutboxID {
+		t.Fatalf(
+			"outbox commit order migration=%d audit=%d",
+			migrationOutboxMax,
+			auditOutboxID,
+		)
+	}
+	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIncrementalMigrationStopsAttemptBeforeAggregateLock(t *testing.T) {
+	pool := integrationPool(t)
+	store := prepareVersionTwoIncrementalUpgrade(t, pool)
+	runID := mustRunID(t)
+	if _, err := store.CreateRun(
+		t.Context(),
+		runID,
+		"Prove incremental migration command lock ordering",
+		testMetadata("migration-order-run"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.AcquireLease(
+		t.Context(),
+		persistence.LeaseKey{
+			TenantID:     DefaultTenantID,
+			RepositoryID: DefaultRepositoryID,
+			ResourceType: "scheduler",
+			ResourceID:   "migration-order",
+		},
+		"migration-order-worker",
+		time.Minute,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen := true
+	defer func() {
+		if blockerOpen {
+			_ = blocker.Rollback(t.Context())
+		}
+	}()
+	if _, err := blocker.Exec(t.Context(), "LOCK TABLE forja.schema_migrations IN SHARE MODE"); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	migrationResult := make(chan error, 1)
+	go func() { migrationResult <- Migrate(ctx, pool) }()
+	waitForLockQuery(
+		t,
+		pool,
+		"%INSERT INTO forja.schema_migrations%",
+	)
+
+	attemptResult := make(chan error, 1)
+	go func() {
+		_, attemptErr := store.CreateAttempt(
+			ctx,
+			runID,
+			"queued",
+			testMetadata("migration-order-attempt"),
+			persistence.LeaseProof{
+				LeaseKey: lease.LeaseKey, OwnerID: lease.OwnerID,
+				FencingToken: lease.FencingToken,
+			},
+		)
+		attemptResult <- attemptErr
+	}()
+	waitForLockQuery(
+		t,
+		pool,
+		"%LOCK TABLE forja.idempotency_keys IN ACCESS SHARE MODE%",
+	)
+	var attemptLocksRun bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT EXISTS (
+			SELECT 1
+			FROM pg_stat_activity AS activity
+			JOIN pg_locks AS held ON held.pid=activity.pid
+			WHERE activity.datname=current_database()
+			  AND activity.wait_event_type='Lock'
+			  AND activity.query LIKE $1
+			  AND held.granted
+			  AND held.relation='forja.runs'::regclass
+		)`, "%LOCK TABLE forja.idempotency_keys IN ACCESS SHARE MODE%").Scan(&attemptLocksRun); err != nil {
+		t.Fatal(err)
+	}
+	if attemptLocksRun {
+		t.Fatal("attempt locked its Run before the migration barrier")
+	}
+
+	if err := blocker.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen = false
+	if err := <-migrationResult; err != nil {
+		t.Fatalf("incremental migration after barrier release: %v", err)
+	}
+	if err := <-attemptResult; err != nil {
+		t.Fatalf("attempt writer after migration commit: %v", err)
+	}
+	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIncrementalMigrationFailsFastUntilPreviousVersionWriterDrains(t *testing.T) {
+	pool := integrationPool(t)
+	store := prepareVersionTwoIncrementalUpgrade(t, pool)
+	runID := mustRunID(t)
+	if _, err := store.CreateRun(
+		t.Context(),
+		runID,
+		"Drain a previous-version writer during incremental migration",
+		testMetadata("previous-version-create"),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	previousWriter, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerOpen := true
+	defer func() {
+		if writerOpen {
+			_ = previousWriter.Rollback(t.Context())
+		}
+	}()
+	if _, err := previousWriter.Exec(t.Context(), `
+		SELECT 1 FROM forja.runs
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3
+		FOR UPDATE`, DefaultTenantID, DefaultRepositoryID, runID.String()); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	started := time.Now()
+	migrationErr := Migrate(ctx, pool)
+	if migrationErr == nil {
+		t.Fatal("incremental migration accepted an active previous-version writer")
+	}
+	var databaseErr *pgconn.PgError
+	if !errors.As(migrationErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("active-writer migration error = %v, want lock_not_available", migrationErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("active-writer migration failed after %s, want fail-fast", elapsed)
+	}
+
+	metadata := testMetadata("previous-version-event")
+	if err := store.appendEvent(
+		ctx,
+		previousWriter,
+		"projection",
+		"projection_previous_version_drain",
+		1,
+		"projection.previous_version_drain",
+		postgresTimestamp(store.clock.Now()),
+		[]byte(`{}`),
+		metadata,
+	); err != nil {
+		t.Fatalf("previous-version writer could not append while migration waited: %v", err)
+	}
+	if err := previousWriter.Commit(ctx); err != nil {
+		t.Fatalf("commit previous-version writer: %v", err)
+	}
+	writerOpen = false
+	if err := Migrate(ctx, pool); err != nil {
+		t.Fatalf("retry incremental migration after previous writer drained: %v", err)
+	}
+
+	var eventOutboxCount int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*)
+		FROM forja.events AS event
+		JOIN forja.outbox AS message
+		  ON message.tenant_id=event.tenant_id
+		 AND message.repository_id=event.repository_id
+		 AND message.event_id=event.event_id
+		WHERE event.aggregate_id='projection_previous_version_drain'`,
+	).Scan(&eventOutboxCount); err != nil {
+		t.Fatal(err)
+	}
+	if eventOutboxCount != 1 {
+		t.Fatalf("previous-version event/outbox count = %d, want 1", eventOutboxCount)
+	}
+	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestIncrementalMigrationFailsFastWhileProjectionWatermarkIsActive(t *testing.T) {
+	pool := integrationPool(t)
+	prepareVersionTwoIncrementalUpgrade(t, pool)
+
+	projector, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectorOpen := true
+	defer func() {
+		if projectorOpen {
+			_ = projector.Rollback(t.Context())
+		}
+	}()
+	if _, err := projector.Exec(
+		t.Context(),
+		"SELECT pg_advisory_xact_lock($1)",
+		advisoryLockKey(outboxWatermarkLock),
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	migrationErr := Migrate(t.Context(), pool)
+	if migrationErr == nil {
+		t.Fatal("incremental migration accepted an active projection watermark")
+	}
+	var databaseErr *pgconn.PgError
+	if !errors.As(migrationErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("active-projector migration error = %v, want lock_not_available", migrationErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("active-projector migration failed after %s, want fail-fast", elapsed)
+	}
+
+	if err := projector.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	projectorOpen = false
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("retry incremental migration after projection drained: %v", err)
+	}
+	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
 	}
 }
 

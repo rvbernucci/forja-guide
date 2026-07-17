@@ -126,6 +126,16 @@ decision rows, or MCP audit evidence, preventing stale replay after a later
 re-upgrade. Generic Sprint 02-compatible transition receipts remain. Legacy Sprints
 that require generated Runs during upgrade receive matching `run.created`
 events and outbox messages, so projection rebuild remains authoritative.
+
+Incremental forward migration is deliberately not a mixed-version online
+operation. Before applying it, stop command intake and projection rebuilds,
+allow active transactions to finish, and then run the migration. The migration
+first acquires the projection watermark with a bounded lock timeout, then its
+complete relation barrier with `NOWAIT`; lock contention fails closed with
+PostgreSQL `lock_not_available` (`55P03`). Retry only after confirming the
+writer window is quiescent.
+See [ADR-0007](../05-decisions/ADR-0007-FAIL-FAST-INCREMENTAL-MIGRATIONS.md)
+for the authoritative barrier order and writer classes.
 Before removing an incompatible governed receipt, the rollback writes an
 immutable `idempotency.receipt_invalidated` marker containing its exact command
 identity, command scope, command-anchor event, and referenced domain event ID.
