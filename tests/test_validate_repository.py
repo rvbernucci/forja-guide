@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -241,89 +242,155 @@ class EvidenceValidationTests(unittest.TestCase):
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("not-numeric"))
         self.assertIsNone(VALIDATOR.sprint_roadmap_path("15"))
 
-    def test_candidate_must_be_published_to_origin_main(self) -> None:
-        """A side-branch candidate cannot authorize a squash-unsafe receipt."""
+    def test_attestation_must_match_trusted_main_topology(self) -> None:
+        """Protected CI rejects unpublished and stale-base attestations."""
         with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "source"
-            clone = Path(directory) / "clone"
-            source.mkdir()
+            root = Path(directory)
             subprocess.run(
-                ["git", "init", "--initial-branch=main", str(source)],
+                ["git", "init", "--initial-branch=main", str(root)],
                 check=True,
                 capture_output=True,
             )
             subprocess.run(
-                ["git", "-C", str(source), "config", "user.name", "test"],
+                ["git", "-C", str(root), "config", "user.name", "test"],
                 check=True,
             )
             subprocess.run(
-                ["git", "-C", str(source), "config", "user.email", "test@test"],
+                ["git", "-C", str(root), "config", "user.email", "test@test"],
                 check=True,
             )
-            (source / "state").write_text("main\n", encoding="utf-8")
+            (root / "state").write_text("main\n", encoding="utf-8")
             subprocess.run(
-                ["git", "-C", str(source), "add", "state"],
+                ["git", "-C", str(root), "add", "state"],
                 check=True,
             )
             subprocess.run(
-                ["git", "-C", str(source), "commit", "-m", "main"],
-                check=True,
-                capture_output=True,
-            )
-            subprocess.run(
-                ["git", "clone", str(source), str(clone)],
+                ["git", "-C", str(root), "commit", "-m", "main"],
                 check=True,
                 capture_output=True,
             )
-            subprocess.run(
-                ["git", "-C", str(clone), "config", "user.name", "test"],
+            base = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
                 check=True,
-            )
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
             subprocess.run(
-                ["git", "-C", str(clone), "config", "user.email", "test@test"],
-                check=True,
-            )
-            subprocess.run(
-                ["git", "-C", str(clone), "switch", "-c", "candidate"],
+                ["git", "-C", str(root), "switch", "-c", "candidate"],
                 check=True,
                 capture_output=True,
             )
-            (clone / "candidate").write_text("candidate\n", encoding="utf-8")
+            (root / "candidate").write_text("candidate\n", encoding="utf-8")
             subprocess.run(
-                ["git", "-C", str(clone), "add", "candidate"],
+                ["git", "-C", str(root), "add", "candidate"],
                 check=True,
             )
             subprocess.run(
-                ["git", "-C", str(clone), "commit", "-m", "candidate"],
+                ["git", "-C", str(root), "commit", "-m", "candidate"],
                 check=True,
                 capture_output=True,
             )
             candidate = subprocess.run(
-                ["git", "-C", str(clone), "rev-parse", "HEAD"],
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            (root / "attestation").write_text("attestation\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "attestation"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "attestation"],
+                check=True,
+                capture_output=True,
+            )
+            attestation = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
                 check=True,
                 capture_output=True,
                 text=True,
             ).stdout.strip()
 
-            with patch.object(VALIDATOR, "ROOT", clone):
+            environment = {
+                "FORJA_ENFORCE_TRUSTED_MAIN": "1",
+                "FORJA_TRUSTED_MAIN_SHA": base,
+            }
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                environment,
+            ):
                 self.assertFalse(
-                    VALIDATOR.commit_is_published_to_main(candidate)
+                    VALIDATOR.attestation_matches_trusted_main(
+                        candidate,
+                        attestation,
+                    )
+                )
+
+            environment["FORJA_TRUSTED_MAIN_SHA"] = candidate
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                environment,
+            ):
+                self.assertTrue(
+                    VALIDATOR.attestation_matches_trusted_main(
+                        candidate,
+                        attestation,
+                    )
                 )
 
             subprocess.run(
                 [
                     "git",
                     "-C",
-                    str(clone),
-                    "update-ref",
-                    "refs/remotes/origin/main",
+                    str(root),
+                    "switch",
+                    "-c",
+                    "advanced",
                     candidate,
                 ],
                 check=True,
+                capture_output=True,
             )
-            with patch.object(VALIDATOR, "ROOT", clone):
+            (root / "unrelated").write_text("unrelated\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "-C", str(root), "add", "unrelated"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(root), "commit", "-m", "unrelated"],
+                check=True,
+                capture_output=True,
+            )
+            advanced = subprocess.run(
+                ["git", "-C", str(root), "rev-parse", "HEAD"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            environment["FORJA_TRUSTED_MAIN_SHA"] = advanced
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                environment,
+            ):
+                self.assertFalse(
+                    VALIDATOR.attestation_matches_trusted_main(
+                        candidate,
+                        attestation,
+                    )
+                )
+
+            environment["FORJA_TRUSTED_MAIN_SHA"] = attestation
+            with patch.object(VALIDATOR, "ROOT", root), patch.dict(
+                os.environ,
+                environment,
+            ):
                 self.assertTrue(
-                    VALIDATOR.commit_is_published_to_main(candidate)
+                    VALIDATOR.attestation_matches_trusted_main(
+                        candidate,
+                        attestation,
+                    )
                 )
 
     def test_invalid_basis_commit_is_rejected(self) -> None:

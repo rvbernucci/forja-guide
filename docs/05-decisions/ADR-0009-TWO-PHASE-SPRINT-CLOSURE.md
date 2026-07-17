@@ -25,11 +25,13 @@ Sprint 03 and later use closure protocol v2 in two public phases:
    It replaces the candidate with `close-receipt.json`, adds the hash-pinned
    review artifact, and updates only the master and owning detailed roadmaps.
 
-The repository validator requires the reviewed candidate to be reachable from
-`origin/main`, verifies the fail-closed candidate at that commit, requires the
-attestation introduction commit to be its direct child, allowlists the exact
-promotion paths, and rejects later receipt mutation. The owning roadmap is
-derived from the numeric Sprint range.
+Protected CI injects its immutable pull-request base SHA or validated `main`
+head. Before merge, the repository validator requires that trusted SHA to equal
+the reviewed candidate. After publication, it requires the attestation commit
+to be an ancestor of the trusted `main` head. It also verifies the fail-closed
+candidate, requires the attestation introduction commit to be its direct child,
+allowlists the exact promotion paths, and rejects later receipt mutation. The
+owning roadmap is derived from the numeric Sprint range.
 
 Sprint 00-02 receipts remain valid under the legacy format. This compatibility
 exception cannot be used for Sprint 03 or later.
@@ -46,8 +48,8 @@ Positive:
 Negative:
 
 - closing a Sprint requires two pull requests and two protected CI passes;
-- full-history checkout and the `origin/main` tracking reference are required
-  to validate an authoritative protocol-v2 receipt.
+- full-history checkout and the protected CI base/head SHA are required to
+  validate an authoritative protocol-v2 receipt.
 
 ## Guardrail
 

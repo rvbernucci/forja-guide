@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 import subprocess
 import sys
@@ -83,8 +84,18 @@ def sprint_roadmap_path(sprint_id: str) -> str | None:
     return None
 
 
-def commit_is_published_to_main(commit: str) -> bool:
-    """Return whether a commit is already reachable from public origin/main."""
+def attestation_matches_trusted_main(
+    candidate_commit: str,
+    attestation_commit: str,
+) -> bool:
+    """Bind protected CI to its immutable PR base or published main head."""
+    if os.environ.get("FORJA_ENFORCE_TRUSTED_MAIN") != "1":
+        return True
+    trusted_main = os.environ.get("FORJA_TRUSTED_MAIN_SHA", "")
+    if COMMIT_SHA.fullmatch(trusted_main) is None:
+        return False
+    if candidate_commit == trusted_main:
+        return True
     result = subprocess.run(
         [
             "git",
@@ -92,8 +103,8 @@ def commit_is_published_to_main(commit: str) -> bool:
             str(ROOT),
             "merge-base",
             "--is-ancestor",
-            commit,
-            "refs/remotes/origin/main",
+            attestation_commit,
+            trusted_main,
         ],
         check=False,
         capture_output=True,
@@ -322,12 +333,6 @@ def validate_v2_close_receipt(
                 f"{candidate_commit}"
             )
             return
-        if not commit_is_published_to_main(candidate_commit):
-            errors.append(
-                f"reviewed candidate is not published to origin/main: {label}"
-            )
-            return
-
         candidate_path = path.parent / CLOSURE_CANDIDATE_FILE
         candidate_relative = candidate_path.relative_to(ROOT).as_posix()
         candidate_document = subprocess.run(
@@ -381,6 +386,14 @@ def validate_v2_close_receipt(
             errors.append(f"cannot resolve v2 attestation commit: {label}")
             return
         attestation_commit = commits[0]
+        if not attestation_matches_trusted_main(
+            candidate_commit,
+            attestation_commit,
+        ):
+            errors.append(
+                f"v2 attestation is not based on trusted main: {label}"
+            )
+            return
         parent = subprocess.run(
             [
                 "git",

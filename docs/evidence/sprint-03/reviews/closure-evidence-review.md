@@ -104,3 +104,16 @@
   reachable from `origin/main`, with a repository-level Git test covering the
   unpublished and published states. ADR-0009 records the two-phase trust model,
   compatibility rule, exact promotion surface, and full-history CI guardrail.
+
+## Pass 9: Trusted Base and Main-Tip Stability
+
+- Reviewed commit: `9ea0f8fd0fb3dc3304b52adc352ea5c80fbbce4e`.
+- Findings: 2 P1 publication-integrity issues.
+- Finding details: the `origin/main` tracking ref was mutable inside the
+  checkout, and an ancestry-only check still accepted an attestation after
+  unrelated work advanced `main`, producing an invalid squash parent.
+- Resolution: protected CI now injects the immutable pull-request base SHA or
+  validated `main` head. A pre-merge attestation requires exact candidate/base
+  equality; a published attestation must be an ancestor of the trusted main
+  head. Tests cover an unpublished candidate, a valid candidate base, a stale
+  advanced base, and a published attestation.
