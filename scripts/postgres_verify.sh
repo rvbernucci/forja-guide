@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ "$#" -ne 1 ]]; then
-  echo "usage: postgres_verify.sh <database-url>" >&2
+if [[ "$#" -ne 0 ]]; then
+  echo "usage: FORJA_DATABASE_URL=<database-url> postgres_verify.sh" >&2
   exit 2
 fi
 
-database_url="$1"
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "$root/scripts/postgres_connection.sh"
+forja_prepare_postgres_connection
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 umask 077
@@ -28,7 +29,7 @@ for up in sorted(migrations.glob("*.up.sql")):
     print(int(prefix), name, digest, sep="\t")
 PY
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -50,7 +51,7 @@ if ! diff \
   exit 1
 fi
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -70,7 +71,7 @@ psql "$database_url" \
     ORDER BY table_name;
   " >"$work/tables.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -87,7 +88,7 @@ psql "$database_url" \
     ORDER BY 1;
   " >"$work/constraints.txt"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -100,7 +101,7 @@ psql "$database_url" \
     ORDER BY 1;
   " >"$work/indexes.txt"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -127,7 +128,7 @@ psql "$database_url" \
     ORDER BY 1;
   " >"$work/triggers.txt"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -153,7 +154,7 @@ psql "$database_url" \
   " >"$work/trigger.tsv"
 
 authority="$(
-  psql "$database_url" \
+  psql "$FORJA_PG_SAFE_URL" \
     --no-psqlrc \
     --set=ON_ERROR_STOP=1 \
     --tuples-only \
@@ -169,7 +170,7 @@ authority="$(
     "
 )"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -189,7 +190,7 @@ psql "$database_url" \
     ORDER BY tenant_id, repository_id, aggregate_id, aggregate_version;
   " >"$work/run-events.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -208,7 +209,7 @@ psql "$database_url" \
     ORDER BY tenant_id, repository_id, run_id;
   " >"$work/runs.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -236,7 +237,7 @@ psql "$database_url" \
     ORDER BY a.tenant_id, r.repository_id, a.attempt_id;
   " >"$work/attempts.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -256,7 +257,7 @@ psql "$database_url" \
     ORDER BY tenant_id, repository_id, aggregate_id, aggregate_version;
   " >"$work/attempt-events.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -273,7 +274,7 @@ psql "$database_url" \
     LEFT JOIN forja.outbox AS o ON o.event_id=e.event_id;
   " >"$work/event-outbox-integrity.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \
@@ -296,7 +297,7 @@ psql "$database_url" \
              aggregate_version;
   " >"$work/command-events.tsv"
 
-psql "$database_url" \
+psql "$FORJA_PG_SAFE_URL" \
   --no-psqlrc \
   --set=ON_ERROR_STOP=1 \
   --tuples-only \

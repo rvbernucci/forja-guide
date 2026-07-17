@@ -1,7 +1,7 @@
 {
   "version": "1.0",
   "tables": {
-    "attempts": "attempt_id:text:NO:NO::,tenant_id:uuid:NO:NO::,run_id:text:NO:NO::,ordinal:int4:NO:NO::,status:text:NO:NO::,lease_resource_type:text:NO:NO::,lease_resource_id:text:NO:NO::,worker_id:text:NO:NO::,fencing_token:int8:NO:NO::,started_at:timestamptz:YES:NO::,finished_at:timestamptz:YES:NO::,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
+    "attempts": "attempt_id:text:NO:NO::,tenant_id:uuid:NO:NO::,run_id:text:NO:NO::,ordinal:int4:NO:NO::,status:text:NO:NO::,lease_resource_type:text:NO:NO::,lease_resource_id:text:NO:NO::,worker_id:text:NO:NO::,fencing_token:int8:NO:NO::,started_at:timestamptz:YES:NO::,finished_at:timestamptz:YES:NO::,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::statement_timestamp(),updated_at:timestamptz:NO:NO::statement_timestamp()",
     "events": "event_id:text:NO:NO::,tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,aggregate_type:text:NO:NO::,aggregate_id:text:NO:NO::,aggregate_version:int4:NO:NO::,event_type:text:NO:NO::,schema_version:text:NO:NO::,occurred_at:timestamptz:NO:NO::,actor_type:text:NO:NO::,actor_id:text:NO:NO::,correlation_id:text:NO:NO::,causation_id:text:YES:NO::,idempotency_key:text:NO:NO::,payload:jsonb:NO:NO::",
     "idempotency_keys": "tenant_id:uuid:NO:NO::,scope:text:NO:NO::,idempotency_key:text:NO:NO::,request_hash:bytea:NO:NO::,response_status:int4:NO:NO::,response_body:jsonb:NO:NO::,created_at:timestamptz:NO:NO::clock_timestamp(),expires_at:timestamptz:YES:NO::",
     "leases": "tenant_id:uuid:NO:NO::,repository_id:uuid:NO:NO::,resource_type:text:NO:NO::,resource_id:text:NO:NO::,owner_id:text:NO:NO::,fencing_token:int8:NO:NO::,acquired_at:timestamptz:NO:NO::,expires_at:timestamptz:NO:NO::,updated_at:timestamptz:NO:NO::",
@@ -16,8 +16,8 @@
     "tasks": "task_id:uuid:NO:NO::,tenant_id:uuid:NO:NO::,sprint_id:uuid:NO:NO::,title:text:NO:NO::,status:text:NO:NO::'pending'::text,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
     "tenants": "tenant_id:uuid:NO:NO::,slug:text:NO:NO::,display_name:text:NO:NO::,created_at:timestamptz:NO:NO::clock_timestamp()"
   },
-  "constraints_sha256": "d07781c1a21eef2fcc50937f162b40d83799debf0e51c799a5a5681d7cb2901d",
-  "indexes_sha256": "8898b85fa39368173acc317c4452a5bf8542dd344be2e72419c2bd8db5b4fcd4",
+  "constraints_sha256": "7680b8120ccf073e97314ebd5363d76551050c245b1371c4b68616134e4206d0",
+  "indexes_sha256": "2b0b92c2182d09b0de3e8ef8feb045e68835462aa5e0b61638e46bb32c6a6e64",
   "triggers_sha256": "6e8f45fb97a771ba5f6cb4d0ac03d2726cb3be717cf364b404157440bc274e45",
   "trigger": {
     "relation": "forja.events",
