@@ -3,7 +3,7 @@
   "sprint_id": "02",
   "name": "Durable State",
   "status": "closed",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
@@ -33,5 +33,5 @@
     "metrics-summary.json"
   ],
   "next_sprint_authorized": "03",
-  "closed_at": "2026-07-17T02:23:33Z"
+  "closed_at": "2026-07-17T02:41:13Z"
 }

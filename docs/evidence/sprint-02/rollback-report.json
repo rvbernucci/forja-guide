@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "02",
   "status": "passed",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "strategy": "Prefer a forward repair after live durable writes. Before writes, migrations can roll back in reverse order. A full return to Sprint 01 requires restoring a pre-Sprint-02 backup or accepting destructive removal of the Forja schema before reverting code.",
   "rollback_target": "47112ddc24b250429650bc2cb059156a5bebb388",
   "tests": [
@@ -36,5 +36,5 @@
   ],
   "data_migration_required": true,
   "runtime_state_impact": "Reverting the code without reconciling the database is unsupported. Preserve a verified backup and either migrate backward before new writes or restore the backup; forward repair is safest once Sprint 02 data exists.",
-  "recorded_at": "2026-07-17T02:23:33Z"
+  "recorded_at": "2026-07-17T02:41:13Z"
 }

@@ -4,7 +4,7 @@
   "name": "Durable State",
   "status": "completed",
   "objective": "Make state transitions, leases, command replay, and projection delivery durable and recoverable in PostgreSQL.",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "scope": [
     "versioned PostgreSQL migrations for canonical state, events, leases, idempotency, outbox, checkpoints, and dead letters",
     "transactional optimistic run and attempt persistence with immutable events",
@@ -23,5 +23,5 @@
   ],
   "author": "codex",
   "independent_validator": "GitHub Actions, CodeRabbit, and isolated Codex CLI review",
-  "completed_at": "2026-07-17T02:23:33Z"
+  "completed_at": "2026-07-17T02:41:13Z"
 }

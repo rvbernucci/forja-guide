@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "02",
   "status": "passed",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "tests": [
     {
       "name": "complete local quality gate",
@@ -20,7 +20,7 @@
       "name": "PostgreSQL integration coverage",
       "command": "FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 -coverprofile=<temporary-file> ./internal/postgres",
       "result": "passed",
-      "statement_coverage_percent": 75.1
+      "statement_coverage_percent": 75.2
     },
     {
       "name": "migration compatibility",
@@ -45,13 +45,24 @@
       ]
     },
     {
+      "name": "lease TTL and commit-fence portability",
+      "result": "passed",
+      "coverage": [
+        "one millisecond through 24-hour lease serialization",
+        "deterministic attempt rejection at commit",
+        "database-deadline outbox rejection at commit",
+        "five consecutive targeted executions on PostgreSQL 14.19",
+        "official PostgreSQL 18.3 pull request and main workflows"
+      ]
+    },
+    {
       "name": "official PostgreSQL 18.3 CI",
       "result": "passed",
-      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549460728",
-      "head_sha": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550445554",
+      "head_sha": "1f020cdfde72e32acb20b506db8cab154356c636",
       "summary": "The protected main workflow passed against the digest-pinned PostgreSQL 18.3 service and matching PostgreSQL 18 client."
     }
   ],
   "compatibility_note": "PostgreSQL 14.19 on macOS passed as an additional local compatibility check; PostgreSQL 18.3 is the official CI and supported target.",
-  "recorded_at": "2026-07-17T02:23:33Z"
+  "recorded_at": "2026-07-17T02:41:13Z"
 }

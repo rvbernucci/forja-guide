@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "02",
   "status": "passed",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "checks": [
     {
       "name": "Go vulnerability reachability scan",
@@ -41,5 +41,5 @@
     "Remote authentication and user-facing authorization are deferred to the governed MCP boundary in Sprint 03.",
     "Migrations are applied transactionally; online zero-downtime index orchestration is intentionally outside Sprint 02 and requires an operator maintenance plan."
   ],
-  "recorded_at": "2026-07-17T02:23:33Z"
+  "recorded_at": "2026-07-17T02:41:13Z"
 }

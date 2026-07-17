@@ -2,28 +2,28 @@
   "evidence_version": "1.0",
   "sprint_id": "02",
   "status": "passed",
-  "basis_commit": "3bf9af5c96dc6d95ab262f5a27da31bc0782d5f8",
+  "basis_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
   "validators": [
     {
       "name": "protected main repository quality workflow",
       "type": "mechanical",
       "result": "passed",
-      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549460728",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550445554",
       "database": "PostgreSQL 18.3"
     },
     {
-      "name": "pull request hardening workflow",
+      "name": "latest pull request hardening workflow",
       "type": "mechanical",
       "result": "passed",
-      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29549390531"
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550377150"
     },
     {
       "name": "isolated Codex CLI merged-commit review",
       "type": "independent",
       "result": "passed",
       "model": "gpt-5.6-sol",
-      "report_sha256": "5bfee7df3e1f304ffa0c9e5b920203249c1817cce462b17d3e6d01cdc268fd6a",
-      "summary": "No actionable correctness issue was identified after independent migration, credential-boundary, verification, and backup/restore analysis."
+      "report_sha256": "53421aa6e7bb214a4c58151665f5b50a633379f6cbe53bb39c511ac177f571d7",
+      "summary": "No actionable regression was identified after independent review of the merged TTL conversion and commit-fence hardening, including repeated PostgreSQL integration."
     },
     {
       "name": "CodeRabbit pull request review",
@@ -36,13 +36,14 @@
     }
   ],
   "resolved_review_findings": {
-    "count": 17,
+    "count": 19,
     "sources": {
       "pull_request_5_coderabbit_threads": 9,
       "post_merge_independent_audit": 3,
       "pre_pull_request_6_independent_review": 2,
       "follow_up_independent_review": 2,
-      "pull_request_6_coderabbit_actionable_threads": 1
+      "pull_request_6_coderabbit_actionable_threads": 1,
+      "closure_ci_hardening": 2
     },
     "themes": [
       "migration immutability and upgrade compatibility",
@@ -50,7 +51,8 @@
       "repository-scoped outbox and dead-letter lineage",
       "credential-free process arguments and multi-host URI preservation",
       "legacy attempt timestamp backfill and macOS Bash compatibility",
-      "architecture decision documentation and future-proof migration tests"
+      "architecture decision documentation and future-proof migration tests",
+      "portable TTL serialization and host-speed-independent commit-fence fixtures"
     ]
   },
   "operational_observability": {
@@ -84,5 +86,5 @@
       "result": "proven"
     }
   ],
-  "recorded_at": "2026-07-17T02:23:33Z"
+  "recorded_at": "2026-07-17T02:41:13Z"
 }
