@@ -271,3 +271,21 @@ func Validate(cfg Config) error {
 	}
 	return nil
 }
+
+// ValidateDaemonListen restricts the built-in plaintext HTTP server to loopback.
+// Other processes may share Config without consuming its listen address.
+func ValidateDaemonListen(listen string) error {
+	host, _, err := net.SplitHostPort(listen)
+	if err != nil {
+		return fmt.Errorf("invalid listen address %q: %w", listen, err)
+	}
+	if !isLoopbackHost(host) {
+		return fmt.Errorf("HTTP daemon listen host must be loopback")
+	}
+	return nil
+}
+
+func isLoopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}

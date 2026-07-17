@@ -4,6 +4,9 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work="$(mktemp -d)"
 daemon_pid=""
+export FORJA_HTTP_BEARER_TOKEN="forja-kernel-smoke-bearer-token-0001"
+export FORJA_HTTP_ACTOR_TYPE="system"
+export FORJA_HTTP_ACTOR_ID="kernel-smoke"
 
 cleanup() {
   if [[ -n "$daemon_pid" ]] && kill -0 "$daemon_pid" 2>/dev/null; then

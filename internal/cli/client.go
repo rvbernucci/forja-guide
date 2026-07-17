@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -21,14 +22,16 @@ type CommandMetadata = runstate.CommandMetadata
 
 // Client calls the forjad HTTP boundary.
 type Client struct {
-	baseURL    *url.URL
-	httpClient *http.Client
-	registry   *contracts.Registry
+	baseURL     *url.URL
+	httpClient  *http.Client
+	registry    *contracts.Registry
+	bearerToken string
 }
 
 // NewClient creates a validating API client.
 func NewClient(
 	endpoint string,
+	bearerToken string,
 	httpClient *http.Client,
 	registry *contracts.Registry,
 ) (*Client, error) {
@@ -42,18 +45,36 @@ func NewClient(
 	if baseURL.Host == "" {
 		return nil, fmt.Errorf("endpoint host is required")
 	}
+	if baseURL.Scheme == "http" && !isLoopbackHost(baseURL.Hostname()) {
+		return nil, fmt.Errorf("non-loopback endpoints must use https")
+	}
+	if strings.TrimSpace(bearerToken) == "" {
+		return nil, fmt.Errorf("FORJA_HTTP_BEARER_TOKEN is required")
+	}
 	if httpClient == nil {
 		// Command contexts own the deadline so FORJA_TIMEOUT remains authoritative.
 		httpClient = &http.Client{}
+	}
+	client := *httpClient
+	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		// API redirects are unexpected and can move the reusable bearer to a
+		// different authority or downgrade HTTPS to plaintext.
+		return http.ErrUseLastResponse
 	}
 	if registry == nil {
 		return nil, fmt.Errorf("contract registry is required")
 	}
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: httpClient,
-		registry:   registry,
+		baseURL:     baseURL,
+		httpClient:  &client,
+		registry:    registry,
+		bearerToken: bearerToken,
 	}, nil
+}
+
+func isLoopbackHost(host string) bool {
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // PrepareCommand creates or validates metadata before a command is attempted.
@@ -168,6 +189,7 @@ func (c *Client) doRun(
 	if err != nil {
 		return contracts.Run{}, fmt.Errorf("create request: %w", err)
 	}
+	request.Header.Set("Authorization", "Bearer "+c.bearerToken)
 	if payload != nil {
 		if metadata == nil {
 			return contracts.Run{}, fmt.Errorf("command metadata is required")
@@ -178,8 +200,6 @@ func (c *Client) doRun(
 		request.Header.Set("Content-Type", "application/json")
 		request.Header.Set("Idempotency-Key", metadata.IdempotencyKey)
 		request.Header.Set("Forja-Correlation-ID", metadata.CorrelationID)
-		request.Header.Set("Forja-Actor-Type", metadata.ActorType)
-		request.Header.Set("Forja-Actor-ID", metadata.ActorID)
 		if metadata.CausationID != nil {
 			request.Header.Set("Forja-Causation-ID", *metadata.CausationID)
 		}

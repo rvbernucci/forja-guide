@@ -54,8 +54,17 @@ Prerequisite: Go 1.26.5.
 Start the daemon:
 
 ```bash
+export FORJA_HTTP_BEARER_TOKEN="$(openssl rand -hex 32)"
+export FORJA_HTTP_ACTOR_TYPE='human'
+export FORJA_HTTP_ACTOR_ID='local-operator'
 go run ./cmd/forjad --listen 127.0.0.1:8080
 ```
+
+The CLI reads the same `FORJA_HTTP_BEARER_TOKEN` from its environment and sends
+it as a bearer credential. The secret has no flag or JSON-file equivalent, is
+never printed, and must be delivered through an approved secret boundary.
+`forjad` accepts only a numeric loopback listen IP while it serves plaintext
+HTTP; the CLI requires HTTPS for hostnames and non-loopback endpoints.
 
 This starts explicit ephemeral mode. To preserve commands across restarts,
 create a PostgreSQL database and provide its URL:
@@ -163,6 +172,9 @@ Implemented daemon variables are:
 | `FORJA_DATABASE_URL` | PostgreSQL connection URL; enables durable mode |
 | `FORJA_DATABASE_MAX_CONNECTIONS` | Bounded pool size, default `4` |
 | `FORJA_DATABASE_AUTO_MIGRATE` | Apply embedded migrations, default `true` |
+| `FORJA_HTTP_BEARER_TOKEN` | Required 32-4096 byte daemon and CLI bearer secret; environment only |
+| `FORJA_HTTP_ACTOR_ID` | Required stable audit identity mapped to the HTTP credential |
+| `FORJA_HTTP_ACTOR_TYPE` | HTTP principal type; defaults to `human` |
 | `FORJA_MCP_ACTOR_ID` | Required authenticated identity for stdio MCP |
 | `FORJA_MCP_ACTOR_TYPE` | Capability profile: `agent` (default, no decide/resume), `worker` (read only), or explicitly trusted `human`/`system` (all control capabilities) |
 | `FORJA_ENDPOINT` | CLI daemon endpoint |

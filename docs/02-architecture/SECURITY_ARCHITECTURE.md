@@ -1,7 +1,7 @@
 # Security Architecture
 
-Status: MCP identity, capability, scope, decision, and audit controls implemented;
-worker and retrieval controls proposed
+Status: MCP and daemon HTTP identity, capability, scope, decision, and audit
+controls implemented; worker and retrieval controls proposed
 
 ## Primary Threats
 
@@ -20,7 +20,7 @@ worker and retrieval controls proposed
 
 ```text
 human/client
-  -> MCP authentication
+  -> MCP or daemon HTTP authentication
   -> policy and approval engine
   -> scheduler
   -> worker process
@@ -40,6 +40,13 @@ Implemented through Sprint 03:
   submit, and cancel, while decision and resume authority require a separately
   authenticated `human` or `system` principal;
 - explicit authenticated identities for MCP stdio sessions;
+- fail-closed bearer authentication for the complete daemon `/v1` namespace,
+  with server-owned actor identity and constant-time credential comparison;
+- capability and exact tenant/repository scope checks before daemon HTTP
+  routing, request parsing, or persistence;
+- numeric-loopback-only plaintext daemon binding, HTTPS-only hostname and
+  remote CLI transport, and redirect rejection so bearer credentials cannot
+  cross a transport boundary;
 - fail-closed bearer verification boundary for future Streamable HTTP;
 - permission checks before canonical command persistence;
 - exact tenant and repository authority matching between principal and store;

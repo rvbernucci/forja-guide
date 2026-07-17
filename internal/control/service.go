@@ -15,12 +15,13 @@ import (
 type Permission string
 
 const (
-	PermissionPlan   Permission = "sprint:plan"
-	PermissionRead   Permission = "control:read"
-	PermissionSubmit Permission = "sprint:submit"
-	PermissionDecide Permission = "decision:decide"
-	PermissionCancel Permission = "run:cancel"
-	PermissionResume Permission = "run:resume"
+	PermissionPlan           Permission = "sprint:plan"
+	PermissionRead           Permission = "control:read"
+	PermissionSubmit         Permission = "sprint:submit"
+	PermissionDecide         Permission = "decision:decide"
+	PermissionCancel         Permission = "run:cancel"
+	PermissionResume         Permission = "run:resume"
+	PermissionLegacyRunWrite Permission = "legacy_run:write"
 
 	auditToolPlanSprint      = "forja.plan_sprint"
 	auditToolSubmitSprint    = "forja.submit_sprint"
@@ -37,6 +38,7 @@ var AllPermissions = []Permission{
 	PermissionDecide,
 	PermissionCancel,
 	PermissionResume,
+	PermissionLegacyRunWrite,
 }
 
 // Principal is an authenticated control-plane identity.
