@@ -156,6 +156,46 @@ class EvidenceValidationTests(unittest.TestCase):
                 sum("candidate is not fail-closed" in error for error in errors),
             )
 
+    def test_every_closure_candidate_requires_protocol_v2(self) -> None:
+        """Legacy receipt compatibility cannot downgrade a new candidate."""
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sprint = root / "docs" / "evidence" / "sprint-02"
+            sprint.mkdir(parents=True)
+            for filename in VALIDATOR.EVIDENCE_FILES[:-1]:
+                (sprint / filename).write_text(
+                    json.dumps(
+                        {
+                            "evidence_version": "1.0",
+                            "sprint_id": "02",
+                            "status": "ok",
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            (sprint / VALIDATOR.CLOSURE_CANDIDATE_FILE).write_text(
+                json.dumps(
+                    {
+                        "evidence_version": "1.0",
+                        "sprint_id": "02",
+                        "status": "candidate",
+                        "authoritative": False,
+                        "next_sprint_authorized": None,
+                    }
+                ),
+                encoding="utf-8",
+            )
+
+            errors: list[str] = []
+            with patch.object(VALIDATOR, "ROOT", root):
+                VALIDATOR.validate_evidence_sets(errors)
+
+            self.assertIn(
+                "Sprint closure candidate is not fail-closed: "
+                "docs/evidence/sprint-02/closure-candidate.json",
+                errors,
+            )
+
     def test_v2_close_receipt_requires_immutable_review_binding(self) -> None:
         """A v2 close receipt cannot authorize work without a passed review."""
         with tempfile.TemporaryDirectory() as directory:

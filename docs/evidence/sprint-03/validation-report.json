@@ -42,11 +42,11 @@
       "type": "independent",
       "result": "findings_resolved_pending_immutable_review",
       "artifact_path": "docs/evidence/sprint-03/reviews/closure-evidence-review.md",
-      "artifact_sha256": "e5bb9885024a886d3cf444020cb651c21920f80709d0e84ceb517e3f1f33bda0"
+      "artifact_sha256": "22a2a69f0909ffdedf046f0413769e4c44fdbecdf2798064ec4695921d7c1e84"
     }
   ],
   "resolved_review_findings": {
-    "count": 17,
+    "count": 18,
     "sources": {
       "pre_hardening_post_merge_review": 1,
       "first_http_boundary_review": 2,
@@ -59,7 +59,8 @@
       "closure_attestation_integrity_review": 2,
       "closure_publication_topology_review": 2,
       "closure_publication_enforcement_review": 2,
-      "closure_trusted_base_review": 2
+      "closure_trusted_base_review": 2,
+      "coderabbit_candidate_protocol_review": 1
     },
     "themes": [
       "unauthenticated legacy HTTP mutations and caller-controlled audit identity",
@@ -74,7 +75,8 @@
       "protocol downgrade prevention and minimal attestation diffs",
       "squash-stable two-phase publication and Sprint-specific roadmap ownership",
       "published-main ancestry enforcement and decision-record governance",
-      "immutable CI base injection and stale-main rejection"
+      "immutable CI base injection and stale-main rejection",
+      "unconditional protocol-v2 candidates with legacy receipt compatibility"
     ]
   },
   "acceptance": [
@@ -105,5 +107,5 @@
     ]
   },
   "recorded_at": "2026-07-17T21:06:37Z",
-  "amended_at": "2026-07-17T21:42:40Z"
+  "amended_at": "2026-07-17T21:56:33Z"
 }

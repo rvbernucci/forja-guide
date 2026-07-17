@@ -274,10 +274,7 @@ def validate_evidence_sets(errors: list[str]) -> None:
                 candidate.get("status") != "candidate"
                 or candidate.get("authoritative") is not False
                 or candidate.get("next_sprint_authorized") is not None
-                or (
-                    requires_v2
-                    and candidate.get("closure_protocol_version") != "2.0"
-                )
+                or candidate.get("closure_protocol_version") != "2.0"
             ):
                 errors.append(
                     f"Sprint closure candidate is not fail-closed: "

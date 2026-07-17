@@ -117,3 +117,15 @@
   equality; a published attestation must be an ancestor of the trusted main
   head. Tests cover an unpublished candidate, a valid candidate base, a stale
   advanced base, and a published attestation.
+
+## Pass 10: Candidate Protocol Downgrade
+
+- Reviewed pull request: `https://github.com/rvbernucci/forja-guide/pull/13` at
+  `21a4f49e83d5367ce3580c0d84a6752bd67b9df8`.
+- Finding: 1 P1 protocol-integrity issue from CodeRabbit.
+- Finding detail: candidate validation required protocol v2 only for Sprint 03
+  and later, allowing a newly introduced candidate under a legacy Sprint ID to
+  omit the protocol version.
+- Resolution: every closure candidate now requires protocol v2. Legacy
+  compatibility remains restricted to the closed receipts for Sprints 00-02,
+  and a regression test proves that it cannot downgrade a candidate.

@@ -33,8 +33,9 @@ candidate, requires the attestation introduction commit to be its direct child,
 allowlists the exact promotion paths, and rejects later receipt mutation. The
 owning roadmap is derived from the numeric Sprint range.
 
-Sprint 00-02 receipts remain valid under the legacy format. This compatibility
-exception cannot be used for Sprint 03 or later.
+Sprint 00-02 receipts remain valid under the legacy format. Every closure
+candidate uses protocol v2; legacy compatibility applies only to already
+closed receipts and cannot create a downgraded candidate.
 
 ## Consequences
 
@@ -54,6 +55,6 @@ Negative:
 ## Guardrail
 
 CI must fetch full Git history. Tests must reject unpublished candidates,
-protocol downgrade, ambiguous closure files, unauthorized next-Sprint fields,
-non-promotion changes, review artifacts outside the Sprint evidence directory,
-and receipts modified after their attestation commit.
+candidate or receipt protocol downgrade, ambiguous closure files, unauthorized
+next-Sprint fields, non-promotion changes, review artifacts outside the Sprint
+evidence directory, and receipts modified after their attestation commit.
