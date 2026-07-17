@@ -52,3 +52,13 @@
 - Resolution: Gate A remains achieved. The evidence documentation now defines
   the mutually exclusive candidate and final receipt states enforced by the
   repository validator.
+
+## Pass 5: Evidence Chronology
+
+- Reviewed commit: `1bfcfc8ac5158a5b822a500549a92602a605c6d4`.
+- Finding: 1 P2 audit-provenance issue.
+- Finding detail: the validation and metrics documents incorporated Pass 4 but
+  retained timestamps from before the reviewed commit existed.
+- Resolution: original recording timestamps remain immutable historical facts;
+  each amended document now carries an explicit `amended_at` timestamp after
+  this finding.
