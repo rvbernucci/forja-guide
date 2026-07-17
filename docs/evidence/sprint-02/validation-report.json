@@ -12,17 +12,21 @@
       "database": "PostgreSQL 18.3"
     },
     {
-      "name": "latest pull request hardening workflow",
+      "name": "complete closure package pull request workflow",
       "type": "mechanical",
       "result": "passed",
-      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550377150"
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550921444",
+      "head_sha": "668ef87d43d0621321881e8973e98057ee917bb3",
+      "database": "PostgreSQL 18.3"
     },
     {
       "name": "isolated Codex CLI merged-commit review",
       "type": "independent",
       "result": "passed",
       "model": "gpt-5.6-sol",
-      "report_sha256": "53421aa6e7bb214a4c58151665f5b50a633379f6cbe53bb39c511ac177f571d7",
+      "reviewed_commit": "1f020cdfde72e32acb20b506db8cab154356c636",
+      "artifact_path": "docs/evidence/sprint-02/reviews/merged-implementation-review.md",
+      "artifact_sha256": "f22e2c939841675a5f3f52f0740a7d7903238db5699f20873f516aa362f64e78",
       "summary": "No actionable regression was identified after independent review of the merged TTL conversion and commit-fence hardening, including repeated PostgreSQL integration."
     },
     {
@@ -33,10 +37,21 @@
         "https://github.com/rvbernucci/forja-guide/pull/5",
         "https://github.com/rvbernucci/forja-guide/pull/6"
       ]
+    },
+    {
+      "name": "independent closure evidence reviews",
+      "type": "independent",
+      "result": "findings_resolved",
+      "reviewed_commits": [
+        "f3fcde2f77d864de36e628a1b3a2d07c52e718d7",
+        "668ef87d43d0621321881e8973e98057ee917bb3"
+      ],
+      "artifact_path": "docs/evidence/sprint-02/reviews/closure-evidence-review.md",
+      "artifact_sha256": "fa3d6c7171624b52c5cfa628b23766a052d20e1f9b583c5ac03e8e5f37dd2057"
     }
   ],
   "resolved_review_findings": {
-    "count": 21,
+    "count": 26,
     "sources": {
       "pull_request_5_coderabbit_threads": 9,
       "post_merge_independent_audit": 3,
@@ -44,7 +59,9 @@
       "follow_up_independent_review": 2,
       "pull_request_6_coderabbit_actionable_threads": 1,
       "closure_ci_hardening": 2,
-      "final_closure_evidence_review": 2
+      "closure_reproducibility_review": 2,
+      "closure_chronology_review": 1,
+      "closure_traceability_review": 4
     },
     "themes": [
       "migration immutability and upgrade compatibility",
@@ -54,7 +71,9 @@
       "legacy attempt timestamp backfill and macOS Bash compatibility",
       "architecture decision documentation and future-proof migration tests",
       "portable TTL serialization and host-speed-independent commit-fence fixtures",
-      "self-contained rollback and database coverage reproduction commands"
+      "self-contained rollback and database coverage reproduction commands",
+      "chronologically valid closure receipts and exact PR-head validation",
+      "stable review artifacts and pinned vulnerability-scanner evidence"
     ]
   },
   "operational_observability": {
@@ -88,5 +107,5 @@
       "result": "proven"
     }
   ],
-  "recorded_at": "2026-07-17T02:51:00Z"
+  "recorded_at": "2026-07-17T02:56:35Z"
 }

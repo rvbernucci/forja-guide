@@ -32,6 +32,11 @@
     "rollback-report.json",
     "metrics-summary.json"
   ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "reviews/closure-evidence-review.md",
+    "security/govulncheck-v1.6.0.txt"
+  ],
   "next_sprint_authorized": "03",
-  "closed_at": "2026-07-17T02:51:00Z"
+  "closed_at": "2026-07-17T02:56:35Z"
 }

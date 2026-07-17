@@ -6,9 +6,15 @@
   "checks": [
     {
       "name": "Go vulnerability reachability scan",
-      "command": "go run golang.org/x/vuln/cmd/govulncheck@latest ./...",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
       "result": "passed",
-      "findings": 0
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "go_version": "go1.26.5",
+      "database": "https://vuln.go.dev",
+      "database_updated_at": "2026-07-08T17:05:00Z",
+      "artifact_path": "docs/evidence/sprint-02/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
     },
     {
       "name": "tenant and repository authority",
@@ -41,5 +47,5 @@
     "Remote authentication and user-facing authorization are deferred to the governed MCP boundary in Sprint 03.",
     "Migrations are applied transactionally; online zero-downtime index orchestration is intentionally outside Sprint 02 and requires an operator maintenance plan."
   ],
-  "recorded_at": "2026-07-17T02:51:00Z"
+  "recorded_at": "2026-07-17T02:56:35Z"
 }

@@ -61,8 +61,15 @@
       "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550445554",
       "head_sha": "1f020cdfde72e32acb20b506db8cab154356c636",
       "summary": "The protected main workflow passed against the digest-pinned PostgreSQL 18.3 service and matching PostgreSQL 18 client."
+    },
+    {
+      "name": "complete closure package PR CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29550921444",
+      "head_sha": "668ef87d43d0621321881e8973e98057ee917bb3",
+      "summary": "The complete seven-file evidence package and closed roadmap passed repository quality and PostgreSQL durability on the recorded PR head."
     }
   ],
   "compatibility_note": "PostgreSQL 14.19 on macOS passed as an additional local compatibility check; PostgreSQL 18.3 is the official CI and supported target.",
-  "recorded_at": "2026-07-17T02:51:00Z"
+  "recorded_at": "2026-07-17T02:56:35Z"
 }

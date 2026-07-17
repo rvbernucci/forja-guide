@@ -36,5 +36,5 @@
   ],
   "data_migration_required": true,
   "runtime_state_impact": "Reverting the code without reconciling the database is unsupported. Preserve a verified backup and either migrate backward before new writes or restore the backup; forward repair is safest once Sprint 02 data exists.",
-  "recorded_at": "2026-07-17T02:51:00Z"
+  "recorded_at": "2026-07-17T02:56:35Z"
 }
