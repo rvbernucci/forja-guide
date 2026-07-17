@@ -17,10 +17,10 @@
     "linux_arm64_forja_bytes": 6750334,
     "linux_arm64_forjad_bytes": 10748030,
     "known_reachable_vulnerabilities": 0,
-    "independent_review_findings_resolved": 26,
+    "independent_review_findings_resolved": 27,
     "independent_implementation_review_findings": 0
   },
   "official_database_target": "PostgreSQL 18.3",
   "additional_local_compatibility": "PostgreSQL 14.19 on macOS",
-  "recorded_at": "2026-07-17T02:56:35Z"
+  "recorded_at": "2026-07-17T03:08:05Z"
 }

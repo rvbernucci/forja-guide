@@ -43,15 +43,17 @@
       "type": "independent",
       "result": "findings_resolved",
       "reviewed_commits": [
+        "cf7b98edb0e6cfe702ba86de786a6ee7119173d6",
         "f3fcde2f77d864de36e628a1b3a2d07c52e718d7",
-        "668ef87d43d0621321881e8973e98057ee917bb3"
+        "668ef87d43d0621321881e8973e98057ee917bb3",
+        "12ae4b100ad9cce55897d303e1c6e578f5b6c390"
       ],
       "artifact_path": "docs/evidence/sprint-02/reviews/closure-evidence-review.md",
-      "artifact_sha256": "fa3d6c7171624b52c5cfa628b23766a052d20e1f9b583c5ac03e8e5f37dd2057"
+      "artifact_sha256": "3599c6548c1a0dc1500c143daf676f1373d39e08ea386ed76fad2d171cc919a4"
     }
   ],
   "resolved_review_findings": {
-    "count": 26,
+    "count": 27,
     "sources": {
       "pull_request_5_coderabbit_threads": 9,
       "post_merge_independent_audit": 3,
@@ -61,7 +63,8 @@
       "closure_ci_hardening": 2,
       "closure_reproducibility_review": 2,
       "closure_chronology_review": 1,
-      "closure_traceability_review": 4
+      "closure_traceability_review": 4,
+      "closure_provenance_review": 1
     },
     "themes": [
       "migration immutability and upgrade compatibility",
@@ -107,5 +110,5 @@
       "result": "proven"
     }
   ],
-  "recorded_at": "2026-07-17T02:56:35Z"
+  "recorded_at": "2026-07-17T03:08:05Z"
 }
