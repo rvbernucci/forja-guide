@@ -168,3 +168,20 @@
 - Resolution: candidate and receipt projections are now compared as canonical,
   finite JSON encodings. A regression assertion proves that `true` cannot be
   promoted as `1`.
+
+## Pass 14: Complete-History and Lossless Promotion Review
+
+- Reviewed public candidate:
+  `361a28c65f9c1f33d84b4f133f5ab2d4a496b3bb`.
+- Findings: 2 P1 closure-integrity issues and 2 P2 fail-closed issues from an
+  isolated Codex CLI review.
+- Finding details: a receipt could be deleted, replaced by a candidate, and
+  reintroduced without final-tip detection; noncanonical numeric or Unicode
+  Sprint IDs could derive a successor; shallow clones could claim complete
+  history; and floating-point decoding could collapse distinct reviewed JSON
+  numbers before comparison.
+- Resolution: protocol-v2 receipts now require exactly one historical
+  introduction and a non-shallow repository. Sprint IDs must use the canonical
+  ASCII `00` through `14` form. Promotion validation decodes every JSON number
+  as a lossless kind-and-lexeme value before recursively type-strict comparison.
+  Regression tests reproduce each exploit and prove it fails closed.
