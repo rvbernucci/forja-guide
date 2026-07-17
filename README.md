@@ -10,7 +10,7 @@ It is designed around one principle:
 
 ## Status
 
-This repository now includes the **Sprint 02 experimental durable kernel**
+This repository now includes the **Sprint 03 experimental governed control plane**
 alongside the public architecture and roadmap. It is not yet a production-ready
 multi-agent runtime.
 
@@ -19,7 +19,10 @@ validation, a deterministic run state machine, PostgreSQL-backed aggregates and
 events, command idempotency, fenced leases, a transactional outbox, projection
 replay, repository-scoped authority, semantic schema readiness, backup/restore
 tooling, structured redacted logs, graceful shutdown, and reproducible Linux
-builds. MCP tools and Codex worker execution remain planned for later Sprints.
+builds. The official Go MCP SDK powers an authenticated stdio server with eight
+typed, audited tools for Sprint planning, submission, decisions, inspection,
+cancellation, and resumption. Codex worker execution remains planned for Sprint
+04.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -71,8 +74,27 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`schemas`](schemas/) | Language-neutral JSON Schema contracts |
 | [`cmd/forjad`](cmd/forjad/) | Experimental Go daemon |
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
+| [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
+
+## MCP Quick Start
+
+```bash
+go build -trimpath -o "$HOME/.local/bin/forja-mcp" ./cmd/forja-mcp
+codex mcp add forja \
+  --env FORJA_MCP_ACTOR_ID=codex-co-architect \
+  -- "$HOME/.local/bin/forja-mcp"
+```
+
+Add `FORJA_DATABASE_URL` through an approved secret boundary for durable state.
+Without it, each MCP process uses explicit ephemeral state. See the [MCP
+control API](docs/03-contracts/MCP_CONTROL_API.md).
+
+The default `agent` principal may plan, inspect, submit, and cancel work, but it
+cannot approve decisions or resume execution. Those capabilities require a
+separately authenticated `human` or `system` control boundary; model output
+cannot authorize its own execution.
 
 ## Initial Technology Direction
 

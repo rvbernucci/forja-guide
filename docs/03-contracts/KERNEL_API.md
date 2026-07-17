@@ -1,13 +1,14 @@
 # Kernel HTTP API
 
-Status: Implemented through Sprint 02
+Status: Implemented kernel boundary; governed MCP added in Sprint 03
 
 ## Boundary
 
 `forjad` exposes a small HTTP boundary for the kernel. It uses PostgreSQL when
 `FORJA_DATABASE_URL` is configured and otherwise starts with explicit
-ephemeral in-memory state. It remains a local control boundary until the
-governed MCP surface is introduced in Sprint 03.
+ephemeral in-memory state. Sprint 03 adds the authenticated MCP interaction
+boundary described in [MCP Control API](MCP_CONTROL_API.md); direct kernel HTTP
+endpoints remain local and do not replace governed MCP authorization.
 
 All request bodies:
 
@@ -51,6 +52,12 @@ Transition request:
 
 The expected version prevents concurrent writers from silently overwriting a
 newer aggregate state.
+
+When a Run is linked to a governed Sprint, this legacy transition endpoint
+cannot move a proposed Run toward execution or bypass a pending decision. A
+proposed Sprint must use `forja.submit_sprint`; only explicit cancellation is
+available before submission. Post-approval worker transitions remain governed
+by the canonical FSM.
 
 ## Command Identity
 
@@ -100,6 +107,6 @@ Errors use:
 }
 ```
 
-Stable codes are `invalid_argument`, `not_found`, `conflict`, `unavailable`,
-and `internal`. Internal details are logged after secret redaction but are not
-returned to clients.
+Stable codes are `invalid_argument`, `unauthenticated`, `permission_denied`,
+`not_found`, `conflict`, `unavailable`, and `internal`. Internal details are
+logged after secret redaction but are not returned to clients.

@@ -17,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
@@ -128,20 +129,42 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 	); err != nil {
 		t.Fatalf("record version one migration: %v", err)
 	}
-	const runID = "run_00000000-0000-4000-8000-000000000003"
+	const legacySprintID = "00000000-0000-4000-8000-000000000099"
 	if _, err := pool.Exec(t.Context(), `
-		INSERT INTO forja.runs (
-			run_id, tenant_id, repository_id, objective, state, version,
-			created_at, updated_at
+		INSERT INTO forja.sprints (
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			status, version, created_at, updated_at
 		) VALUES (
-			$1, $2, $3, 'Exercise the version one upgrade', 'draft', 1,
+			$1::uuid, $2, $3, 99, 'X', 'proposed', 1,
 			statement_timestamp(), statement_timestamp()
 		)`,
-		runID,
+		legacySprintID,
 		DefaultTenantID,
 		DefaultRepositoryID,
 	); err != nil {
-		t.Fatalf("seed version one run: %v", err)
+		t.Fatalf("seed orphan legacy Sprint: %v", err)
+	}
+	const runID = "run_00000000-0000-4000-8000-000000000003"
+	parsedRunID, err := identity.ParseRunID(runID)
+	if err != nil {
+		t.Fatalf("parse version one run ID: %v", err)
+	}
+	versionOneStore, err := NewStore(
+		pool,
+		nil,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	)
+	if err != nil {
+		t.Fatalf("create version one store: %v", err)
+	}
+	if _, err := versionOneStore.CreateRun(
+		t.Context(),
+		parsedRunID,
+		"Exercise the version one upgrade",
+		testMetadata("upgrade-test-run"),
+	); err != nil {
+		t.Fatalf("seed version one run command: %v", err)
 	}
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO forja.leases (
@@ -157,20 +180,30 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 	); err != nil {
 		t.Fatalf("seed version one lease: %v", err)
 	}
+	legacyAttempt, err := versionOneStore.CreateAttempt(
+		t.Context(),
+		parsedRunID,
+		"queued",
+		testMetadata("upgrade-test-attempt"),
+		persistence.LeaseProof{
+			LeaseKey: persistence.LeaseKey{
+				TenantID:     DefaultTenantID,
+				RepositoryID: DefaultRepositoryID,
+				ResourceType: "scheduler",
+				ResourceID:   "upgrade-probe",
+			},
+			OwnerID:      "upgrade-worker",
+			FencingToken: 1,
+		},
+	)
+	if err != nil {
+		t.Fatalf("seed version one attempt command: %v", err)
+	}
 	if _, err := pool.Exec(t.Context(), `
-		INSERT INTO forja.attempts (
-			attempt_id, tenant_id, run_id, ordinal, status,
-			lease_resource_type, lease_resource_id, worker_id, fencing_token,
-			created_at, updated_at
-		) VALUES (
-			'attempt_upgrade_probe', $2, $1, 1, 'queued',
-			'scheduler', 'upgrade-probe', 'upgrade-worker', 1,
-			statement_timestamp(), statement_timestamp()+interval '1 microsecond'
-		)`,
-		runID,
-		DefaultTenantID,
-	); err != nil {
-		t.Fatalf("seed version one attempt: %v", err)
+		UPDATE forja.attempts
+		SET updated_at=created_at+interval '1 microsecond'
+		WHERE attempt_id=$1`, legacyAttempt.AttemptID); err != nil {
+		t.Fatalf("seed version one mutable attempt timestamp: %v", err)
 	}
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("upgrade version one database: %v", err)
@@ -180,12 +213,36 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 		t.Context(),
 		`SELECT created_at=updated_at
 		 FROM forja.attempts
-		 WHERE attempt_id='attempt_upgrade_probe'`,
+		 WHERE attempt_id=$1`,
+		legacyAttempt.AttemptID,
 	).Scan(&timestampsEqual); err != nil {
 		t.Fatalf("inspect upgraded attempt: %v", err)
 	}
 	if !timestampsEqual {
 		t.Fatal("version one attempt timestamps were not migrated to the canonical invariant")
+	}
+	var legacyObjective, legacyRunID string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT objective, run_id
+		FROM forja.sprints
+		WHERE sprint_id=$1::uuid`, legacySprintID).Scan(&legacyObjective, &legacyRunID); err != nil {
+		t.Fatalf("inspect migrated legacy Sprint: %v", err)
+	}
+	if len(legacyObjective) < 3 || !strings.HasPrefix(legacyRunID, "run_") {
+		t.Fatalf("legacy Sprint objective=%q run_id=%q", legacyObjective, legacyRunID)
+	}
+	var linkedLegacyRun bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT EXISTS (
+			SELECT 1
+			FROM forja.runs
+			WHERE tenant_id=$1 AND repository_id=$2
+			  AND run_id=$3 AND sprint_id=$4::uuid
+		)`, DefaultTenantID, DefaultRepositoryID, legacyRunID, legacySprintID).Scan(&linkedLegacyRun); err != nil {
+		t.Fatalf("inspect generated legacy Run: %v", err)
+	}
+	if !linkedLegacyRun {
+		t.Fatal("orphan legacy Sprint was not linked to a generated Run")
 	}
 	if err := VerifySchema(
 		t.Context(),
@@ -194,6 +251,211 @@ func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 		DefaultRepositoryID,
 	); err != nil {
 		t.Fatalf("verify upgraded database: %v", err)
+	}
+	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RebuildRunProjection(t.Context(), "legacy-upgrade-test"); err != nil {
+		t.Fatalf("rebuild upgraded legacy Runs: %v", err)
+	}
+	var projected bool
+	if err := pool.QueryRow(t.Context(), `
+		SELECT EXISTS (
+			SELECT 1 FROM forja.run_projections
+			WHERE tenant_id=$1 AND repository_id=$2
+			  AND projector_name='legacy-upgrade-test' AND run_id=$3
+		)`, DefaultTenantID, DefaultRepositoryID, legacyRunID).Scan(&projected); err != nil {
+		t.Fatal(err)
+	}
+	if !projected {
+		t.Fatal("generated legacy Run was not reconstructed from its event stream")
+	}
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
+	if output, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("verify generated migration evidence: %v\n%s", err, output)
+	}
+}
+
+func TestMigrationRejectsAmbiguousLegacySprintRunLinks(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) < 3 {
+		t.Fatalf("migration count = %d, want at least 3", len(migrations))
+	}
+	if _, err := pool.Exec(t.Context(), migrations[0].up); err != nil {
+		t.Fatalf("apply version one schema: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.schema_migrations (version, name, checksum)
+		VALUES ($1, $2, $3)`,
+		migrations[0].version,
+		migrations[0].name,
+		migrations[0].checksum,
+	); err != nil {
+		t.Fatalf("record version one migration: %v", err)
+	}
+	const legacySprintID = "00000000-0000-4000-8000-000000000098"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.sprints (
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			status, version, created_at, updated_at
+		) VALUES ($1::uuid, $2, $3, 98, 'Ambiguous legacy Sprint',
+		          'proposed', 1, statement_timestamp(), statement_timestamp())`,
+		legacySprintID,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("seed legacy Sprint: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, sprint_id, objective, state,
+			version, created_at, updated_at
+		) VALUES
+			('run_00000000-0000-4000-8000-000000000098', $1, $2, $3::uuid,
+			 'First ambiguous legacy Run', 'draft', 1,
+			 statement_timestamp(), statement_timestamp()),
+			('run_00000000-0000-4000-8000-000000000099', $1, $2, $3::uuid,
+			 'Second ambiguous legacy Run', 'draft', 1,
+			 statement_timestamp(), statement_timestamp())`,
+		DefaultTenantID,
+		DefaultRepositoryID,
+		legacySprintID,
+	); err != nil {
+		t.Fatalf("seed ambiguous legacy Runs: %v", err)
+	}
+	if err := Migrate(t.Context(), pool); err == nil ||
+		!strings.Contains(err.Error(), "at most one Run linked") {
+		t.Fatalf("migration error = %v, want ambiguous-link rejection", err)
+	}
+	var appliedVersions int
+	if err := pool.QueryRow(
+		t.Context(),
+		"SELECT count(*) FROM forja.schema_migrations",
+	).Scan(&appliedVersions); err != nil {
+		t.Fatalf("count migration ledger: %v", err)
+	}
+	if appliedVersions != 1 {
+		t.Fatalf("applied migration count = %d, want transactional rollback to version one", appliedVersions)
+	}
+}
+
+func TestMigrationRejectsLegacyApprovalStateWithoutDecisionEvidence(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatalf("load migrations: %v", err)
+	}
+	if len(migrations) < 3 {
+		t.Fatalf("migration count = %d, want at least 3", len(migrations))
+	}
+	if _, err := pool.Exec(t.Context(), migrations[0].up); err != nil {
+		t.Fatalf("apply version one schema: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.schema_migrations (version, name, checksum)
+		VALUES ($1, $2, $3)`,
+		migrations[0].version,
+		migrations[0].name,
+		migrations[0].checksum,
+	); err != nil {
+		t.Fatalf("record version one migration: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.sprints (
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			status, version, created_at, updated_at
+		) VALUES (
+			'00000000-0000-4000-8000-000000000097'::uuid,
+			$1, $2, 97, 'Unresolvable legacy approval',
+			'awaiting_approval', 2, statement_timestamp(), statement_timestamp()
+		)`, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatalf("seed unresolvable legacy Sprint: %v", err)
+	}
+	if err := Migrate(t.Context(), pool); err == nil ||
+		!strings.Contains(err.Error(), "without governed event evidence") {
+		t.Fatalf("migration error = %v, want legacy approval rejection", err)
+	}
+	var appliedVersions int
+	if err := pool.QueryRow(
+		t.Context(),
+		"SELECT count(*) FROM forja.schema_migrations",
+	).Scan(&appliedVersions); err != nil {
+		t.Fatalf("count migration ledger: %v", err)
+	}
+	if appliedVersions != 1 {
+		t.Fatalf("applied migration count = %d, want transactional rollback to version one", appliedVersions)
+	}
+}
+
+func TestMigrationRejectsProposedSprintWithAdvancedRun(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	migrations, err := loadMigrations()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(migrations) < 3 {
+		t.Fatalf("migration count = %d, want at least 3", len(migrations))
+	}
+	if _, err := pool.Exec(t.Context(), migrations[0].up); err != nil {
+		t.Fatalf("apply version one schema: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.schema_migrations (version, name, checksum)
+		VALUES ($1, $2, $3)`,
+		migrations[0].version,
+		migrations[0].name,
+		migrations[0].checksum,
+	); err != nil {
+		t.Fatalf("record version one migration: %v", err)
+	}
+	const sprintID = "00000000-0000-4000-8000-000000000096"
+	const runID = "run_00000000-0000-4000-8000-000000000096"
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.sprints (
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			status, version, created_at, updated_at
+		) VALUES ($1::uuid, $2, $3, 96, 'Stranded legacy Sprint',
+		          'proposed', 1, statement_timestamp(), statement_timestamp())`,
+		sprintID,
+		DefaultTenantID,
+		DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("seed proposed legacy Sprint: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, sprint_id, objective, state,
+			version, created_at, updated_at
+		) VALUES ($1, $2, $3, $4::uuid, 'Reject an unrecoverable legacy state',
+		          'queued', 2, statement_timestamp(), statement_timestamp())`,
+		runID,
+		DefaultTenantID,
+		DefaultRepositoryID,
+		sprintID,
+	); err != nil {
+		t.Fatalf("seed advanced legacy Run: %v", err)
+	}
+	if err := Migrate(t.Context(), pool); err == nil ||
+		!strings.Contains(err.Error(), "legacy Sprint approval states") {
+		t.Fatalf("migration accepted a proposed Sprint with an advanced Run: %v", err)
+	}
+	var applied int
+	if err := pool.QueryRow(
+		t.Context(),
+		"SELECT count(*) FROM forja.schema_migrations",
+	).Scan(&applied); err != nil {
+		t.Fatal(err)
+	}
+	if applied != 1 {
+		t.Fatalf("failed migration committed %d ledger rows, want 1", applied)
 	}
 }
 
@@ -421,6 +683,90 @@ func TestPostgresVerifyRejectsSemanticSchemaDrift(t *testing.T) {
 }
 
 func TestPostgresVerifyRejectsDurabilityContradictions(t *testing.T) {
+	t.Run("canonical Sprint differs from event stream", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-sprint-state",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		planned, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+			Title:     "Verify canonical Sprint",
+			Objective: "Reject canonical Sprint state that differs from immutable evidence",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-canonical-sprint",
+				CorrelationID:  "verify-canonical-sprint",
+			},
+		})
+		if err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.sprints
+			SET title='Corrupted but schema-valid Sprint'
+			WHERE sprint_id=$1::uuid`, strings.TrimPrefix(planned.Sprint.SprintID, "sprint_")); err != nil {
+			t.Fatalf("corrupt canonical Sprint: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("canonical decision differs from event stream", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-decision-state",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		planned, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+			Title:     "Verify canonical decision",
+			Objective: "Reject canonical decision state that differs from immutable evidence",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-decision-plan",
+				CorrelationID:  "verify-decision-plan",
+			},
+		})
+		if err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		submitted, err := service.SubmitSprint(t.Context(), principal, control.SubmitSprintInput{
+			SprintID:        planned.Sprint.SprintID,
+			ExpectedVersion: planned.Sprint.Version,
+			RiskClass:       "high",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-decision-submit",
+				CorrelationID:  "verify-decision-submit",
+			},
+		})
+		if err != nil {
+			t.Fatalf("submit Sprint: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.decisions SET risk_class='low' WHERE decision_id=$1`,
+			submitted.Decision.DecisionID,
+		); err != nil {
+			t.Fatalf("corrupt canonical decision: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
 	t.Run("missing idempotency receipt", func(t *testing.T) {
 		pool := migratedPool(t)
 		store := newIntegrationStore(t, pool)
@@ -440,6 +786,86 @@ func TestPostgresVerifyRejectsDurabilityContradictions(t *testing.T) {
 		}
 		requirePostgresVerifyFailure(t)
 	})
+	t.Run("caller cannot impersonate migration receipt evidence", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		metadata := testMetadata("verify-migration-impersonation")
+		metadata.ActorType = "system"
+		metadata.ActorID = "migration-003"
+		if _, err := store.CreateRun(
+			t.Context(),
+			mustRunID(t),
+			"Reject caller-selected migration identity",
+			metadata,
+		); err != nil {
+			t.Fatalf("create impersonating command: %v", err)
+		}
+		if _, err := pool.Exec(
+			t.Context(),
+			"DELETE FROM forja.idempotency_keys WHERE idempotency_key=$1",
+			metadata.IdempotencyKey,
+		); err != nil {
+			t.Fatalf("delete impersonating receipt: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("receipt scope collision cannot hide a missing receipt", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"agent",
+			"verify-scoped-receipts",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		var missingScope string
+		for index := range 2 {
+			planned, planErr := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+				Title:     fmt.Sprintf("Scoped receipt %d", index),
+				Objective: "Prove each command consumes only its exact event evidence",
+				Command: control.CommandContext{
+					IdempotencyKey: fmt.Sprintf("verify-scoped-plan-%d", index),
+					CorrelationID:  fmt.Sprintf("verify-scoped-plan-%d", index),
+				},
+			})
+			if planErr != nil {
+				t.Fatalf("plan Sprint %d: %v", index, planErr)
+			}
+			_, submitErr := service.SubmitSprint(t.Context(), principal, control.SubmitSprintInput{
+				SprintID:        planned.Sprint.SprintID,
+				ExpectedVersion: planned.Sprint.Version,
+				RiskClass:       "medium",
+				Command: control.CommandContext{
+					IdempotencyKey: "verify-shared-submit-key",
+					CorrelationID:  "verify-shared-submit-correlation",
+				},
+			})
+			if submitErr != nil {
+				t.Fatalf("submit Sprint %d: %v", index, submitErr)
+			}
+			if index == 0 {
+				missingScope = "submit_sprint:" + DefaultRepositoryID + ":" + planned.Sprint.SprintID
+			}
+		}
+		if _, err := pool.Exec(t.Context(), `
+			DELETE FROM forja.idempotency_keys
+			WHERE tenant_id=$1 AND scope=$2 AND idempotency_key=$3`,
+			DefaultTenantID,
+			missingScope,
+			"verify-shared-submit-key",
+		); err != nil {
+			t.Fatalf("delete one scoped receipt: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
 	t.Run("corrupt idempotency response", func(t *testing.T) {
 		pool := migratedPool(t)
 		store := newIntegrationStore(t, pool)
@@ -456,6 +882,190 @@ func TestPostgresVerifyRejectsDurabilityContradictions(t *testing.T) {
 			SET response_body=jsonb_set(response_body, '{objective}', '"corrupt"')`,
 		); err != nil {
 			t.Fatalf("corrupt idempotency response: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("corrupt governed composite response", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-governed-response",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		if _, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+			Title:     "Verify governed response",
+			Objective: "Reject a receipt that disagrees with governed events",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-governed-response",
+				CorrelationID:  "verify-governed-response",
+			},
+		}); err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.idempotency_keys
+			SET response_body=jsonb_set(
+				response_body,
+				'{sprint,title}',
+				'"corrupt"'::jsonb
+			)
+			WHERE scope LIKE 'plan_sprint:%'`); err != nil {
+			t.Fatalf("corrupt governed response: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("corrupt governed atomic audit", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-governed-audit",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		if _, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+			Title:     "Verify atomic audit",
+			Objective: "Reject a mutation whose success audit was corrupted",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-governed-audit",
+				CorrelationID:  "verify-governed-audit",
+			},
+		}); err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		if _, err := pool.Exec(
+			t.Context(),
+			"ALTER TABLE forja.events DISABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("disable event mutation guard: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.events
+			SET payload=jsonb_set(payload, '{tool_name}', '"corrupt"'::jsonb)
+			WHERE aggregate_type='audit'
+			  AND idempotency_key='verify-governed-audit'`); err != nil {
+			t.Fatalf("corrupt governed audit: %v", err)
+		}
+		if _, err := pool.Exec(
+			t.Context(),
+			"ALTER TABLE forja.events ENABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("restore event mutation guard: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("replay audit cannot replace original atomic audit", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-original-audit",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		input := control.PlanSprintInput{
+			Title:     "Verify original audit",
+			Objective: "Reject replay-only evidence for an atomic mutation",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-original-audit",
+				CorrelationID:  "verify-original-audit",
+			},
+		}
+		if _, err := service.PlanSprint(t.Context(), principal, input); err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		if _, err := service.PlanSprint(t.Context(), principal, input); err != nil {
+			t.Fatalf("replay Sprint plan: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(),
+			"ALTER TABLE forja.events DISABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("disable event mutation guard: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.events
+			SET payload=jsonb_set(payload, '{replay}', 'true'::jsonb)
+			WHERE aggregate_type='audit'
+			  AND idempotency_key='verify-original-audit'
+			  AND payload->>'replay'='false'`); err != nil {
+			t.Fatalf("remove original-audit marker: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(),
+			"ALTER TABLE forja.events ENABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("restore event mutation guard: %v", err)
+		}
+		requirePostgresVerifyFailure(t)
+	})
+	t.Run("audit command scope must match its receipt", func(t *testing.T) {
+		pool := migratedPool(t)
+		store := newIntegrationStore(t, pool)
+		service, err := control.NewService(store)
+		if err != nil {
+			t.Fatalf("create control service: %v", err)
+		}
+		principal, err := control.NewScopedPrincipal(
+			"human",
+			"verify-audit-scope",
+			DefaultTenantID,
+			DefaultRepositoryID,
+			control.AllPermissions...,
+		)
+		if err != nil {
+			t.Fatalf("create principal: %v", err)
+		}
+		if _, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+			Title:     "Verify audit scope",
+			Objective: "Reject an atomic audit attached to a different command scope",
+			Command: control.CommandContext{
+				IdempotencyKey: "verify-audit-scope",
+				CorrelationID:  "verify-audit-scope",
+			},
+		}); err != nil {
+			t.Fatalf("plan Sprint: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(),
+			"ALTER TABLE forja.events DISABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("disable event mutation guard: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(), `
+			UPDATE forja.events
+			SET payload=jsonb_set(payload, '{command_scope}', '"plan_sprint:other-repository"'::jsonb)
+			WHERE aggregate_type='audit'
+			  AND idempotency_key='verify-audit-scope'`); err != nil {
+			t.Fatalf("corrupt audit command scope: %v", err)
+		}
+		if _, err := pool.Exec(t.Context(),
+			"ALTER TABLE forja.events ENABLE TRIGGER events_are_append_only",
+		); err != nil {
+			t.Fatalf("restore event mutation guard: %v", err)
 		}
 		requirePostgresVerifyFailure(t)
 	})
@@ -1100,6 +1710,7 @@ func TestRunCannotReferenceSprintFromAnotherRepository(t *testing.T) {
 		otherRepositoryID = "00000000-0000-4000-8000-000000000003"
 		sprintID          = "00000000-0000-4000-8000-000000000004"
 	)
+	linkedRunID := mustRunID(t).String()
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO forja.repositories (
 			repository_id, tenant_id, canonical_name
@@ -1109,17 +1720,40 @@ func TestRunCannotReferenceSprintFromAnotherRepository(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create second repository: %v", err)
 	}
-	if _, err := pool.Exec(t.Context(), `
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback(t.Context()) }()
+	if _, err := tx.Exec(t.Context(), `
 		INSERT INTO forja.sprints (
-			sprint_id, tenant_id, repository_id, sequence_number, title
-		) VALUES ($1, $2, $3, 2, 'Default repository sprint')`,
+			sprint_id, tenant_id, repository_id, sequence_number, title,
+			objective, run_id
+		) VALUES (
+			$1, $2, $3, 2, 'Default repository sprint',
+			'Validate repository-scoped Sprint authority', $4
+		)`,
 		sprintID,
 		DefaultTenantID,
 		DefaultRepositoryID,
+		linkedRunID,
 	); err != nil {
 		t.Fatalf("create default repository sprint: %v", err)
 	}
 	now := time.Now().UTC()
+	if _, err := tx.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, sprint_id, objective,
+			state, version, created_at, updated_at
+		) VALUES (
+			$1, $2, $3, $4, 'Validate repository-scoped Sprint authority',
+			'draft', 1, $5, $5
+		)`, linkedRunID, DefaultTenantID, DefaultRepositoryID, sprintID, now); err != nil {
+		t.Fatalf("create linked default repository run: %v", err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatalf("commit default repository Sprint: %v", err)
+	}
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO forja.runs (
 			run_id, tenant_id, repository_id, sprint_id, objective,
@@ -2229,6 +2863,154 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create backup attempt: %v", err)
 	}
+	service, err := control.NewService(store)
+	if err != nil {
+		t.Fatalf("create governed backup service: %v", err)
+	}
+	principal, err := control.NewScopedPrincipal(
+		"human",
+		"backup-restore-controller",
+		DefaultTenantID,
+		DefaultRepositoryID,
+		control.AllPermissions...,
+	)
+	if err != nil {
+		t.Fatalf("create governed backup principal: %v", err)
+	}
+	planned, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+		Title:     "Recover governed control state",
+		Objective: "Prove that governed commands survive backup and restore",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-plan-approved",
+			CorrelationID:  "backup-plan-approved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("plan governed backup Sprint: %v", err)
+	}
+	replayedPlan, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+		Title:     "Recover governed control state",
+		Objective: "Prove that governed commands survive backup and restore",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-plan-approved",
+			CorrelationID:  "backup-plan-approved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("replay governed backup Sprint: %v", err)
+	}
+	if replayedPlan.Sprint != planned.Sprint || replayedPlan.Run != planned.Run {
+		t.Fatalf("replayed governed backup plan changed: %#v", replayedPlan)
+	}
+	submitted, err := service.SubmitSprint(t.Context(), principal, control.SubmitSprintInput{
+		SprintID:        planned.Sprint.SprintID,
+		ExpectedVersion: planned.Sprint.Version,
+		RiskClass:       "high",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-submit-approved",
+			CorrelationID:  "backup-submit-approved",
+		},
+	})
+	if err != nil {
+		t.Fatalf("submit governed backup Sprint: %v", err)
+	}
+	approved, err := service.ResolveDecision(t.Context(), principal, control.ResolveDecisionInput{
+		DecisionID:      submitted.Decision.DecisionID,
+		ExpectedVersion: submitted.Decision.Version,
+		Reason:          "Recovery evidence is complete",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-approve-decision",
+			CorrelationID:  "backup-approve-decision",
+		},
+	}, true)
+	if err != nil {
+		t.Fatalf("approve governed backup Sprint: %v", err)
+	}
+	if _, err := service.CancelRun(t.Context(), principal, control.TransitionInput{
+		RunID:           approved.Run.RunID,
+		ExpectedVersion: approved.Run.Version,
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-cancel-approved",
+			CorrelationID:  "backup-cancel-approved",
+		},
+	}); err != nil {
+		t.Fatalf("cancel approved backup Sprint: %v", err)
+	}
+
+	rejectedPlan, err := service.PlanSprint(t.Context(), principal, control.PlanSprintInput{
+		Title:     "Recover rejected control state",
+		Objective: "Prove that rejected decisions survive backup and restore",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-plan-rejected",
+			CorrelationID:  "backup-plan-rejected",
+		},
+	})
+	if err != nil {
+		t.Fatalf("plan rejected backup Sprint: %v", err)
+	}
+	rejectedSubmission, err := service.SubmitSprint(t.Context(), principal, control.SubmitSprintInput{
+		SprintID:        rejectedPlan.Sprint.SprintID,
+		ExpectedVersion: rejectedPlan.Sprint.Version,
+		RiskClass:       "critical",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-submit-rejected",
+			CorrelationID:  "backup-submit-rejected",
+		},
+	})
+	if err != nil {
+		t.Fatalf("submit rejected backup Sprint: %v", err)
+	}
+	rejected, err := service.ResolveDecision(t.Context(), principal, control.ResolveDecisionInput{
+		DecisionID:      rejectedSubmission.Decision.DecisionID,
+		ExpectedVersion: rejectedSubmission.Decision.Version,
+		Reason:          "Recovery drill intentionally rejects this plan",
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-reject-decision",
+			CorrelationID:  "backup-reject-decision",
+		},
+	}, false)
+	if err != nil {
+		t.Fatalf("reject governed backup Sprint: %v", err)
+	}
+
+	resumableRunID := mustRunID(t)
+	resumable, err := store.CreateRun(
+		t.Context(),
+		resumableRunID,
+		"Recover a resumable run",
+		testMetadata("backup-resume-create"),
+	)
+	if err != nil {
+		t.Fatalf("create resumable backup run: %v", err)
+	}
+	for index, target := range []runstate.State{
+		runstate.StateAwaitingApproval,
+		runstate.StateQueued,
+		runstate.StatePreparing,
+		runstate.StateFailedRetryable,
+	} {
+		resumable, err = store.TransitionRun(
+			t.Context(),
+			resumableRunID,
+			resumable.Version,
+			target,
+			testMetadata(fmt.Sprintf("backup-resume-transition-%d", index)),
+		)
+		if err != nil {
+			t.Fatalf("prepare resumable backup run for %s: %v", target, err)
+		}
+	}
+	resumed, err := service.ResumeRun(t.Context(), principal, control.TransitionInput{
+		RunID:           resumable.RunID,
+		ExpectedVersion: resumable.Version,
+		Command: control.CommandContext{
+			IdempotencyKey: "backup-resume-command",
+			CorrelationID:  "backup-resume-command",
+		},
+	})
+	if err != nil {
+		t.Fatalf("resume backup run: %v", err)
+	}
 	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
 	if output, err := verify.CombinedOutput(); err != nil {
 		t.Fatalf("schema verification failed: %v\n%s", err, output)
@@ -2348,6 +3130,43 @@ func TestBackupRestoreRoundTrip(t *testing.T) {
 		restoredAttempt.Version != attempt.Version ||
 		!restoredAttempt.CreatedAt.Equal(attempt.CreatedAt) {
 		t.Fatalf("restored attempt = %#v, want %#v", restoredAttempt, attempt)
+	}
+	restoredApproved, err := service.GetSprint(
+		t.Context(),
+		principal,
+		planned.Sprint.SprintID,
+		control.CommandContext{
+			IdempotencyKey: "backup-read-approved",
+			CorrelationID:  "backup-read-approved",
+		},
+	)
+	if err != nil {
+		t.Fatalf("read restored approved Sprint: %v", err)
+	}
+	if restoredApproved.Status != string(control.SprintCancelling) {
+		t.Fatalf("restored approved Sprint = %#v", restoredApproved)
+	}
+	restoredRejected, err := service.GetSprint(
+		t.Context(),
+		principal,
+		rejected.Sprint.SprintID,
+		control.CommandContext{
+			IdempotencyKey: "backup-read-rejected",
+			CorrelationID:  "backup-read-rejected",
+		},
+	)
+	if err != nil {
+		t.Fatalf("read restored rejected Sprint: %v", err)
+	}
+	if restoredRejected.Status != string(control.SprintRejected) {
+		t.Fatalf("restored rejected Sprint = %#v", restoredRejected)
+	}
+	restoredResumed, err := store.GetRun(t.Context(), resumableRunID)
+	if err != nil {
+		t.Fatalf("read restored resumed run: %v", err)
+	}
+	if restoredResumed.State != resumed.State || restoredResumed.Version != resumed.Version {
+		t.Fatalf("restored resumed run = %#v, want %#v", restoredResumed, resumed)
 	}
 	corrupt := restored
 	corrupt.State = string(runstate.StateCompleted)

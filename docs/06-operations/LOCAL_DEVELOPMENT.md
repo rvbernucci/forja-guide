@@ -1,11 +1,11 @@
 # Local Development
 
-Status: Sprint 02 durable kernel implemented; later infrastructure proposed
+Status: Sprint 03 governed MCP control surface implemented; workers proposed
 
 ## Current Repository
 
-The repository contains the executable Sprint 02 Go kernel, architecture,
-planning, canonical schemas, and quality automation.
+The repository contains the executable durable Go kernel, governed MCP control
+surface, architecture, planning, canonical schemas, and quality automation.
 
 Validate it with:
 
@@ -14,8 +14,38 @@ make validate
 ```
 
 The full gate runs formatting checks, module verification, `go vet`, unit and
-race tests, reproducible cross-builds, a process-level smoke test, and public
-repository validation.
+race tests, reproducible cross-builds, process-level kernel and MCP smoke tests,
+and public repository validation.
+
+## MCP Control Surface
+
+Build and run the stdio server with an explicit local principal:
+
+```bash
+export FORJA_MCP_ACTOR_ID='codex-co-architect'
+go run ./cmd/forja-mcp
+```
+
+Use `FORJA_DATABASE_URL` to preserve Sprints, decisions, Runs, events, outbox,
+and idempotency receipts across MCP process restarts. Without it, the process
+prints an explicit ephemeral-state warning to standard error.
+
+Durable MCP startup verifies the complete migration ledger and semantic schema
+manifest before serving stdio. With auto-migration disabled, a missing or
+drifted schema therefore fails startup instead of failing on the first tool
+call.
+
+Register a built binary with Codex:
+
+```bash
+go build -trimpath -o "$HOME/.local/bin/forja-mcp" ./cmd/forja-mcp
+codex mcp add forja \
+  --env FORJA_MCP_ACTOR_ID=codex-co-architect \
+  -- "$HOME/.local/bin/forja-mcp"
+```
+
+See the [MCP control API](../03-contracts/MCP_CONTROL_API.md) for all tools,
+permissions, command identity fields, and the remote HTTP security boundary.
 
 ## Kernel
 
@@ -125,6 +155,8 @@ Implemented daemon variables are:
 | `FORJA_DATABASE_URL` | PostgreSQL connection URL; enables durable mode |
 | `FORJA_DATABASE_MAX_CONNECTIONS` | Bounded pool size, default `4` |
 | `FORJA_DATABASE_AUTO_MIGRATE` | Apply embedded migrations, default `true` |
+| `FORJA_MCP_ACTOR_ID` | Required authenticated identity for stdio MCP |
+| `FORJA_MCP_ACTOR_TYPE` | Capability profile: `agent` (default, no decide/resume), `worker` (read only), or explicitly trusted `human`/`system` (all control capabilities) |
 | `FORJA_ENDPOINT` | CLI daemon endpoint |
 | `FORJA_TIMEOUT` | CLI request deadline |
 

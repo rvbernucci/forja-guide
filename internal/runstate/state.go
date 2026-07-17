@@ -89,6 +89,7 @@ type CommandMetadata struct {
 	ActorID        string
 	CorrelationID  string
 	CausationID    *string
+	AuditToolName  string
 }
 
 // Repository persists run aggregates without exposing storage mechanics.
@@ -141,6 +142,15 @@ func ValidateCommandMetadata(metadata CommandMetadata) error {
 			"runstate.ValidateCommandMetadata",
 			"correlation ID length must be between 3 and 160 characters",
 		)
+	}
+	if metadata.AuditToolName != "" {
+		if length := utf8.RuneCountInString(metadata.AuditToolName); length < 3 || length > 120 {
+			return fault.New(
+				fault.CodeInvalidArgument,
+				"runstate.ValidateCommandMetadata",
+				"audit tool name length must be between 3 and 120 characters",
+			)
+		}
 	}
 	if metadata.CausationID != nil && utf8.RuneCountInString(*metadata.CausationID) > 160 {
 		return fault.New(

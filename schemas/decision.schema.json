@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/decision.schema.json",
+  "title": "Forja Governed Decision",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "decision_id",
+    "schema_version",
+    "sprint_id",
+    "run_id",
+    "action",
+    "risk_class",
+    "status",
+    "version",
+    "requested_by",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "decision_id": {
+      "type": "string",
+      "pattern": "^decision_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {
+      "const": "1.0"
+    },
+    "sprint_id": {
+      "type": "string",
+      "pattern": "^sprint_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "action": {
+      "const": "submit_sprint"
+    },
+    "risk_class": {
+      "enum": ["low", "medium", "high", "critical"]
+    },
+    "status": {
+      "enum": ["pending", "approved", "rejected"]
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "requested_by": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "decided_by": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 160
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 2000
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "decided_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "pending"
+          }
+        },
+        "required": ["status"]
+      },
+      "then": {
+        "not": {
+          "anyOf": [
+            { "required": ["decided_by"] },
+            { "required": ["reason"] },
+            { "required": ["decided_at"] }
+          ]
+        }
+      },
+      "else": {
+        "required": ["decided_by", "reason", "decided_at"]
+      }
+    }
+  ]
+}

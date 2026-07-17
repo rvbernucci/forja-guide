@@ -1,6 +1,6 @@
 # PostgreSQL Recovery
 
-Status: Implemented in Sprint 02
+Status: Implemented in Sprint 02; governed command recovery extended in Sprint 03
 
 PostgreSQL is Forja's canonical operational authority. A recovery is complete
 only when the database restores and its event streams pass continuity checks.
@@ -56,8 +56,32 @@ drift, and illegal FSM transitions. It also requires replayed runs to equal
 canonical rows, every event to have its matching outbox message, every attempt
 to equal its complete fencing-authorized creation event, and every idempotency
 receipt to match the recomputed command fingerprint, response, and status. A
+governed receipt is reconstructed from its complete multi-aggregate event set,
+including the Sprint, Decision, Run, and transactionally committed MCP success
+audit. The verifier covers planning, submission, approval, rejection,
+cancellation, and resume commands and rejects orphan command events, corrupted
+composite responses, altered fingerprints, missing atomic audits, or an attempt
+to substitute a later replay audit for the original transaction audit. A
 failed validation can therefore affect only a disposable staging target, never
 replace a populated database.
+
+Retry audits may carry a new correlation ID because correlation identifies an
+individual delivery attempt and is intentionally absent from the idempotency
+fingerprint. Recovery still requires the same tenant, repository, command
+scope, idempotency key, actor, causation, and tool, and it verifies that every
+audit payload agrees with its immutable event envelope.
+
+Sprint 03 also reconstructs every canonical Sprint and decision from its
+immutable aggregate stream and compares every field and timestamp with the
+restored row. Legacy Sprints receive one deterministic `sprint.migrated`
+baseline event during upgrade. The migration fails closed when a legacy Sprint
+is linked to multiple Runs; silently selecting one would leave the others able
+to bypass governed transition checks. It also rejects `awaiting_approval` and
+other legacy approval states that have no governed event evidence, rather than
+migrating an aggregate with no decision-based recovery path. A proposed legacy
+Sprint is accepted only when its existing linked Run is still `draft`; an
+already-advanced Run cannot be submitted through the governed lifecycle and is
+therefore rejected instead of being stranded after upgrade.
 
 The same non-destructive verification can be run independently:
 
@@ -90,7 +114,36 @@ older binary from starting against a forward-migrated database.
 
 Production rollbacks should prefer forward repair when a migration has already
 served writes. Exercise every down migration in a disposable database before
-release.
+release. Migration 003 first locks the idempotency command table, which every
+command reads before acquiring aggregate locks. Only after active commands
+drain does it take the remaining exclusive maintenance locks. This ordering
+prevents both parent-table deadlocks and creation of a new decision after the
+safety check. It then refuses rollback while any decision is pending. Resolve
+or reject every pending decision through the governed
+command before retrying; never delete decision rows to force a downgrade. The rollback
+removes command receipts whose response bodies depend on Sprint 03 columns,
+decision rows, or MCP audit evidence, preventing stale replay after a later
+re-upgrade. Generic Sprint 02-compatible transition receipts remain. Legacy Sprints
+that require generated Runs during upgrade receive matching `run.created`
+events and outbox messages, so projection rebuild remains authoritative.
+Before removing an incompatible governed receipt, the rollback writes an
+immutable `idempotency.receipt_invalidated` marker containing its exact command
+identity, command scope, command-anchor event, and referenced domain event ID.
+Its event and aggregate IDs are recomputed from those fields during recovery.
+The command anchor and surviving domain events must also equal the aggregate
+version and canonical response payload stored in the receipt. Commands may
+therefore reuse actor, correlation, and idempotency values across distinct
+scopes without causing one rollback marker to claim another command's event.
+Recovery accepts a preserved domain event without a receipt only when one
+unambiguous marker names that exact event and proves the deliberate downgrade
+action. A receipt consumes only the exact event IDs reconstructed from its
+response, never every event sharing reusable metadata. Atomic success
+audits also carry `command_scope`, so equal idempotency keys, actors, and
+correlations reused legally across different aggregates remain unambiguous.
+Receipt-free migration events are accepted only when their event IDs, fixed
+migration identity, and deterministic legacy Sprint-to-Run relationship all
+recompute exactly; an ordinary caller named `migration-003` receives no
+exemption.
 
 ## Automated Drill
 
@@ -102,7 +155,9 @@ make test-integration
 ```
 
 It verifies clean migration, idempotent migration, unknown-version rejection,
-rollback and re-upgrade, backup/restore, migration-ledger tampering, structural
+pending-decision rollback refusal, safe rollback and re-upgrade, backup/restore,
+migration-ledger tampering, structural
 and semantic event corruption, durable process restart, fenced command replay,
 tenant and repository isolation, semantic schema drift, atomic attempt events,
-safe projection watermarks, and non-overlapping outbox claims.
+safe projection watermarks, governed lifecycle backup and restore, governed
+receipt/audit corruption, and non-overlapping outbox claims.

@@ -10,11 +10,13 @@ import (
 type Code string
 
 const (
-	CodeInvalidArgument Code = "invalid_argument"
-	CodeNotFound        Code = "not_found"
-	CodeConflict        Code = "conflict"
-	CodeUnavailable     Code = "unavailable"
-	CodeInternal        Code = "internal"
+	CodeInvalidArgument  Code = "invalid_argument"
+	CodeUnauthenticated  Code = "unauthenticated"
+	CodePermissionDenied Code = "permission_denied"
+	CodeNotFound         Code = "not_found"
+	CodeConflict         Code = "conflict"
+	CodeUnavailable      Code = "unavailable"
+	CodeInternal         Code = "internal"
 )
 
 // CodeOf returns the stable code from an error chain.

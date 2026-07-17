@@ -1,6 +1,7 @@
 # Security Architecture
 
-Status: Proposed
+Status: MCP identity, capability, scope, decision, and audit controls implemented;
+worker and retrieval controls proposed
 
 ## Primary Threats
 
@@ -33,17 +34,33 @@ authority because an LLM requested it.
 
 ## Controls
 
-- authenticated MCP sessions;
-- role and capability policies;
-- tenant and repository scope on every canonical record;
+Implemented through Sprint 03:
+
+- fixed least-privilege stdio profiles: the default `agent` may plan, read,
+  submit, and cancel, while decision and resume authority require a separately
+  authenticated `human` or `system` principal;
+- explicit authenticated identities for MCP stdio sessions;
+- fail-closed bearer verification boundary for future Streamable HTTP;
+- permission checks before canonical command persistence;
+- exact tenant and repository authority matching between principal and store;
+- stable pending-decision IDs and optimistic versions;
+- cancellation guards that cannot strand a pending decision;
+- repository-level guards that reserve retry and awaiting-decision resume
+  transitions for the capability-checked `ResumeRun` command;
+- immutable domain and MCP tool audit events with explicit original-versus-replay
+  evidence and exact receipt command scopes;
+- rollback invalidations bound to exact command anchors and domain event IDs,
+  with receipt recovery consuming event-specific evidence;
+- deterministic schema validation and idempotent command replay.
+
+Planned controls:
+
 - PostgreSQL row-level security where applicable;
 - expiring approvals and grants;
 - isolated worktrees and process groups;
 - command and network policies;
 - secret manager integration;
 - signed or hashed artifacts;
-- immutable audit events;
-- deterministic schema validation;
 - dependency and secret scanning;
 - projection provenance and freshness checks;
 - human approval for privileged operations.
@@ -65,4 +82,3 @@ Model output is untrusted data until:
 3. mechanically validated;
 4. independently reviewed when risk requires it;
 5. committed through an authorized operation.
-
