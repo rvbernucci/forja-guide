@@ -335,5 +335,7 @@ func (s *Store) bindLeaseKey(key persistence.LeaseKey) persistence.LeaseKey {
 }
 
 func intervalString(duration time.Duration) string {
-	return fmt.Sprintf("%d microseconds", duration.Microseconds())
+	seconds := duration / time.Second
+	microseconds := (duration % time.Second) / time.Microsecond
+	return fmt.Sprintf("%d seconds %d microseconds", seconds, microseconds)
 }

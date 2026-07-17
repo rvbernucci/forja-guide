@@ -1377,6 +1377,32 @@ func TestAttemptCommitFenceUsesDatabaseClock(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create run: %v", err)
 	}
+	if _, err := pool.Exec(t.Context(), `
+		CREATE FUNCTION forja.expire_attempt_lease_at_commit()
+		RETURNS trigger LANGUAGE plpgsql AS $$
+		BEGIN
+		    UPDATE forja.leases
+		    SET expires_at=GREATEST(acquired_at, clock_timestamp()),
+		        updated_at=clock_timestamp()
+		    WHERE tenant_id=NEW.tenant_id
+		      AND repository_id=(
+		          SELECT repository_id
+		          FROM forja.runs
+		          WHERE tenant_id=NEW.tenant_id AND run_id=NEW.run_id
+		      )
+		      AND resource_type=NEW.lease_resource_type
+		      AND resource_id=NEW.lease_resource_id
+		      AND owner_id=NEW.worker_id
+		      AND fencing_token=NEW.fencing_token;
+		    RETURN NEW;
+		END
+		$$;
+		CREATE CONSTRAINT TRIGGER aa_expire_attempt_lease_at_commit
+		AFTER INSERT ON forja.attempts
+		DEFERRABLE INITIALLY DEFERRED
+		FOR EACH ROW EXECUTE FUNCTION forja.expire_attempt_lease_at_commit()`); err != nil {
+		t.Fatalf("install attempt commit expiry fixture: %v", err)
+	}
 	lease, err := store.AcquireLease(
 		t.Context(),
 		persistence.LeaseKey{
@@ -1385,24 +1411,10 @@ func TestAttemptCommitFenceUsesDatabaseClock(t *testing.T) {
 			ResourceID:   "commit-fence-attempt",
 		},
 		"commit-fence-scheduler",
-		100*time.Millisecond,
+		24*time.Hour,
 	)
 	if err != nil {
 		t.Fatalf("acquire scheduler lease: %v", err)
-	}
-	if _, err := pool.Exec(t.Context(), `
-		CREATE FUNCTION forja.delay_attempt_commit()
-		RETURNS trigger LANGUAGE plpgsql AS $$
-		BEGIN
-		    PERFORM pg_sleep(0.2);
-		    RETURN NEW;
-		END
-		$$;
-		CREATE CONSTRAINT TRIGGER aa_delay_attempt_commit
-		AFTER INSERT ON forja.attempts
-		DEFERRABLE INITIALLY DEFERRED
-		FOR EACH ROW EXECUTE FUNCTION forja.delay_attempt_commit()`); err != nil {
-		t.Fatalf("install attempt commit delay: %v", err)
 	}
 	_, err = store.CreateAttempt(
 		t.Context(),
@@ -1927,20 +1939,16 @@ func TestOutboxCommitFenceUsesDatabaseClock(t *testing.T) {
 	); err != nil {
 		t.Fatalf("create outbox source: %v", err)
 	}
-	messages, err := store.ClaimOutbox(
-		t.Context(),
-		"commit-fenced-dispatcher",
-		1,
-		100*time.Millisecond,
-	)
-	if err != nil || len(messages) != 1 {
-		t.Fatalf("claim outbox: messages=%#v err=%v", messages, err)
-	}
 	if _, err := pool.Exec(t.Context(), `
 		CREATE FUNCTION forja.delay_outbox_commit()
 		RETURNS trigger LANGUAGE plpgsql AS $$
 		BEGIN
-		    PERFORM pg_sleep(0.2);
+		    PERFORM pg_sleep(
+		        GREATEST(
+		            0,
+		            EXTRACT(EPOCH FROM (OLD.locked_until - clock_timestamp()))
+		        ) + 0.05
+		    );
 		    RETURN NEW;
 		END
 		$$;
@@ -1951,6 +1959,15 @@ func TestOutboxCommitFenceUsesDatabaseClock(t *testing.T) {
 		WHEN (OLD.state='inflight' AND NEW.state<>'inflight')
 		EXECUTE FUNCTION forja.delay_outbox_commit()`); err != nil {
 		t.Fatalf("install outbox commit delay: %v", err)
+	}
+	messages, err := store.ClaimOutbox(
+		t.Context(),
+		"commit-fenced-dispatcher",
+		1,
+		2*time.Second,
+	)
+	if err != nil || len(messages) != 1 {
+		t.Fatalf("claim outbox: messages=%#v err=%v", messages, err)
 	}
 	err = store.FailOutbox(
 		t.Context(),
