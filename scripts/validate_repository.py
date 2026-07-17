@@ -65,6 +65,23 @@ MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 COMMIT_SHA = re.compile(r"^[a-f0-9]{40}$")
 SHA256 = re.compile(r"^[a-f0-9]{64}$")
 
+SPRINT_ROADMAP_RANGES = (
+    (0, 4, "docs/04-roadmap/SPRINTS_00_04_FOUNDATION.md"),
+    (5, 9, "docs/04-roadmap/SPRINTS_05_09_INTELLIGENCE.md"),
+    (10, 14, "docs/04-roadmap/SPRINTS_10_14_PRODUCTION.md"),
+)
+
+
+def sprint_roadmap_path(sprint_id: str) -> str | None:
+    """Return the detailed roadmap that owns a canonical numeric Sprint ID."""
+    if not sprint_id.isdigit():
+        return None
+    sprint_number = int(sprint_id)
+    for first, last, roadmap in SPRINT_ROADMAP_RANGES:
+        if first <= sprint_number <= last:
+            return roadmap
+    return None
+
 
 def files_with_suffix(suffix: str) -> list[Path]:
     """Return repository files with a suffix, excluding generated directories."""
@@ -363,6 +380,11 @@ def validate_v2_close_receipt(
         if not review_path.startswith(review_prefix):
             errors.append(f"v2 review artifact is outside Sprint evidence: {label}")
             return
+        sprint_id = path.parent.name.removeprefix("sprint-")
+        detailed_roadmap = sprint_roadmap_path(sprint_id)
+        if detailed_roadmap is None:
+            errors.append(f"v2 Sprint has no declared roadmap range: {label}")
+            return
         changed = subprocess.run(
             [
                 "git",
@@ -383,7 +405,7 @@ def validate_v2_close_receipt(
             receipt_relative,
             review_path,
             "docs/04-roadmap/MASTER_DEVELOPMENT_PLAN.md",
-            "docs/04-roadmap/SPRINTS_00_04_FOUNDATION.md",
+            detailed_roadmap,
         }
         if changed.returncode != 0 or set(changed.stdout.splitlines()) != expected_paths:
             errors.append(f"v2 attestation contains non-promotion changes: {label}")

@@ -13,10 +13,18 @@ sprint-XX/
   closure-candidate.json
 ```
 
-The candidate must not authorize another Sprint. After an independent review is
-bound to the exact candidate commit, the final attestation replaces
-`closure-candidate.json` with `close-receipt.json`. The two files are mutually
-exclusive.
+The candidate must not authorize another Sprint. It is published to `main` in
+its own pull request before the independent review starts. The final
+attestation is then submitted in a separate pull request based directly on that
+reviewed `main` commit. This two-phase publication preserves the immutable
+candidate-to-attestation binding when GitHub squash-merges the final pull
+request.
+
+The attestation replaces `closure-candidate.json` with `close-receipt.json` and
+may change only the independent review artifact, the master roadmap, and the
+detailed roadmap that owns the Sprint. The two closure files are mutually
+exclusive. No implementation or mutable evidence changes are permitted in the
+attestation commit.
 
 Evidence files use synthetic or sanitized data only. Large logs and runtime
 artifacts will be stored outside Git and referenced by stable hashes once the

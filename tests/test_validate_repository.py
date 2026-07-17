@@ -221,6 +221,25 @@ class EvidenceValidationTests(unittest.TestCase):
                 errors,
             )
 
+    def test_sprint_roadmap_path_covers_every_planned_range(self) -> None:
+        """Attestations must update the roadmap that owns their Sprint."""
+        expectations = {
+            "03": "docs/04-roadmap/SPRINTS_00_04_FOUNDATION.md",
+            "05": "docs/04-roadmap/SPRINTS_05_09_INTELLIGENCE.md",
+            "09": "docs/04-roadmap/SPRINTS_05_09_INTELLIGENCE.md",
+            "10": "docs/04-roadmap/SPRINTS_10_14_PRODUCTION.md",
+            "14": "docs/04-roadmap/SPRINTS_10_14_PRODUCTION.md",
+        }
+        for sprint_id, expected in expectations.items():
+            with self.subTest(sprint_id=sprint_id):
+                self.assertEqual(
+                    expected,
+                    VALIDATOR.sprint_roadmap_path(sprint_id),
+                )
+
+        self.assertIsNone(VALIDATOR.sprint_roadmap_path("not-numeric"))
+        self.assertIsNone(VALIDATOR.sprint_roadmap_path("15"))
+
     def test_invalid_basis_commit_is_rejected(self) -> None:
         """Evidence commit references must use immutable full SHA-1 values."""
         with tempfile.TemporaryDirectory() as directory:

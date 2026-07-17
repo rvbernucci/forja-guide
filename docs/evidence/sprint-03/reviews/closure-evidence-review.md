@@ -76,3 +76,18 @@
   paths in the child diff, and pins the final receipt to its introduction
   commit. Sprint 04 remains blocked until the corrected candidate passes an
   immutable review.
+
+## Pass 7: Publication Topology and Roadmap Ownership
+
+- Reviewed commit: `6a2ac0d114ba160e812ac7d68f294bba28308835`.
+- Findings: 1 P1 publication-integrity issue and 1 P2 roadmap-scaling issue.
+- Finding details: a candidate and attestation submitted in one squash-merged
+  pull request would lose the direct-parent topology required by protocol v2.
+  The attestation path allowlist also fixed every future closure to the Sprint
+  00-04 roadmap.
+- Resolution: closure now uses two public phases. The fail-closed candidate is
+  merged to `main` first, then independently reviewed at that exact public SHA.
+  A separate minimal attestation pull request is based directly on the reviewed
+  candidate. The validator derives the detailed roadmap from the Sprint ID for
+  ranges 00-04, 05-09, and 10-14. Sprint 04 remains blocked throughout the
+  candidate phase.
