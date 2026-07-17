@@ -14,7 +14,10 @@ func TestLoadPrecedence(t *testing.T) {
 		"listen": "127.0.0.1:7000",
 		"environment": "file",
 		"log_level": "warn",
-		"shutdown_timeout": "7s"
+		"shutdown_timeout": "7s",
+		"database_url": "postgres://file",
+		"database_max_connections": 5,
+		"database_auto_migrate": false
 	}`)
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
@@ -24,6 +27,9 @@ func TestLoadPrecedence(t *testing.T) {
 		envEnvironment:     "environment",
 		envLogLevel:        "error",
 		envShutdownTimeout: "8s",
+		envDatabaseURL:     "postgres://environment",
+		envDatabaseMaxConn: "6",
+		envDatabaseMigrate: "true",
 	}
 	lookup := func(key string) (string, bool) {
 		value, ok := environment[key]
@@ -36,6 +42,9 @@ func TestLoadPrecedence(t *testing.T) {
 		"--environment", "flag",
 		"--log-level", "debug",
 		"--shutdown-timeout", "9s",
+		"--database-url", "postgres://flag",
+		"--database-max-connections", "7",
+		"--database-auto-migrate=false",
 	}, lookup)
 	if err != nil {
 		t.Fatal(err)
@@ -43,7 +52,10 @@ func TestLoadPrecedence(t *testing.T) {
 	if cfg.Listen != "127.0.0.1:7002" ||
 		cfg.Environment != "flag" ||
 		cfg.LogLevel != "debug" ||
-		cfg.ShutdownTimeout != 9*time.Second {
+		cfg.ShutdownTimeout != 9*time.Second ||
+		cfg.DatabaseURL != "postgres://flag" ||
+		cfg.DatabaseMaxConn != 7 ||
+		cfg.DatabaseMigrate {
 		t.Fatalf("unexpected resolved config: %#v", cfg)
 	}
 }
@@ -103,16 +115,30 @@ func TestLoadUsesLastConfigFlagConsistently(t *testing.T) {
 
 func TestValidateRejectsUnsafeConfiguration(t *testing.T) {
 	t.Parallel()
+	valid := Config{
+		Listen:          "127.0.0.1:8080",
+		Environment:     "test",
+		LogLevel:        "info",
+		ShutdownTimeout: time.Second,
+		DatabaseMaxConn: 4,
+	}
 	cases := []Config{
-		{Listen: ":8080", Environment: "test", LogLevel: "info", ShutdownTimeout: time.Second},
-		{Listen: "127.0.0.1:99999", Environment: "test", LogLevel: "info", ShutdownTimeout: time.Second},
-		{Listen: "127.0.0.1:8080", Environment: "", LogLevel: "info", ShutdownTimeout: time.Second},
-		{Listen: "127.0.0.1:8080", Environment: "test", LogLevel: "trace", ShutdownTimeout: time.Second},
-		{Listen: "127.0.0.1:8080", Environment: "test", LogLevel: "info", ShutdownTimeout: 0},
+		withConfig(valid, func(cfg *Config) { cfg.Listen = ":8080" }),
+		withConfig(valid, func(cfg *Config) { cfg.Listen = "127.0.0.1:99999" }),
+		withConfig(valid, func(cfg *Config) { cfg.Environment = "" }),
+		withConfig(valid, func(cfg *Config) { cfg.LogLevel = "trace" }),
+		withConfig(valid, func(cfg *Config) { cfg.ShutdownTimeout = 0 }),
+		withConfig(valid, func(cfg *Config) { cfg.DatabaseMaxConn = 0 }),
+		withConfig(valid, func(cfg *Config) { cfg.DatabaseMaxConn = 101 }),
 	}
 	for _, cfg := range cases {
 		if err := Validate(cfg); err == nil {
 			t.Fatalf("expected invalid config to fail: %#v", cfg)
 		}
 	}
+}
+
+func withConfig(base Config, mutate func(*Config)) Config {
+	mutate(&base)
+	return base
 }

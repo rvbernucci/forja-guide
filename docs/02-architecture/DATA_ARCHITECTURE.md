@@ -1,6 +1,19 @@
 # Data Architecture
 
-Status: Proposed
+Status: Partially Implemented
+
+The PostgreSQL authority, transactional event/outbox boundary, idempotency,
+leases, checkpoints, dead letters, and run projection replay are implemented
+in Sprint 02. Object storage, Qdrant, and Neo4j remain planned.
+
+Applied migrations are checksum-pinned. Canonical events are protected from
+`UPDATE` and `DELETE` by the database, not only by repository convention.
+Composite foreign keys preserve tenant and repository ownership across
+canonical relations. Every store instance is bound to one repository authority;
+reads, commands, events, outbox claims, checkpoints, and projections cannot
+cross that boundary. Lease identities and fencing tokens are repository-scoped
+inside the store and database, even when two repositories use the same logical
+resource name.
 
 ## Decision
 
@@ -136,6 +149,36 @@ Each projection uses:
 - independent Qdrant and Neo4j cursor;
 - retry count and terminal failure state.
 
+Canonical event/outbox writers and projection rebuilds share a short
+transaction-scoped watermark lock. PostgreSQL sequence values are not ordered
+by transaction commit, so this protocol prevents a checkpoint from advancing
+past an event whose lower outbox ID is still uncommitted. Rebuilds also validate
+payload identity, immutable fields, timestamps, versions, every FSM transition,
+and exact equality with canonical aggregate state before publishing a read
+model.
+
+The Sprint 02 outbox claim API is deliberately a **single dispatcher group**:
+multiple workers may compete for throughput, but they are not independent
+projectors. Direct Qdrant/Neo4j fan-out is not yet enabled. Later projection
+adapters must durably create per-projector delivery/checkpoint state before the
+dispatcher marks an event globally published; using the current global state
+as multiple independent consumer cursors is forbidden.
+
+Command idempotency keys are scoped by tenant, repository, and command scope.
+Reusing a key for the same command replays its receipt; using it for different
+content in that scope fails closed. The same key may be independently valid in
+another aggregate or repository scope. Fingerprints bind business input, actor
+identity, and causation identity; correlation IDs remain retry-level
+observability.
+
+Run creation, transitions, and attempt creation commit their canonical record,
+immutable event, transactional outbox message, and replay receipt atomically.
+An idempotent attempt retry therefore cannot allocate another ordinal or emit a
+duplicate `attempt.created` event. Attempt writers acquire known contended locks
+before validating their repository-bound scheduler lease. A final fenced update
+holds the lease row against takeover, and a deferred PostgreSQL constraint
+trigger rechecks database-time liveness at commit.
+
 ## Chat, Memory, and Study
 
 Use PostgreSQL rather than a general-purpose document database.
@@ -180,4 +223,3 @@ consume the project while reducing reliability.
 
 The innovation belongs in the shared identity model, Context Broker,
 provenance, projections, routing, and evidence contracts.
-

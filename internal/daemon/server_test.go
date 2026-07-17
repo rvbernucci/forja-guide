@@ -157,9 +157,50 @@ func TestReadinessCanFailClosed(t *testing.T) {
 	t.Parallel()
 	daemon := newTestServer(t)
 	daemon.SetReady(false)
-	request := httptest.NewRequest(http.MethodGet, "/readyz", nil)
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/readyz",
+		nil,
+	)
 	response := httptest.NewRecorder()
 	daemon.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+type unavailableRepository struct {
+	*runstate.Store
+}
+
+func (unavailableRepository) Ready(context.Context) error {
+	return context.DeadlineExceeded
+}
+
+func TestReadinessChecksDurableDependency(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err := New(
+		unavailableRepository{Store: runstate.NewStore(nil)},
+		registry,
+		nil,
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"/readyz",
+		nil,
+	)
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
 	if response.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
@@ -205,7 +246,12 @@ func requestJSON(
 	body string,
 ) *http.Response {
 	t.Helper()
-	request, err := http.NewRequest(method, url, bytes.NewBufferString(body))
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		method,
+		url,
+		bytes.NewBufferString(body),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}

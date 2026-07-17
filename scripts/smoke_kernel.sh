@@ -54,7 +54,7 @@ fi
 
 "$work/forja" run create \
   --endpoint "$endpoint" \
-  --objective "Sprint 01 smoke run" >"$work/create.json"
+  --objective "Kernel smoke run" >"$work/create.json"
 
 run_id="$(
   python3 -c \

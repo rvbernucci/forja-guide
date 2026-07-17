@@ -1,4 +1,4 @@
-.PHONY: build check-format smoke test test-race validate
+.PHONY: build check-format smoke test test-integration test-race validate
 
 check-format:
 	@test -z "$$(gofmt -l cmd internal schemas)" || \
@@ -9,6 +9,12 @@ test:
 
 test-race:
 	go test -race ./...
+
+test-integration:
+	@test -n "$$FORJA_TEST_DATABASE_URL" || \
+		(echo "FORJA_TEST_DATABASE_URL is required"; exit 2)
+	FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 ./internal/postgres
+	./scripts/smoke_durable_restart.sh
 
 build:
 	./scripts/check_reproducible_builds.sh

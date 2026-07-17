@@ -78,6 +78,11 @@ func runCreate(
 	set := newFlagSet("run create", stderr)
 	endpoint := endpointFlag(set)
 	objective := set.String("objective", "", "run objective")
+	idempotencyKey := set.String(
+		"idempotency-key",
+		"",
+		"stable key to reuse when retrying this command",
+	)
 	if err := set.Parse(args); err != nil {
 		return 2
 	}
@@ -90,12 +95,17 @@ func runCreate(
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	run, err := client.CreateRun(ctx, *objective)
+	metadata, err := PrepareCommand(*idempotencyKey)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	run, err := client.CreateRunWithCommand(ctx, *objective, metadata)
+	if err != nil {
+		fmt.Fprintf(stderr, "command %s: %v\n", metadata.IdempotencyKey, err)
 		return 1
 	}
-	return writeOutput(stdout, run)
+	return writeCommandOutput(stdout, stderr, metadata, run)
 }
 
 func runGet(
@@ -140,6 +150,11 @@ func runTransition(
 	runID := set.String("id", "", "run identifier")
 	expected := set.Int("expected-version", 0, "expected aggregate version")
 	target := set.String("to", "", "target run state")
+	idempotencyKey := set.String(
+		"idempotency-key",
+		"",
+		"stable key to reuse when retrying this command",
+	)
 	if err := set.Parse(args); err != nil {
 		return 2
 	}
@@ -152,12 +167,23 @@ func runTransition(
 		fmt.Fprintln(stderr, err)
 		return 2
 	}
-	run, err := client.TransitionRun(ctx, *runID, *expected, *target)
+	metadata, err := PrepareCommand(*idempotencyKey)
 	if err != nil {
 		fmt.Fprintln(stderr, err)
+		return 2
+	}
+	run, err := client.TransitionRunWithCommand(
+		ctx,
+		*runID,
+		*expected,
+		*target,
+		metadata,
+	)
+	if err != nil {
+		fmt.Fprintf(stderr, "command %s: %v\n", metadata.IdempotencyKey, err)
 		return 1
 	}
-	return writeOutput(stdout, run)
+	return writeCommandOutput(stdout, stderr, metadata, run)
 }
 
 func newFlagSet(name string, stderr io.Writer) *flag.FlagSet {
@@ -179,6 +205,23 @@ func writeOutput(output io.Writer, value any) int {
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(value); err != nil {
 		return 1
+	}
+	return 0
+}
+
+func writeCommandOutput(
+	stdout io.Writer,
+	stderr io.Writer,
+	metadata CommandMetadata,
+	value any,
+) int {
+	if code := writeOutput(stdout, value); code != 0 {
+		fmt.Fprintf(
+			stderr,
+			"command %s committed, but writing its response failed; replay with the same key\n",
+			metadata.IdempotencyKey,
+		)
+		return code
 	}
 	return 0
 }

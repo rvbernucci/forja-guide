@@ -1,4 +1,4 @@
-// Package daemon exposes the Sprint 01 HTTP control-plane boundary.
+// Package daemon exposes the kernel HTTP control-plane boundary.
 package daemon
 
 import (
@@ -26,18 +26,23 @@ const maxRequestBody = 1 << 20
 // IDGenerator creates run identifiers at the external command boundary.
 type IDGenerator func() (identity.RunID, error)
 
-// Server is the in-memory Sprint 01 daemon.
+// Server is the storage-neutral kernel daemon.
 type Server struct {
-	store    *runstate.Store
-	registry *contracts.Registry
-	newID    IDGenerator
-	logger   *slog.Logger
-	ready    atomic.Bool
+	store     runstate.Repository
+	readiness readinessProbe
+	registry  *contracts.Registry
+	newID     IDGenerator
+	logger    *slog.Logger
+	ready     atomic.Bool
+}
+
+type readinessProbe interface {
+	Ready(context.Context) error
 }
 
 // New creates a daemon with explicit dependencies.
 func New(
-	store *runstate.Store,
+	store runstate.Repository,
 	registry *contracts.Registry,
 	newID IDGenerator,
 	logger *slog.Logger,
@@ -59,6 +64,9 @@ func New(
 		registry: registry,
 		newID:    newID,
 		logger:   logger,
+	}
+	if probe, ok := store.(readinessProbe); ok {
+		server.readiness = probe
 	}
 	server.ready.Store(true)
 	return server, nil
@@ -85,12 +93,23 @@ func (s *Server) handleHealth(writer http.ResponseWriter, _ *http.Request) {
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-func (s *Server) handleReady(writer http.ResponseWriter, _ *http.Request) {
+func (s *Server) handleReady(writer http.ResponseWriter, request *http.Request) {
 	if !s.ready.Load() {
 		writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
 			"status": "not_ready",
 		})
 		return
+	}
+	if s.readiness != nil {
+		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
+		defer cancel()
+		if err := s.readiness.Ready(ctx); err != nil {
+			s.logger.Warn("readiness dependency unavailable", "error", err)
+			writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
+				"status": "not_ready",
+			})
+			return
+		}
 	}
 	writeJSON(writer, http.StatusOK, map[string]string{"status": "ready"})
 }
@@ -119,7 +138,13 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 		))
 		return
 	}
-	run, err := s.store.Create(id, command.Objective)
+	metadata := commandMetadata(request, id.String())
+	run, err := s.store.CreateRun(
+		request.Context(),
+		id,
+		command.Objective,
+		metadata,
+	)
 	if err != nil {
 		s.writeError(writer, err)
 		return
@@ -128,6 +153,7 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 		s.writeError(writer, err)
 		return
 	}
+	writer.Header().Set("Idempotency-Key", metadata.IdempotencyKey)
 	writeJSON(writer, http.StatusCreated, run)
 }
 
@@ -142,7 +168,7 @@ func (s *Server) handleGetRun(writer http.ResponseWriter, request *http.Request)
 		))
 		return
 	}
-	run, err := s.store.Get(id)
+	run, err := s.store.GetRun(request.Context(), id)
 	if err != nil {
 		s.writeError(writer, err)
 		return
@@ -188,7 +214,24 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 		s.writeError(writer, err)
 		return
 	}
-	run, err := s.store.Transition(id, command.ExpectedVersion, target)
+	requestID, err := s.newID()
+	if err != nil {
+		s.writeError(writer, fault.Wrap(
+			fault.CodeInternal,
+			"daemon.transitionRun",
+			"generate command identifier",
+			err,
+		))
+		return
+	}
+	metadata := commandMetadata(request, requestID.String())
+	run, err := s.store.TransitionRun(
+		request.Context(),
+		id,
+		command.ExpectedVersion,
+		target,
+		metadata,
+	)
 	if err != nil {
 		s.writeError(writer, err)
 		return
@@ -197,7 +240,38 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 		s.writeError(writer, err)
 		return
 	}
+	writer.Header().Set("Idempotency-Key", metadata.IdempotencyKey)
 	writeJSON(writer, http.StatusOK, run)
+}
+
+func commandMetadata(request *http.Request, fallback string) runstate.CommandMetadata {
+	key := strings.TrimSpace(request.Header.Get("Idempotency-Key"))
+	if key == "" {
+		key = "generated:" + fallback
+	}
+	actorType := strings.TrimSpace(request.Header.Get("Forja-Actor-Type"))
+	if actorType == "" {
+		actorType = "system"
+	}
+	actorID := strings.TrimSpace(request.Header.Get("Forja-Actor-ID"))
+	if actorID == "" {
+		actorID = "anonymous"
+	}
+	correlationID := strings.TrimSpace(request.Header.Get("Forja-Correlation-ID"))
+	if correlationID == "" {
+		correlationID = fallback
+	}
+	var causationID *string
+	if value := strings.TrimSpace(request.Header.Get("Forja-Causation-ID")); value != "" {
+		causationID = &value
+	}
+	return runstate.CommandMetadata{
+		IdempotencyKey: key,
+		ActorType:      actorType,
+		ActorID:        actorID,
+		CorrelationID:  correlationID,
+		CausationID:    causationID,
+	}
 }
 
 func (s *Server) validateRun(run contracts.Run) error {

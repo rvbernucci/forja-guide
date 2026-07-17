@@ -1,10 +1,10 @@
 # Local Development
 
-Status: Sprint 01 kernel implemented; later infrastructure proposed
+Status: Sprint 02 durable kernel implemented; later infrastructure proposed
 
 ## Current Repository
 
-The repository contains the executable Sprint 01 Go kernel, architecture,
+The repository contains the executable Sprint 02 Go kernel, architecture,
 planning, canonical schemas, and quality automation.
 
 Validate it with:
@@ -27,11 +27,24 @@ Start the daemon:
 go run ./cmd/forjad --listen 127.0.0.1:8080
 ```
 
+This starts explicit ephemeral mode. To preserve commands across restarts,
+create a PostgreSQL database and provide its URL:
+
+```bash
+export FORJA_DATABASE_URL='postgres:///forja?host=/tmp'
+go run ./cmd/forjad --listen 127.0.0.1:8080
+```
+
+Embedded migrations run by default under a PostgreSQL advisory lock. Set
+`FORJA_DATABASE_AUTO_MIGRATE=false` only when a deployment pipeline applies
+migrations separately.
+
 Create and inspect a synthetic run:
 
 ```bash
 go run ./cmd/forja run create \
   --endpoint http://127.0.0.1:8080 \
+  --idempotency-key local-create-0001 \
   --objective "Build a governed Sprint"
 
 go run ./cmd/forja run get \
@@ -44,16 +57,24 @@ Transition it with optimistic concurrency:
 ```bash
 go run ./cmd/forja run transition \
   --endpoint http://127.0.0.1:8080 \
+  --idempotency-key local-transition-0001 \
   --id run_REPLACE_WITH_CREATED_ID \
   --expected-version 1 \
   --to awaiting_approval
 ```
 
+## Current Durable Prerequisites
+
+- Go 1.26.5;
+- PostgreSQL 18;
+- `pg_dump`, `pg_restore`, and `psql` for recovery verification;
+- Python 3.9 or newer and `diff` for release-migration verification.
+
+See the [PostgreSQL recovery runbook](POSTGRESQL_RECOVERY.md).
+
 ## Later Runtime Prerequisites
 
-- Go;
 - Docker or a compatible container runtime;
-- PostgreSQL;
 - S3-compatible object storage;
 - Qdrant;
 - Neo4j;
@@ -93,7 +114,7 @@ No configuration layer may contain committed credentials.
 
 The future `.env.example` will list variable names and synthetic values only.
 
-Sprint 01 daemon variables are:
+Implemented daemon variables are:
 
 | Variable | Purpose |
 | --- | --- |
@@ -101,6 +122,9 @@ Sprint 01 daemon variables are:
 | `FORJA_ENVIRONMENT` | Runtime environment label |
 | `FORJA_LOG_LEVEL` | `debug`, `info`, `warn`, or `error` |
 | `FORJA_SHUTDOWN_TIMEOUT` | Graceful shutdown duration |
+| `FORJA_DATABASE_URL` | PostgreSQL connection URL; enables durable mode |
+| `FORJA_DATABASE_MAX_CONNECTIONS` | Bounded pool size, default `4` |
+| `FORJA_DATABASE_AUTO_MIGRATE` | Apply embedded migrations, default `true` |
 | `FORJA_ENDPOINT` | CLI daemon endpoint |
 | `FORJA_TIMEOUT` | CLI request deadline |
 
@@ -123,6 +147,16 @@ evaluation
 
 Fast deterministic tests run on every pull request. External-model evaluations
 run separately with budgets and recorded model versions.
+
+Run PostgreSQL acceptance tests against a disposable database:
+
+```bash
+export FORJA_TEST_DATABASE_URL='postgres:///forja_test?host=/tmp'
+make test-integration
+```
+
+The suite destroys the `forja` schema in that database. Never point it at a
+shared or production database.
 
 ## Clean Repository Rule
 
