@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "03",
   "name": "MCP Control Surface",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "2431b69ac1cc3bc1d6e5d718904542ff49838133",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -33,8 +33,18 @@
   "supporting_artifacts": [
     "reviews/merged-implementation-review.md",
     "reviews/closure-evidence-review.md",
-    "security/govulncheck-v1.6.0.txt"
+    "security/govulncheck-v1.6.0.txt",
+    "docs/evidence/sprint-03/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-17T21:06:37Z"
+  "next_sprint_authorized": "04",
+  "candidate_recorded_at": "2026-07-17T21:06:37Z",
+  "reviewed_candidate_commit": "dac680a89f056be869d1a9039604db2df7a16627",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "dac680a89f056be869d1a9039604db2df7a16627",
+    "model": "gpt-5.6-sol",
+    "artifact_path": "docs/evidence/sprint-03/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "d9d35d023b7cd6b781788a7d868309f2d62ce1df8c0a75d0c6c188fdeb55db84"
+  },
+  "closed_at": "2026-07-17T22:51:14Z"
 }
