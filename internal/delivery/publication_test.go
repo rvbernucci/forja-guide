@@ -3,6 +3,7 @@ package delivery
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -128,7 +129,7 @@ func TestPublicationServiceAbandonsNotAppliedIntentAndReleasesLease(t *testing.T
 	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
 	intent, _, err := service.publicationIntent(
 		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
-		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt},
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}, true,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -173,7 +174,7 @@ func TestPublicationServiceReobservesRefInsideAbandonmentFence(t *testing.T) {
 	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
 	intent, _, err := service.publicationIntent(
 		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
-		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt},
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}, true,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -380,6 +381,92 @@ func TestPublicationServiceRevalidatesEvidenceInsidePublicationFence(t *testing.
 	)); ref != *fixture.request.PublicationPreviousCommit {
 		t.Fatalf("post-prepare evidence changed publication ref: %s", ref)
 	}
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); !errors.Is(err, ErrPublicationNotApplied) {
+		t.Fatalf("damaged-evidence recovery error = %v, want not applied", err)
+	}
+	if journal.record.State != "abandoned" || leases.releaseCalls != 1 ||
+		!leases.released || !slices.Equal(journal.events, []string{"prepare", "abandon", "release"}) {
+		t.Fatalf("damaged-evidence recovery state=%q events=%q releases=%d released=%v",
+			journal.record.State, journal.events, leases.releaseCalls, leases.released)
+	}
+}
+
+func TestPublicationServiceValidatesEveryAuthorityArtifactSchema(t *testing.T) {
+	for _, scenario := range []struct {
+		name   string
+		mutate func(*testing.T, *contracts.DeliveryRequest, *ValidationBundle)
+	}{
+		{
+			name: "request",
+			mutate: func(_ *testing.T, request *contracts.DeliveryRequest, _ *ValidationBundle) {
+				request.Role = "reviewer"
+			},
+		},
+		{
+			name: "validation report",
+			mutate: func(t *testing.T, _ *contracts.DeliveryRequest, bundle *ValidationBundle) {
+				t.Helper()
+				bundle.Report.ValidationID = "validation-not-a-uuid"
+				var err error
+				bundle.ReportJSON, err = json.Marshal(bundle.Report)
+				if err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name: "evidence manifest",
+			mutate: func(t *testing.T, _ *contracts.DeliveryRequest, bundle *ValidationBundle) {
+				t.Helper()
+				bundle.Manifest.Entries[0].MediaType = strings.Repeat("x", 256)
+				var err error
+				bundle.ManifestJSON, err = json.Marshal(bundle.Manifest)
+				if err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			fixture := newPublicationFixture(t)
+			service, err := NewPublicationService(
+				fixture.manager, newMemoryPublicationJournal(),
+				&recordingLeaseSets{events: &[]string{}}, fixture.authority(),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			request := fixture.request
+			bundle := fixture.bundle
+			scenario.mutate(t, &request, &bundle)
+			if _, err := service.validatePublicationArtifactSchemas(request, bundle); err == nil {
+				t.Fatal("schema-invalid authority artifact passed publication validation")
+			}
+		})
+	}
+}
+
+func TestPublicationServiceRejectsSchemaInvalidRequestBeforeJournal(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	fixture.request.Role = "reviewer"
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal,
+		&recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil || !strings.Contains(err.Error(), "delivery request schema") {
+		t.Fatalf("schema-invalid request publication error = %v", err)
+	}
+	if len(journal.events) != 0 {
+		t.Fatalf("schema-invalid request reached publication journal: %q", journal.events)
+	}
 }
 
 func TestVerifyPersistedEvidenceRootStaysBoundAfterPathReplacement(t *testing.T) {
@@ -527,7 +614,7 @@ func TestPublicationServicePreservesRecordedNanosecondTimestamp(t *testing.T) {
 	legacyCreatedAt := fixture.bundle.Report.CreatedAt.Add(500 * time.Millisecond).In(legacyZone)
 	intent, _, err := service.publicationIntent(
 		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
-		publicationReceiptTimes{CreatedAt: legacyCreatedAt, PublishedAt: legacyAt},
+		publicationReceiptTimes{CreatedAt: legacyCreatedAt, PublishedAt: legacyAt}, true,
 	)
 	if err != nil {
 		t.Fatal(err)

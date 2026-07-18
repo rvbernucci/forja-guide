@@ -192,6 +192,11 @@ lease set, and reports not-applied. Any other object records a terminal
 conflict. Exact lease release is idempotent, so recovery
 also closes a crash after receipt persistence but before release. No recovery
 path deletes quarantine evidence or updates a default branch.
+Damaged or missing persisted evidence can never authorize the Git CAS or a new
+prepared intent. It also cannot deadlock an already authenticated prepared
+intent: recovery validates the canonical authority artifacts and exact durable
+intent, then may retire it only when the locked Git observation still proves
+the approved pre-CAS state.
 
 The request-authorized lease duration is at least 60 seconds and is embedded in
 the canonical publication intent, not in the versioned receipt. The Git callback

@@ -129,7 +129,7 @@ func (s *PublicationService) Publish(
 		}
 	}
 	intent, receipt, err := s.publicationIntent(
-		ctx, request, result, bundle, leaseSet, receiptTimes,
+		ctx, request, result, bundle, leaseSet, receiptTimes, true,
 	)
 	if err != nil {
 		return PublicationResult{}, err
@@ -179,7 +179,7 @@ func (s *PublicationService) Publish(
 			return PublicationResult{}, errors.Join(err, timestampErr)
 		}
 		concurrentIntent, concurrentReceipt, rebuildErr := s.publicationIntent(
-			ctx, request, result, bundle, leaseSet, concurrentTimes,
+			ctx, request, result, bundle, leaseSet, concurrentTimes, true,
 		)
 		if rebuildErr != nil {
 			return PublicationResult{}, errors.Join(err, rebuildErr)
@@ -276,7 +276,7 @@ func (s *PublicationService) Recover(
 		}
 	}
 	intent, receipt, err := s.publicationIntent(
-		ctx, request, result, bundle, leaseSet, receiptTimes,
+		ctx, request, result, bundle, leaseSet, receiptTimes, false,
 	)
 	if err != nil {
 		return PublicationResult{}, err
@@ -382,6 +382,7 @@ func (s *PublicationService) publicationIntent(
 	bundle ValidationBundle,
 	leaseSet persistence.LeaseSet,
 	receiptTimes publicationReceiptTimes,
+	requirePersistedEvidence bool,
 ) (persistence.DeliveryPublicationIntent, contracts.DeliveryReceipt, error) {
 	if err := s.verifyRepositoryAuthority(); err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
@@ -451,21 +452,25 @@ func (s *PublicationService) publicationIntent(
 	); err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
 	}
-	if err := verifyPersistedValidationBundle(request, bundle); err != nil {
-		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
-			"verify persisted publication evidence: %w", err,
-		)
+	authorityJSON, err := s.validatePublicationArtifactSchemas(request, bundle)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if requirePersistedEvidence {
+		if err := verifyPersistedValidationBundle(request, bundle); err != nil {
+			return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+				"verify persisted publication evidence: %w", err,
+			)
+		}
 	}
 	receiptJSON, err := json.Marshal(receipt)
 	if err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf("encode canonical receipt: %w", err)
 	}
 	if err := s.schemas.ValidateJSON("delivery-receipt.schema.json", receiptJSON); err != nil {
-		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf("validate canonical receipt schema: %w", err)
-	}
-	authorityJSON, err := json.Marshal(request)
-	if err != nil {
-		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf("encode publication authority: %w", err)
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"validate canonical receipt schema: %w", err,
+		)
 	}
 	authorityDigest := sha256.Sum256(authorityJSON)
 	receiptDigest := sha256.Sum256(receiptJSON)
@@ -499,6 +504,34 @@ func (s *PublicationService) publicationIntent(
 		ReceiptSHA256:             fmt.Sprintf("%x", receiptDigest),
 		IntentSHA256:              fmt.Sprintf("%x", intentDigest), ReceiptJSON: receiptJSON,
 	}, receipt, nil
+}
+
+func (s *PublicationService) validatePublicationArtifactSchemas(
+	request contracts.DeliveryRequest,
+	bundle ValidationBundle,
+) ([]byte, error) {
+	authorityJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("encode publication authority: %w", err)
+	}
+	if err := s.schemas.ValidateJSON("delivery-request.schema.json", authorityJSON); err != nil {
+		return nil, fmt.Errorf("validate canonical delivery request schema: %w", err)
+	}
+	canonicalReport, err := json.Marshal(bundle.Report)
+	if err != nil || !bytes.Equal(canonicalReport, bundle.ReportJSON) {
+		return nil, fmt.Errorf("validation report bytes are not canonical")
+	}
+	if err := s.schemas.ValidateJSON("validation-report.schema.json", bundle.ReportJSON); err != nil {
+		return nil, fmt.Errorf("validate canonical validation report schema: %w", err)
+	}
+	canonicalManifest, err := json.Marshal(bundle.Manifest)
+	if err != nil || !bytes.Equal(canonicalManifest, bundle.ManifestJSON) {
+		return nil, fmt.Errorf("evidence manifest bytes are not canonical")
+	}
+	if err := s.schemas.ValidateJSON("evidence-manifest.schema.json", bundle.ManifestJSON); err != nil {
+		return nil, fmt.Errorf("validate canonical evidence manifest schema: %w", err)
+	}
+	return authorityJSON, nil
 }
 
 type publicationReceiptTimes struct {

@@ -61,6 +61,10 @@ state remains, it reobserves under the publication lock, persists `abandoned`,
 releases the exact lease, and reports not-applied; every other state records a
 terminal conflict. Exact release is replay-safe after expiry or an earlier release,
 but a changed fence is still rejected while authority remains live.
+Recovery authenticates the canonical request, report, manifest, receipt, and
+durable intent without treating the continued availability of evidence files
+as proof that a CAS occurred. Missing or damaged files still block publication,
+but cannot prevent retirement when Git proves the CAS was not applied.
 Migration rollback is available only before this journal contains history.
 After the first prepared or terminal publication row, downgrade fails closed;
 operators preserve receipt authority and use forward repair rather than delete
