@@ -320,20 +320,25 @@ func prepareVersionThreeIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
 	resetDatabase(t, pool)
 	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatalf("migrate through version four: %v", err)
+		t.Fatalf("migrate through latest version: %v", err)
 	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback to version three: %v", err)
-	}
-	var version int64
-	if err := pool.QueryRow(
-		t.Context(),
-		"SELECT COALESCE(max(version), 0) FROM forja.schema_migrations",
-	).Scan(&version); err != nil {
-		t.Fatal(err)
-	}
-	if version != 3 {
-		t.Fatalf("prepared migration version = %d, want 3", version)
+	for {
+		var version int64
+		if err := pool.QueryRow(
+			t.Context(),
+			"SELECT COALESCE(max(version), 0) FROM forja.schema_migrations",
+		).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case version == 3:
+			return
+		case version < 3:
+			t.Fatalf("prepared migration version = %d, want at least 3", version)
+		}
+		if err := RollbackLast(t.Context(), pool); err != nil {
+			t.Fatalf("rollback to version three: %v", err)
+		}
 	}
 }
 

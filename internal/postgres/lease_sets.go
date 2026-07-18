@@ -419,6 +419,12 @@ func (s *Store) loadAndVerifyLeaseSetMembers(
 	if len(leases) != len(keys) {
 		return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership is incomplete")
 	}
+	// PostgreSQL text ordering follows the database collation, while lease-set
+	// digests and proofs use byte ordering. Canonicalize after loading so
+	// authority checks remain stable across supported database locales.
+	slices.SortFunc(leases, func(left, right persistence.Lease) int {
+		return compareLeaseKeys(left.LeaseKey, right.LeaseKey)
+	})
 	for index := range keys {
 		if leases[index].LeaseKey != keys[index] {
 			return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership disagrees with authority")
