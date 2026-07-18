@@ -322,6 +322,11 @@ func prepareVersionThreeIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) {
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate through latest version: %v", err)
 	}
+	rollbackToMigrationVersion(t, pool, 3)
+}
+
+func rollbackToMigrationVersion(t *testing.T, pool *pgxpool.Pool, target int64) {
+	t.Helper()
 	for {
 		var version int64
 		if err := pool.QueryRow(
@@ -331,13 +336,13 @@ func prepareVersionThreeIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) {
 			t.Fatal(err)
 		}
 		switch {
-		case version == 3:
+		case version == target:
 			return
-		case version < 3:
-			t.Fatalf("prepared migration version = %d, want at least 3", version)
+		case version < target:
+			t.Fatalf("prepared migration version = %d, want at least %d", version, target)
 		}
 		if err := RollbackLast(t.Context(), pool); err != nil {
-			t.Fatalf("rollback to version three: %v", err)
+			t.Fatalf("rollback to migration %d: %v", target, err)
 		}
 	}
 }

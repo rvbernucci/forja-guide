@@ -132,6 +132,9 @@ func TestAtomicLeaseSetLifecycleAndNoExpansion(t *testing.T) {
 	if err := store.ReleaseLeaseSet(t.Context(), renewed); err != nil {
 		t.Fatalf("release lease set: %v", err)
 	}
+	if err := store.ReleaseLeaseSet(t.Context(), renewed); err != nil {
+		t.Fatalf("replay exact lease set release: %v", err)
+	}
 	if _, err := store.AcquireLeaseSet(
 		t.Context(), "attempt_lifecycle_1", keys, "author-a", time.Minute,
 	); !isFaultCode(err, fault.CodeConflict) {
@@ -182,6 +185,7 @@ func TestLeaseSetAllowsSiblingFileAndArtifactScopes(t *testing.T) {
 
 func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 4)
 	store := newIntegrationStore(t, pool)
 	set, err := store.AcquireLeaseSet(
 		t.Context(), "delivery_rollback", []persistence.LeaseKey{
@@ -215,6 +219,7 @@ func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 
 func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 4)
 	store := newIntegrationStore(t, pool)
 	set, err := store.AcquireLeaseSet(
 		t.Context(), "attempt_rollback_order", []persistence.LeaseKey{
@@ -448,6 +453,62 @@ func TestLeaseSetReleaseIsAtomicWhenOneFenceIsStale(t *testing.T) {
 	}
 	if activeMembers != len(set.Leases) {
 		t.Fatalf("active members=%d, want atomic rollback preserving %d", activeMembers, len(set.Leases))
+	}
+}
+
+func TestExpiredLeaseSetReleaseDoesNotTouchReplacementAuthority(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	keys := []persistence.LeaseKey{
+		deliveryLeaseKey("worktree", "delivery_expired_release"),
+		deliveryLeaseKey("file", "internal/expired-release"),
+		deliveryLeaseKey("file", "internal/zeta"),
+		deliveryLeaseKey("file", "internal/éclair"),
+	}
+	first, err := store.AcquireLeaseSet(
+		t.Context(), "attempt_expired_release_first", keys, "first-owner", time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("acquire first release authority: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.leases
+		SET expires_at=acquired_at
+		WHERE tenant_id=$1 AND repository_id=$2 AND owner_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, first.OwnerID,
+	); err != nil {
+		t.Fatalf("expire first release members: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.lease_sets
+		SET expires_at=acquired_at
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, first.LeaseSetID,
+	); err != nil {
+		t.Fatalf("expire first release set: %v", err)
+	}
+	second, err := store.AcquireLeaseSet(
+		t.Context(), "attempt_expired_release_second", keys, "second-owner", time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("acquire replacement release authority: %v", err)
+	}
+	if err := store.ReleaseLeaseSet(t.Context(), first); err != nil {
+		t.Fatalf("retire exact expired authority: %v", err)
+	}
+	if _, err := store.RenewLeaseSet(t.Context(), second, time.Minute); err != nil {
+		t.Fatalf("historical release damaged replacement authority: %v", err)
+	}
+	var firstState string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT state FROM forja.lease_sets
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, first.LeaseSetID,
+	).Scan(&firstState); err != nil {
+		t.Fatal(err)
+	}
+	if firstState != "released" {
+		t.Fatalf("expired historical set state = %q, want released", firstState)
 	}
 }
 

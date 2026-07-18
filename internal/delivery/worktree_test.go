@@ -15,7 +15,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
 
-func TestWorktreeLifecyclePreparesIdempotentlyAndRemovesCleanCheckout(t *testing.T) {
+func TestWorktreeLifecyclePreparesIdempotentlyAndPreservesRetiredCheckout(t *testing.T) {
 	repository, root, base := deliveryRepository(t)
 	marker := filepath.Join(t.TempDir(), "hook-ran")
 	installPostCheckoutHook(t, repository, marker)

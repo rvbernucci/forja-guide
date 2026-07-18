@@ -131,6 +131,63 @@ type LeaseSetRepository interface {
 	ReleaseLeaseSet(context.Context, LeaseSet) error
 }
 
+// DeliveryPublicationIntent is the immutable, replay-safe authority persisted
+// before a namespaced Git ref may change.
+type DeliveryPublicationIntent struct {
+	DeliveryID                string
+	AttemptID                 string
+	LeaseSetID                string
+	PublicationRef            string
+	PublicationPreviousCommit *string
+	ResultCommit              string
+	AuthoritySHA256           string
+	ReceiptSHA256             string
+	IntentSHA256              string
+	ReceiptJSON               []byte
+}
+
+// DeliveryPublication records one prepared or durably published attempt.
+type DeliveryPublication struct {
+	Intent         DeliveryPublicationIntent
+	State          string
+	ObservedCommit *string
+	PreparedAt     time.Time
+	PublishedAt    *time.Time
+	UpdatedAt      time.Time
+}
+
+// DeliveryPublicationRepository journals the cross-system Git publication
+// protocol. Recovery may finalize only an exact prepared intent whose ref is
+// independently observed at its exact result commit.
+type DeliveryPublicationRepository interface {
+	GetDeliveryPublication(
+		context.Context,
+		string,
+		string,
+	) (DeliveryPublication, bool, error)
+	PrepareDeliveryPublication(
+		context.Context,
+		DeliveryPublicationIntent,
+		LeaseSet,
+	) (DeliveryPublication, error)
+	CompleteDeliveryPublication(
+		context.Context,
+		DeliveryPublicationIntent,
+		LeaseSet,
+		func(context.Context) error,
+	) (DeliveryPublication, error)
+	RecoverDeliveryPublication(
+		context.Context,
+		DeliveryPublicationIntent,
+		string,
+	) (DeliveryPublication, error)
+	ConflictDeliveryPublication(
+		context.Context,
+		DeliveryPublicationIntent,
+		*string,
+	) (DeliveryPublication, error)
+}
+
 // OutboxMessage is a claimed canonical event awaiting projection.
 type OutboxMessage struct {
 	OutboxID         int64

@@ -241,7 +241,7 @@ func ValidateDeliveryPublication(
 	if !reportEntryFound {
 		return fmt.Errorf("evidence manifest does not contain the canonical validation report")
 	}
-	expectedFenceKeys := expectedDeliveryFenceKeys(request)
+	expectedFenceKeys := ExpectedDeliveryFenceKeys(request)
 	actualFenceKeys := make([]string, 0, len(receipt.LeaseFences))
 	for _, fence := range receipt.LeaseFences {
 		actualFenceKeys = append(actualFenceKeys, fence.ResourceType+"\x00"+fence.ResourceID)
@@ -311,7 +311,9 @@ func validateDeliveryReceiptStructure(receipt DeliveryReceipt) error {
 	return nil
 }
 
-func expectedDeliveryFenceKeys(request DeliveryRequest) []string {
+// ExpectedDeliveryFenceKeys derives the canonical hierarchical publication
+// fence set from one already validated request.
+func ExpectedDeliveryFenceKeys(request DeliveryRequest) []string {
 	keys := []string{"worktree\x00" + request.DeliveryID}
 	for _, scope := range request.WriteScopes {
 		for _, resourceID := range scopeAndAncestors(scope) {

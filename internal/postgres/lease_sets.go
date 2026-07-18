@@ -259,13 +259,50 @@ func (s *Store) ReleaseLeaseSet(ctx context.Context, leaseSet persistence.LeaseS
 	if err := s.lockLeaseSetAndMembers(ctx, tx, leaseSet.LeaseSetID, keys); err != nil {
 		return err
 	}
-	if _, err := s.verifyLeaseSetAuthority(ctx, tx, leaseSet, keys, proofs, digest); err != nil {
+	stored, found, err := s.loadLeaseSetForUpdate(ctx, tx, leaseSet.LeaseSetID)
+	if err != nil {
 		return err
 	}
-	var databaseNow time.Time
-	if err := tx.QueryRow(ctx, "SELECT clock_timestamp()").Scan(&databaseNow); err != nil {
-		return databaseError("postgres.ReleaseLeaseSet.clock", err)
+	if !found || stored.OwnerID != leaseSet.OwnerID || !bytes.Equal(stored.memberDigest, digest) {
+		return conflictError("postgres.ReleaseLeaseSet", "lease set is missing or bound to different authority")
 	}
+	if err := s.verifyHistoricalLeaseSetMembers(
+		ctx, tx, leaseSet.LeaseSetID, keys, proofs,
+	); err != nil {
+		return err
+	}
+	if stored.state == "released" {
+		if err := tx.Commit(ctx); err != nil {
+			return databaseError("postgres.ReleaseLeaseSet.replay_commit", err)
+		}
+		return nil
+	}
+	if stored.state != "active" {
+		return conflictError("postgres.ReleaseLeaseSet", "lease set is not active or released")
+	}
+	if !stored.ExpiresAt.After(stored.databaseNow) {
+		// Expiry already removed all write authority. Retire the exact historical
+		// set without touching resources that may now carry newer fence tokens.
+		if _, err := tx.Exec(ctx, `
+			UPDATE forja.lease_sets
+			SET state='released', updated_at=$1
+			WHERE tenant_id=$2 AND repository_id=$3
+			  AND lease_set_id=$4 AND state='active'`,
+			stored.databaseNow, s.tenantID, s.repositoryID, leaseSet.LeaseSetID,
+		); err != nil {
+			return databaseError("postgres.ReleaseLeaseSet.retire_expired", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return databaseError("postgres.ReleaseLeaseSet.expired_commit", err)
+		}
+		return nil
+	}
+	if _, err := s.loadAndVerifyLeaseSetMembers(
+		ctx, tx, leaseSet.LeaseSetID, leaseSet.OwnerID, keys, proofs,
+	); err != nil {
+		return err
+	}
+	databaseNow := stored.databaseNow
 	for _, proof := range proofs {
 		tag, err := tx.Exec(ctx, `
 			UPDATE forja.leases
@@ -294,6 +331,52 @@ func (s *Store) ReleaseLeaseSet(ctx context.Context, leaseSet persistence.LeaseS
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return databaseError("postgres.ReleaseLeaseSet.commit", err)
+	}
+	return nil
+}
+
+func (s *Store) verifyHistoricalLeaseSetMembers(
+	ctx context.Context,
+	tx pgx.Tx,
+	leaseSetID string,
+	keys []persistence.LeaseKey,
+	proofs []persistence.Lease,
+) error {
+	rows, err := tx.Query(ctx, `
+		SELECT resource_type, resource_id, fencing_token
+		FROM forja.lease_set_members
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3
+		ORDER BY resource_type, resource_id`,
+		s.tenantID, s.repositoryID, leaseSetID,
+	)
+	if err != nil {
+		return databaseError("postgres.verifyHistoricalLeaseSetMembers.query", err)
+	}
+	defer rows.Close()
+	members := make([]persistence.Lease, 0, len(keys))
+	for rows.Next() {
+		var member persistence.Lease
+		if err := rows.Scan(&member.ResourceType, &member.ResourceID, &member.FencingToken); err != nil {
+			return databaseError("postgres.verifyHistoricalLeaseSetMembers.scan", err)
+		}
+		members = append(members, member)
+	}
+	if err := rows.Err(); err != nil {
+		return databaseError("postgres.verifyHistoricalLeaseSetMembers.rows", err)
+	}
+	if len(members) != len(keys) {
+		return conflictError("postgres.verifyHistoricalLeaseSetMembers", "lease set membership is incomplete")
+	}
+	// Database collation is not the canonical lease ordering. Re-sort with the
+	// same byte-order comparator used for digests and caller proofs.
+	slices.SortFunc(members, func(left, right persistence.Lease) int {
+		return compareLeaseKeys(left.LeaseKey, right.LeaseKey)
+	})
+	for index, member := range members {
+		if member.ResourceType != keys[index].ResourceType || member.ResourceID != keys[index].ResourceID ||
+			member.FencingToken != proofs[index].FencingToken {
+			return conflictError("postgres.verifyHistoricalLeaseSetMembers", "lease set membership or fence changed")
+		}
 	}
 	return nil
 }
@@ -340,12 +423,30 @@ func (s *Store) verifyLeaseSetAuthority(
 	proofs []persistence.Lease,
 	digest []byte,
 ) (persistence.LeaseSet, error) {
+	return s.verifyLeaseSetAuthorityWithMinimum(
+		ctx, tx, leaseSet, keys, proofs, digest, 0,
+	)
+}
+
+func (s *Store) verifyLeaseSetAuthorityWithMinimum(
+	ctx context.Context,
+	tx pgx.Tx,
+	leaseSet persistence.LeaseSet,
+	keys []persistence.LeaseKey,
+	proofs []persistence.Lease,
+	digest []byte,
+	minimumRemaining time.Duration,
+) (persistence.LeaseSet, error) {
 	stored, found, err := s.loadLeaseSetForUpdate(ctx, tx, leaseSet.LeaseSetID)
 	if err != nil {
 		return persistence.LeaseSet{}, err
 	}
+	if minimumRemaining < 0 {
+		return persistence.LeaseSet{}, invalidLeaseSetError("minimum remaining lease duration cannot be negative")
+	}
 	if !found || stored.state != "active" || stored.OwnerID != leaseSet.OwnerID ||
-		!bytes.Equal(stored.memberDigest, digest) || !stored.ExpiresAt.After(stored.databaseNow) {
+		!bytes.Equal(stored.memberDigest, digest) ||
+		!stored.ExpiresAt.After(stored.databaseNow.Add(minimumRemaining)) {
 		return persistence.LeaseSet{}, conflictError("postgres.verifyLeaseSetAuthority", "lease set is missing, stale, or replaced")
 	}
 	leases, err := s.loadAndVerifyLeaseSetMembers(

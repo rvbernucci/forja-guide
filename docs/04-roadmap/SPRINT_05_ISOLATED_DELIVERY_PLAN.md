@@ -90,19 +90,20 @@ contaminated worktree is quarantined and never reused.
 ### 5. Controlled publication and recovery
 
 - [x] Create the commit with a supervisor-owned deterministic identity.
-- [ ] Publish only to `refs/forja/deliveries/<delivery-id>` using compare and
+- [x] Publish only to `refs/forja/deliveries/<delivery-id>` using compare and
   swap against the expected old object ID.
-- [ ] Persist the delivery receipt before releasing the lease set.
-- [ ] Make receipt creation and publication replay-safe.
-- [ ] Reconcile expired attempts without deleting quarantined evidence.
+- [x] Persist the delivery receipt before releasing the lease set.
+- [x] Make receipt creation and publication replay-safe.
+- [x] Reconcile exact prepared attempts after lease expiry without deleting
+  quarantined evidence or inferring publication from timing.
 
 ### 6. Acceptance and closure
 
-- [ ] Complete one synthetic approved task through validated publication.
-- [ ] Prove concurrent overlapping authors cannot both acquire authority.
-- [ ] Prove stale fencing tokens cannot commit or publish.
-- [ ] Prove out-of-scope, ignored, symlink, and hidden-index mutations fail.
-- [ ] Reproduce validation from a clean clone using only receipt references.
+- [x] Complete one synthetic approved task through validated publication.
+- [x] Prove concurrent overlapping authors cannot both acquire authority.
+- [x] Prove stale fencing tokens cannot commit or publish.
+- [x] Prove out-of-scope, ignored, symlink, and hidden-index mutations fail.
+- [x] Reproduce validation from a clean clone using only receipt references.
 - [ ] Run race, integration, rollback, and independent security reviews.
 - [ ] Publish a fail-closed Sprint 05 evidence candidate and close it through
   the two-phase protocol.

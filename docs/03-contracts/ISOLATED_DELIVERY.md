@@ -130,6 +130,40 @@ The service publishes with compare-and-swap ref semantics. A missing target is
 created only if it is still missing; an existing target advances only from the
 approved previous object ID.
 
+Publication follows a durable cross-system protocol:
+
+1. PostgreSQL records a canonical `prepared` intent containing the exact
+   delivery attempt, lease set, authority digest, receipt bytes and digest,
+   previous object ID, result object ID, and namespaced ref.
+2. PostgreSQL reacquires and verifies the exact lease-set fences with enough
+   time remaining for the bounded Git operation. One transaction holds every
+   resource and publication advisory lock while Git updates only
+   `refs/forja/deliveries/<delivery-id>` with `update-ref --no-deref` and the
+   approved old object ID. Ref observation verifies the exact ref name, a
+   direct commit object, and no symbolic target.
+3. Before releasing those locks, the same transaction changes the exact
+   prepared row to `published`, retaining the canonical receipt and observed
+   result object ID.
+4. Only after the published row commits does the service release the exact
+   fenced lease set.
+
+An attempt can move from `prepared` only to `published` or `conflict`.
+Replaying a published attempt requires byte-identical intent and a fresh Git
+read at the exact result commit. Recovery may finalize a prepared row without
+a live lease only when that trusted read proves the CAS already happened;
+finding the approved old object reports not-applied, and any other object
+records a terminal conflict. Exact lease release is idempotent, so recovery
+also closes a crash after receipt persistence but before release. No recovery
+path deletes quarantine evidence or updates a default branch.
+
+The Git callback is bounded to 30 seconds; publication requires at least 40
+seconds of lease authority remaining before invoking it. Expired, replaced, or
+short-horizon fences fail before Git mutation. Holding the advisory locks over
+the callback prevents a compliant concurrent acquirer from replacing authority
+between fence verification and compare-and-swap. A process failure after Git
+mutation but before the SQL commit leaves `prepared` authority for exact-ref
+recovery rather than manufacturing a receipt.
+
 ## Validation
 
 Built-in checks always run before configured validators:
@@ -201,6 +235,10 @@ or missing entries fail closed.
   durable.
 - A receipt replay must be byte-equivalent; the same delivery ID cannot publish
   different content.
+- A prepared publication whose ref still has the approved old object remains
+  not-applied; recovery never reports success by inference.
+- A prepared publication whose ref has any unapproved object becomes a durable
+  conflict and is never overwritten.
 
 ## Receipt Authority
 

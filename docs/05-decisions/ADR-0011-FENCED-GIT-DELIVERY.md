@@ -35,6 +35,20 @@ Forja will deliver changes through a supervisor-owned pipeline:
 7. Persist a content-addressed receipt and release only the exact fenced lease
    set. Dirty or unverifiable failures are quarantined rather than reset.
 
+The Git and PostgreSQL transaction boundary uses a write-ahead publication
+journal. The service first persists one immutable `prepared` intent, performs
+an exact `update-ref --no-deref` compare-and-swap while a PostgreSQL transaction
+holds every resource and publication advisory lock, commits the canonical
+receipt as `published` before releasing those locks, and only then releases the
+lease set. The transaction requires at least 40 seconds of live authority for
+the bounded 30-second Git mutation, so expiry or replacement fails before Git
+is invoked. Recovery trusts neither a
+caller assertion nor timing: it rereads the exact direct Git ref. It finalizes
+only when that ref equals the intent's result commit, reports not-applied when
+the approved previous state remains, and records a terminal conflict for every
+other state. Exact release is replay-safe after expiry or an earlier release,
+but a changed fence is still rejected while authority remains live.
+
 Canonical patch identity is the SHA-256 of Git's binary, full-index diff from
 the exact base commit to the result commit. Changed paths are normalized,
 deduplicated, byte-sorted repository-relative paths. Validator definitions are
@@ -117,6 +131,8 @@ Negative:
 - clean-checkout validation costs additional I/O and execution time;
 - delivery requires complete local Git objects and a durable PostgreSQL lease
   service;
+- publication deliberately holds one bounded database transaction across the
+  local Git compare-and-swap to remove the stale-fence interval;
 - the default branch still requires an external governed merge process.
 
 ## Guardrail
@@ -125,4 +141,7 @@ Tests must reject partial lease sets, ancestor/descendant write conflicts,
 stale fencing tokens, arbitrary worktree paths, symbolic-link escapes,
 self-validation, mutable validator commands, non-reproducible hashes,
 publication compare-and-swap failures, worktree reuse after contamination, and
-receipt replay with different content.
+receipt replay with different content. They must also prove journal-before-CAS,
+live-fence locks across CAS, no callback on stale or short-horizon authority,
+receipt-before-release, exact-ref observation, recovery after the Git/SQL crash
+window, and rollback refusal while publication history exists.
