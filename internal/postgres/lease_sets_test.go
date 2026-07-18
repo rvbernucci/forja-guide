@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"context"
 	"errors"
 	"sync"
 	"testing"
@@ -343,14 +342,18 @@ func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
-	defer cancel()
-	rollbackResult := make(chan error, 1)
-	go func() { rollbackResult <- RollbackLast(ctx, pool) }()
-	waitForLockQuery(t, pool, "%LOCK TABLE%forja.lease_set_members%")
+	started := time.Now()
+	rollbackErr := RollbackLast(t.Context(), pool)
+	var databaseErr *pgconn.PgError
+	if !errors.As(rollbackErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("contended rollback error = %v, want lock_not_available", rollbackErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("contended rollback failed after %s, want fail-fast", elapsed)
+	}
 
-	// The corrected rollback is waiting on leases and has not locked lease_sets.
-	// Reversing the rollback order makes this query form the former deadlock.
+	// The fail-fast writer barrier does not retain partial relation locks, so
+	// the active writer can finish without deadlocking behind the rollback.
 	if _, err := writer.Exec(t.Context(), `
 		SELECT 1 FROM forja.lease_sets
 		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3
@@ -361,8 +364,7 @@ func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 		t.Fatal(err)
 	}
 	writerOpen = false
-	rollbackErr := <-rollbackResult
-	var databaseErr *pgconn.PgError
+	rollbackErr = RollbackLast(t.Context(), pool)
 	if !errors.As(rollbackErr, &databaseErr) || databaseErr.Code != "55000" {
 		t.Fatalf("rollback result = %v, want live-set safety refusal without deadlock", rollbackErr)
 	}

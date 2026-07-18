@@ -68,7 +68,7 @@ var allowedTransitions = map[State]map[State]struct{}{
 		StateFailedTerminal:   {},
 	},
 	StateAwaitingDecision: {
-		StateRunning:        {},
+		StateQueued:         {},
 		StateCompleted:      {},
 		StateCancelling:     {},
 		StateFailedTerminal: {},

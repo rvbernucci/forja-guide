@@ -10,6 +10,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/postgres"
@@ -56,6 +58,7 @@ func TestPublicationPostgresEndToEnd(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire end-to-end lease set: %v", err)
 	}
+	seedPublicationRun(t, pool, store, fixture.request)
 	service, err := NewPublicationService(fixture.manager, store, store, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
@@ -143,6 +146,7 @@ func TestPublicationPostgresRecoversCrashAfterGitCAS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire crash-recovery lease set: %v", err)
 	}
+	seedPublicationRun(t, pool, store, fixture.request)
 	if _, err := pool.Exec(t.Context(), `
 		CREATE OR REPLACE FUNCTION forja.fail_publication_commit()
 		RETURNS trigger LANGUAGE plpgsql AS $$
@@ -253,5 +257,51 @@ func TestPublicationPostgresRecoversCrashAfterGitCAS(t *testing.T) {
 	if err != nil || !replayed.Replayed || !replayed.LeaseReleased ||
 		!reflect.DeepEqual(replayed.Receipt, recovered.Receipt) {
 		t.Fatalf("recovered publication replay = %#v, err=%v", replayed, err)
+	}
+}
+
+func seedPublicationRun(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	store *postgres.Store,
+	request contracts.DeliveryRequest,
+) {
+	t.Helper()
+	schedulerResource := "publication-scheduler:" + request.AttemptID
+	schedulerLease, err := store.AcquireLease(
+		t.Context(),
+		persistence.LeaseKey{
+			TenantID: postgres.DefaultTenantID, RepositoryID: postgres.DefaultRepositoryID,
+			ResourceType: "scheduler", ResourceID: schedulerResource,
+		},
+		"publication-scheduler", time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("acquire publication scheduler lease: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, objective, state, version,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, $4, 'validating', 1,
+		          clock_timestamp(), clock_timestamp())`,
+		request.RunID, postgres.DefaultTenantID, postgres.DefaultRepositoryID,
+		request.Objective,
+	); err != nil {
+		t.Fatalf("seed publication Run: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.attempts (
+			attempt_id, tenant_id, run_id, ordinal, status,
+			lease_resource_type, lease_resource_id, worker_id, fencing_token,
+			started_at, finished_at, version
+		) VALUES ($1, $2, $3, $4, 'succeeded',
+		          'scheduler', $5, $6, $7,
+		          clock_timestamp(), clock_timestamp(), 3)`,
+		request.AttemptID, postgres.DefaultTenantID, request.RunID,
+		request.AttemptOrdinal, schedulerResource,
+		schedulerLease.OwnerID, schedulerLease.FencingToken,
+	); err != nil {
+		t.Fatalf("seed publication attempt: %v", err)
 	}
 }

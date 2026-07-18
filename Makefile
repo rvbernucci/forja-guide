@@ -16,6 +16,10 @@ test-integration:
 	FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 ./internal/postgres
 	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
 		go test -count=1 ./internal/delivery -run 'TestPublicationPostgres(EndToEnd|RecoversCrashAfterGitCAS)$$'
+	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
+		go test -count=1 ./internal/execution \
+		-run '^Test(PipelineApprovedSprintRunsRealWorkerAndPublishes|DeliveryAuthorizationSupportsNewAttemptForSameDelivery)$$'
+	./scripts/rehearse_sprint05_rollback.sh
 	./scripts/smoke_durable_restart.sh
 
 build:

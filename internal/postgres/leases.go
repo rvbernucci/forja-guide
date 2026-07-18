@@ -21,6 +21,61 @@ var leaseTypes = map[string]struct{}{
 	"artifact":  {},
 }
 
+// VerifyLease proves that an exact standalone fence is live for at least the
+// requested horizon without changing its expiry or fencing token.
+func (s *Store) VerifyLease(
+	ctx context.Context,
+	proof persistence.LeaseProof,
+	minimumRemaining time.Duration,
+) (persistence.Lease, error) {
+	proof.LeaseKey = s.bindLeaseKey(proof.LeaseKey)
+	if err := validateLeaseInput(
+		proof.LeaseKey,
+		proof.OwnerID,
+		time.Millisecond,
+		s.tenantID,
+		s.repositoryID,
+	); err != nil {
+		return persistence.Lease{}, err
+	}
+	if proof.FencingToken < 1 || minimumRemaining < 0 || minimumRemaining > 24*time.Hour {
+		return persistence.Lease{}, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.VerifyLease",
+			"positive fencing token and a bounded minimum horizon are required",
+		)
+	}
+	lease := persistence.Lease{LeaseKey: proof.LeaseKey}
+	err := s.pool.QueryRow(ctx, `
+		SELECT owner_id, fencing_token, acquired_at, expires_at
+		FROM forja.leases
+		WHERE tenant_id=$1 AND repository_id=$2
+		  AND resource_type=$3 AND resource_id=$4
+		  AND owner_id=$5 AND fencing_token=$6
+		  AND expires_at > clock_timestamp() + $7::interval`,
+		proof.TenantID,
+		s.repositoryID,
+		proof.ResourceType,
+		proof.ResourceID,
+		proof.OwnerID,
+		proof.FencingToken,
+		intervalString(minimumRemaining),
+	).Scan(&lease.OwnerID, &lease.FencingToken, &lease.AcquiredAt, &lease.ExpiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return persistence.Lease{}, fault.New(
+			fault.CodeConflict,
+			"postgres.VerifyLease",
+			"lease is expired, replaced, or shorter than the required horizon",
+		)
+	}
+	if err != nil {
+		return persistence.Lease{}, databaseError("postgres.VerifyLease", err)
+	}
+	lease.AcquiredAt = lease.AcquiredAt.UTC()
+	lease.ExpiresAt = lease.ExpiresAt.UTC()
+	return lease, nil
+}
+
 // AcquireLease grants one active owner and increments the fencing token on
 // every takeover.
 func (s *Store) AcquireLease(

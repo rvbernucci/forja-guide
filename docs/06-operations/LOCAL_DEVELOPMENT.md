@@ -1,6 +1,6 @@
 # Local Development
 
-Status: Sprint 04 closed; Sprint 05 isolated delivery is in progress
+Status: Sprint 04 closed; Sprint 05 implementation complete and closure pending
 
 ## Current Repository
 
@@ -40,11 +40,21 @@ make test-integration
 
 This executes Git and PostgreSQL end to end, verifies durable replay after
 lease release, injects a crash after Git CAS but before SQL commit, recovers it
-through fresh runtime instances, then runs the restart smoke test. The boundary
-is currently a Go library rather than a public MCP or CLI command. Post-worker
+through fresh runtime instances, proves an approved Sprint starts a real child
+worker and reaches a durable receipt, verifies immutable human request
+authorization, dual lease liveness, canonical pre-launch failure, and exact
+evidence reload, runs the Sprint 04 binary against the
+schema downgraded through migrations 006, 005, and 004, then runs the restart
+smoke test. The boundary is currently a Go library rather than a public MCP or
+CLI command. Post-worker
 worktree deletion also remains disabled until the supervisor can issue a
 non-forgeable process-quiescence proof; preserving verified or quarantined
 bytes is the fail-closed behavior.
+
+The rollback rehearsal starts only from an archive with no publication journal
+and no delivery-authorization history. `RollbackLast` refuses the downgrade
+before changing the migration ledger when either a `delivery.authorized` event
+or an `authorize_delivery:*` receipt remains.
 
 ## Worker Supervisor
 

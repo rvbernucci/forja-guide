@@ -281,25 +281,27 @@ psql "$FORJA_PG_SAFE_URL" \
   --no-align \
   --field-separator=$'\t' \
   --command="
-    SELECT tenant_id::text,
-           repository_id::text,
-           aggregate_type,
-           aggregate_id,
-           aggregate_version,
-           event_id,
-           event_type,
-           encode(convert_to(actor_type, 'UTF8'), 'hex'),
-           encode(convert_to(actor_id, 'UTF8'), 'hex'),
-           encode(convert_to(correlation_id, 'UTF8'), 'hex'),
-           encode(convert_to(COALESCE(causation_id, ''), 'UTF8'), 'hex'),
-           encode(convert_to(idempotency_key, 'UTF8'), 'hex'),
-           encode(convert_to(payload::text, 'UTF8'), 'hex')
-    FROM forja.events
-    WHERE aggregate_type IN (
-      'run', 'attempt', 'sprint', 'decision', 'audit', 'projection'
+    SELECT e.tenant_id::text,
+           e.repository_id::text,
+           e.aggregate_type,
+           e.aggregate_id,
+           e.aggregate_version,
+           e.event_id,
+           o.outbox_id,
+           e.event_type,
+           (extract(epoch FROM e.occurred_at) * 1000000)::bigint,
+           encode(convert_to(e.actor_type, 'UTF8'), 'hex'),
+           encode(convert_to(e.actor_id, 'UTF8'), 'hex'),
+           encode(convert_to(e.correlation_id, 'UTF8'), 'hex'),
+           encode(convert_to(COALESCE(e.causation_id, ''), 'UTF8'), 'hex'),
+           encode(convert_to(e.idempotency_key, 'UTF8'), 'hex'),
+           encode(convert_to(e.payload::text, 'UTF8'), 'hex')
+    FROM forja.events AS e
+    JOIN forja.outbox AS o ON o.event_id=e.event_id
+    WHERE e.aggregate_type IN (
+      'run', 'attempt', 'sprint', 'decision', 'approval', 'audit', 'projection'
     )
-    ORDER BY tenant_id, repository_id, aggregate_type, aggregate_id,
-             aggregate_version;
+    ORDER BY o.outbox_id;
   " >"$work/command-events.tsv"
 
 psql "$FORJA_PG_SAFE_URL" \
@@ -511,6 +513,7 @@ transitions = {
         "failed_terminal",
     },
     "awaiting_decision": {
+        "queued",
         "running",
         "completed",
         "cancelling",

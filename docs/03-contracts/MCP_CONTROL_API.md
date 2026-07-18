@@ -162,8 +162,11 @@ The official SDK's Streamable HTTP handler must remain behind this boundary.
 - A Run linked to a proposed Sprint can only be cancelled or submitted through
   the governed command; generic FSM transitions cannot manufacture approval.
 - The generic transition repository rejects `failed_retryable -> queued` and
-  `awaiting_decision -> running`; only the capability-checked resume command can
+  `awaiting_decision -> queued`; only the capability-checked resume command can
   perform those pairs.
+- An awaiting-decision resume queues a new scheduling cycle. The blocked
+  Attempt remains terminal, and execution requires a fresh Attempt plus a new
+  immutable delivery authorization for that exact attempt.
 - Domain mutations and their events, outbox rows, replay receipts, and success
   audits commit in one PostgreSQL transaction.
 - Tool outcomes emit correlated audit events. Cross-scope authorization

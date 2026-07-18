@@ -15,6 +15,55 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
 
+func TestWorktreeLifecycleReportsNeverCreatedAttempt(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+
+	if _, err := manager.Quarantine(t.Context(), request); !errors.Is(err, ErrWorktreeNotFound) {
+		t.Fatalf("never-created worktree quarantine error = %v", err)
+	}
+}
+
+func TestReconciliationMarkerSyncsItsActualNamespace(t *testing.T) {
+	rootPath := t.TempDir()
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer root.Close()
+	parent := filepath.Join(
+		".forja-validation-quarantine",
+		"delivery_11111111-1111-4111-8111-111111111111",
+		"attempt_11111111-1111-4111-8111-111111111111",
+	)
+	if err := writeReconciliationMarker(root, parent); err != nil {
+		t.Fatalf("write validation reconciliation marker: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(rootPath, parent, reconciliationMarkerName)); err != nil {
+		t.Fatalf("validation reconciliation marker: %v", err)
+	}
+	if _, err := os.Lstat(filepath.Join(rootPath, quarantineMetadataRoot)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("validation marker created unrelated delivery metadata: %v", err)
+	}
+}
+
+func TestWorktreeLifecycleReportsNeverCreatedRetryBinding(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	if _, err := manager.Prepare(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	retry := request
+	retry.AttemptID = "attempt_22222222-2222-4222-8222-222222222222"
+	retry.AttemptOrdinal = 2
+
+	if _, err := manager.Quarantine(t.Context(), retry); !errors.Is(err, ErrWorktreeNotFound) {
+		t.Fatalf("never-created retry worktree quarantine error = %v", err)
+	}
+}
+
 func TestWorktreeLifecyclePreparesIdempotentlyAndPreservesRetiredCheckout(t *testing.T) {
 	repository, root, base := deliveryRepository(t)
 	marker := filepath.Join(t.TempDir(), "hook-ran")
@@ -56,11 +105,109 @@ func TestWorktreeLifecyclePreparesIdempotentlyAndPreservesRetiredCheckout(t *tes
 	if _, err := os.Stat(quarantined.QuarantinePath); err != nil {
 		t.Fatalf("quarantined clean worktree is not preserved: %v", err)
 	}
+	if _, err := os.Stat(filepath.Join(
+		root, quarantineMetadataRelative(request), quarantineMarkerName,
+	)); err != nil {
+		t.Fatalf("quarantined worktree has no durable authority marker: %v", err)
+	}
+	replayedQuarantine, err := manager.Quarantine(t.Context(), request)
+	if err != nil {
+		t.Fatalf("replay verified quarantine: %v", err)
+	}
+	if replayedQuarantine != quarantined {
+		t.Fatalf("quarantine replay changed identity: %#v != %#v", replayedQuarantine, quarantined)
+	}
 	if _, err := manager.Prepare(t.Context(), request); !errors.Is(err, ErrWorktreeConflict) {
 		t.Fatalf("retired attempt replay error = %v", err)
 	}
 	if _, err := os.Lstat(prepared.Path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("retired attempt replay recreated its worktree: %v", err)
+	}
+}
+
+func TestWorktreeLifecycleQuarantinesRepositoryOwnedLegacyMarkerName(t *testing.T) {
+	repository, root, _ := deliveryRepository(t)
+	legacyName := ".forja-quarantine.json"
+	if err := os.WriteFile(
+		filepath.Join(repository, legacyName), []byte("repository-owned\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repository, "add", legacyName)
+	runGitTest(t, repository, "commit", "--quiet", "-m", "track legacy marker name")
+	base := strings.TrimSpace(runGitTest(t, repository, "rev-parse", "HEAD"))
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+
+	prepared, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatalf("prepare repository-owned marker: %v", err)
+	}
+	quarantined, err := manager.Quarantine(t.Context(), request)
+	if err != nil {
+		t.Fatalf("quarantine repository-owned marker: %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(quarantined.QuarantinePath, legacyName))
+	if err != nil || string(content) != "repository-owned\n" {
+		t.Fatalf("preserved repository marker = %q, err=%v", content, err)
+	}
+	if _, err := os.Stat(filepath.Join(
+		root, quarantineMetadataRelative(request), quarantineMarkerName,
+	)); err != nil {
+		t.Fatalf("external quarantine authority marker: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(prepared.Path, legacyName)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("active worktree survived quarantine: %v", err)
+	}
+}
+
+func TestWorktreeLifecycleRejectsUnprovenQuarantineReplay(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	prepared, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(prepared.Path); err != nil {
+		t.Fatal(err)
+	}
+	quarantinePath := filepath.Join(
+		root, "quarantine", request.DeliveryID, request.AttemptID,
+	)
+	if err := os.MkdirAll(quarantinePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(quarantinePath, "unrelated.txt"), []byte("not quarantined"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Quarantine(t.Context(), request); !errors.Is(err, ErrGitReconciliationRequired) {
+		t.Fatalf("unproven quarantine replay error = %v, want reconciliation required", err)
+	}
+}
+
+func TestWorktreeLifecycleRejectsTamperedQuarantineMarker(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	if _, err := manager.Prepare(t.Context(), request); err != nil {
+		t.Fatal(err)
+	}
+	_, err := manager.Quarantine(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(root, quarantineMetadataRelative(request), quarantineMarkerName),
+		[]byte(`{"schema_version":"1.0","request_sha256":"tampered","git_registered":true}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Quarantine(t.Context(), request); !errors.Is(err, ErrWorktreeConflict) {
+		t.Fatalf("tampered quarantine marker error = %v, want conflict", err)
 	}
 }
 
@@ -294,7 +441,9 @@ func TestInterruptedGitMoveRequiresAdministrativeReconciliation(t *testing.T) {
 			if err := reconcileQuarantineMutation(root, resolved, quarantineRelative); !errors.Is(err, ErrGitReconciliationRequired) {
 				t.Fatalf("interrupted move reconciliation error = %v", err)
 			}
-			if _, err := os.Stat(filepath.Join(quarantinePath, ".forja-reconciliation-required")); err != nil {
+			if _, err := os.Stat(filepath.Join(
+				rootPath, quarantineMetadataRelative(request), reconciliationMarkerName,
+			)); err != nil {
 				t.Fatalf("interrupted move lacks reconciliation marker: %v", err)
 			}
 			if _, err := os.Lstat(prepared.Path); !errors.Is(err, os.ErrNotExist) {
@@ -564,7 +713,9 @@ func TestWorktreeLifecycleRetiresInterruptedMutation(t *testing.T) {
 	if _, err := manager.Prepare(t.Context(), request); !errors.Is(err, ErrWorktreeConflict) {
 		t.Fatalf("interrupted mutation identity was reusable: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(quarantinePath, ".forja-reconciliation-required")); err != nil {
+	if _, err := os.Stat(filepath.Join(
+		root, quarantineMetadataRelative(request), reconciliationMarkerName,
+	)); err != nil {
 		t.Fatalf("interrupted mutation lacks reconciliation marker: %v", err)
 	}
 }

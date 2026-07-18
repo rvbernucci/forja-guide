@@ -13,7 +13,9 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/fault"
+	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
+	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
 const (
@@ -153,6 +155,257 @@ func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 	}
 }
 
+func TestPreparedPublicationSerializesCancellation(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_12121212-1212-4212-8212-121212121212"
+	attemptID := "attempt_12121212-1212-4212-8212-121212121212"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+		t.Fatalf("prepare cancellation fence: %v", err)
+	}
+	runID, err := identity.ParseRunID(strings.Replace(attemptID, "attempt_", "run_", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := runstate.CommandMetadata{
+		IdempotencyKey: "cancel-prepared-publication",
+		ActorType:      "human", ActorID: "operator",
+		CorrelationID: "publication-cancel-test",
+	}
+	if _, err := store.TransitionRun(
+		t.Context(), runID, 1, runstate.StateCancelling, metadata,
+	); !isFaultCode(err, fault.CodeConflict) ||
+		!strings.Contains(err.Error(), "committed this Run to publication") {
+		t.Fatalf("prepared publication cancellation error = %v", err)
+	}
+	metadata.IdempotencyKey = "fail-prepared-publication"
+	if _, err := store.TransitionRun(
+		t.Context(), runID, 1, runstate.StateFailedRetryable, metadata,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("prepared publication failure transition error = %v", err)
+	}
+	if _, err := store.ConflictDeliveryPublication(t.Context(), intent, nil); err != nil {
+		t.Fatalf("retire prepared publication: %v", err)
+	}
+	metadata.IdempotencyKey = "cancel-retired-publication"
+	if _, err := store.TransitionRun(
+		t.Context(), runID, 1, runstate.StateCancelling, metadata,
+	); err != nil {
+		t.Fatalf("cancel after publication retirement: %v", err)
+	}
+}
+
+func TestPublishedPublicationAllowsOnlyRunCompletion(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_14141414-1414-4414-8414-141414141414"
+	attemptID := "attempt_14141414-1414-4414-8414-141414141414"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+		t.Fatalf("prepare completion fence: %v", err)
+	}
+	if _, err := store.CompleteDeliveryPublication(
+		t.Context(), intent, leaseSet,
+		func(context.Context) error { return nil },
+		func(context.Context) error { return nil },
+	); err != nil {
+		t.Fatalf("publish completion fence: %v", err)
+	}
+	runID, err := identity.ParseRunID(strings.Replace(attemptID, "attempt_", "run_", 1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := runstate.CommandMetadata{
+		IdempotencyKey: "fail-published-publication",
+		ActorType:      "system", ActorID: "publisher",
+		CorrelationID: "publication-completion-test",
+	}
+	if _, err := store.TransitionRun(
+		t.Context(), runID, 1, runstate.StateFailedTerminal, metadata,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("published publication failure transition error = %v", err)
+	}
+	metadata.IdempotencyKey = "complete-published-publication"
+	completed, err := store.TransitionRun(
+		t.Context(), runID, 1, runstate.StateCompleted, metadata,
+	)
+	if err != nil || completed.State != string(runstate.StateCompleted) {
+		t.Fatalf("published publication completion = %#v, err=%v", completed, err)
+	}
+}
+
+func TestPublicationPreparationRequiresValidatingRun(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_13131313-1313-4313-8313-131313131313"
+	attemptID := "attempt_13131313-1313-4313-8313-131313131313"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	runID := strings.Replace(attemptID, "attempt_", "run_", 1)
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.runs SET state='cancelling', version=version+1
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, runID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(
+		t.Context(), intent, leaseSet,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("cancelling Run preparation error = %v, want conflict", err)
+	}
+	if _, found, err := store.GetDeliveryPublication(
+		t.Context(), deliveryID, attemptID,
+	); err != nil || found {
+		t.Fatalf("cancelled preparation persisted: found=%v err=%v", found, err)
+	}
+}
+
+func TestPreparedPublicationReplayRechecksLifecycleFence(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_15151515-1515-4515-8515-151515151515"
+	attemptID := "attempt_15151515-1515-4515-8515-151515151515"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+		t.Fatalf("prepare legacy replay fixture: %v", err)
+	}
+	runID := strings.Replace(attemptID, "attempt_", "run_", 1)
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.runs SET state='cancelling', version=version+1
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, runID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PrepareDeliveryPublication(
+		t.Context(), intent, leaseSet,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("prepared replay lifecycle error = %v, want conflict", err)
+	}
+	called := false
+	if _, err := store.CompleteDeliveryPublication(
+		t.Context(), intent, leaseSet,
+		func(context.Context) error { called = true; return nil },
+		func(context.Context) error { called = true; return nil },
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("prepared completion lifecycle error = %v, want conflict", err)
+	}
+	if called {
+		t.Fatal("invalid legacy prepared replay invoked publication callbacks")
+	}
+}
+
+func TestPreparedPublicationReplayRequiresOriginalAttempt(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_16161616-1616-4616-8616-161616161616"
+	attemptID := "attempt_16161616-1616-4616-8616-161616161616"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+		t.Fatalf("prepare orphan replay fixture: %v", err)
+	}
+	if _, err := pool.Exec(
+		t.Context(), "DELETE FROM forja.attempts WHERE tenant_id=$1 AND attempt_id=$2",
+		DefaultTenantID, attemptID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.PrepareDeliveryPublication(
+		t.Context(), intent, leaseSet,
+	); !isFaultCode(err, fault.CodeNotFound) {
+		t.Fatalf("orphan prepared replay error = %v, want not found", err)
+	}
+	called := false
+	if _, err := store.CompleteDeliveryPublication(
+		t.Context(), intent, leaseSet,
+		func(context.Context) error { called = true; return nil },
+		func(context.Context) error { called = true; return nil },
+	); !isFaultCode(err, fault.CodeNotFound) {
+		t.Fatalf("orphan prepared completion error = %v, want not found", err)
+	}
+	if called {
+		t.Fatal("orphan prepared replay invoked publication callbacks")
+	}
+}
+
+func TestGovernedResumeRejectsLegacyPublicationJournal(t *testing.T) {
+	for _, test := range []struct {
+		name         string
+		deliveryID   string
+		attemptID    string
+		journalState string
+		runState     runstate.State
+	}{
+		{
+			name:         "prepared from failed retryable",
+			deliveryID:   "delivery_17171717-1717-4717-8717-171717171717",
+			attemptID:    "attempt_17171717-1717-4717-8717-171717171717",
+			journalState: "prepared", runState: runstate.StateFailedRetryable,
+		},
+		{
+			name:         "published from awaiting decision",
+			deliveryID:   "delivery_18181818-1818-4818-8818-181818181818",
+			attemptID:    "attempt_18181818-1818-4818-8818-181818181818",
+			journalState: "published", runState: runstate.StateAwaitingDecision,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			pool := migratedPool(t)
+			store := newIntegrationStore(t, pool)
+			leaseSet := acquirePublicationLeaseSet(
+				t, store, test.deliveryID, test.attemptID,
+			)
+			intent := publicationIntentFixture(
+				t, leaseSet, test.deliveryID, test.attemptID, "authority",
+			)
+			if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+				t.Fatal(err)
+			}
+			if test.journalState == "published" {
+				if _, err := store.CompleteDeliveryPublication(
+					t.Context(), intent, leaseSet,
+					func(context.Context) error { return nil },
+					func(context.Context) error { return nil },
+				); err != nil {
+					t.Fatal(err)
+				}
+			}
+			runIDText := strings.Replace(test.attemptID, "attempt_", "run_", 1)
+			if _, err := pool.Exec(t.Context(), `
+				UPDATE forja.runs SET state=$1, version=2
+				WHERE tenant_id=$2 AND repository_id=$3 AND run_id=$4`,
+				test.runState, DefaultTenantID, DefaultRepositoryID, runIDText,
+			); err != nil {
+				t.Fatal(err)
+			}
+			runID, err := identity.ParseRunID(runIDText)
+			if err != nil {
+				t.Fatal(err)
+			}
+			metadata := runstate.CommandMetadata{
+				IdempotencyKey: "resume-legacy-publication-" + test.journalState,
+				ActorType:      "human", ActorID: "operator",
+				CorrelationID: "legacy-publication-resume",
+			}
+			if _, err := store.ResumeRun(
+				t.Context(), runID, 2, metadata,
+			); !isFaultCode(err, fault.CodeConflict) {
+				t.Fatalf("legacy %s journal resume error = %v, want conflict", test.journalState, err)
+			}
+			stored, err := store.GetRun(t.Context(), runID)
+			if err != nil || stored.State != string(test.runState) {
+				t.Fatalf("legacy journal changed Run = %#v, err=%v", stored, err)
+			}
+		})
+	}
+}
+
 func TestDeliveryPublicationDoesNotApplyWithStaleFence(t *testing.T) {
 	pool := migratedPool(t)
 	store := newIntegrationStore(t, pool)
@@ -208,6 +461,7 @@ func TestDeliveryPublicationDoesNotApplyWithShortAuthorityHorizon(t *testing.T) 
 	if err != nil {
 		t.Fatalf("acquire short publication lease set: %v", err)
 	}
+	seedPublicationAttempt(t, store, attemptID)
 	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
 	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
 		t.Fatalf("prepare short-horizon completion: %v", err)
@@ -249,6 +503,7 @@ func TestDeliveryPublicationRechecksAuthorityAfterRevalidation(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire publication lease set: %v", err)
 	}
+	seedPublicationAttempt(t, store, attemptID)
 	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
 	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
 		t.Fatalf("prepare publication: %v", err)
@@ -292,6 +547,7 @@ func TestDeliveryPublicationRejectsLeaseDurationOutsideIntentAuthority(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
+	seedPublicationAttempt(t, store, attemptID)
 	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
 	if _, err := store.PrepareDeliveryPublication(
 		t.Context(), intent, leaseSet,
@@ -497,7 +753,51 @@ func acquirePublicationLeaseSet(
 	if err != nil {
 		t.Fatalf("acquire publication lease set: %v", err)
 	}
+	seedPublicationAttempt(t, store, attemptID)
 	return leaseSet
+}
+
+func seedPublicationAttempt(t *testing.T, store *Store, attemptID string) string {
+	t.Helper()
+	runID := strings.Replace(attemptID, "attempt_", "run_", 1)
+	schedulerResource := "publication-scheduler:" + attemptID
+	schedulerLease, err := store.AcquireLease(
+		t.Context(),
+		persistence.LeaseKey{
+			TenantID: DefaultTenantID, RepositoryID: DefaultRepositoryID,
+			ResourceType: "scheduler", ResourceID: schedulerResource,
+		},
+		"publication-worker", time.Minute,
+	)
+	if err != nil {
+		t.Fatalf("seed publication scheduler lease: %v", err)
+	}
+	if _, err := store.pool.Exec(t.Context(), `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, objective, state, version,
+			created_at, updated_at
+		) VALUES ($1, $2, $3, 'Publish the validated delivery.', 'validating', 1,
+		          clock_timestamp(), clock_timestamp())
+		ON CONFLICT (run_id) DO NOTHING`,
+		runID, DefaultTenantID, DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("seed publication Run: %v", err)
+	}
+	if _, err := store.pool.Exec(t.Context(), `
+		INSERT INTO forja.attempts (
+			attempt_id, tenant_id, run_id, ordinal, status,
+			lease_resource_type, lease_resource_id, worker_id,
+			fencing_token, started_at, finished_at, version
+		) VALUES ($1, $2, $3, 1, 'succeeded',
+		          'scheduler', $4, $5,
+		          $6, clock_timestamp(), clock_timestamp(), 3)
+		ON CONFLICT (attempt_id) DO NOTHING`,
+		attemptID, DefaultTenantID, runID, schedulerResource,
+		schedulerLease.OwnerID, schedulerLease.FencingToken,
+	); err != nil {
+		t.Fatalf("seed publication attempt: %v", err)
+	}
+	return runID
 }
 
 func agePublicationLeaseSet(

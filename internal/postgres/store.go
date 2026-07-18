@@ -401,6 +401,11 @@ func (s *Store) TransitionRun(
 	case target == runstate.StateCancelling:
 		cancellingSprint = &sprint
 	}
+	if err := s.requireRunPublicationTransition(
+		ctx, tx, id.String(), target, "postgres.TransitionRun",
+	); err != nil {
+		return contracts.Run{}, err
+	}
 	updated, err := s.machine.Transition(run, target)
 	if err != nil {
 		return contracts.Run{}, err
@@ -595,6 +600,11 @@ func (s *Store) ResumeRun(
 	if err != nil {
 		return contracts.Run{}, err
 	}
+	if err := s.requireRunPublicationTransition(
+		ctx, tx, id.String(), target, "postgres.ResumeRun",
+	); err != nil {
+		return contracts.Run{}, err
+	}
 	updated, err := s.machine.Transition(run, target)
 	if err != nil {
 		return contracts.Run{}, err
@@ -640,6 +650,56 @@ func (s *Store) ResumeRun(
 		return contracts.Run{}, databaseError("postgres.ResumeRun.commit", err)
 	}
 	return updated, nil
+}
+
+func (s *Store) requireRunPublicationTransition(
+	ctx context.Context,
+	tx pgx.Tx,
+	runID string,
+	target runstate.State,
+	operation string,
+) error {
+	var publicationTableExists bool
+	if err := tx.QueryRow(
+		ctx, "SELECT to_regclass('forja.delivery_publications') IS NOT NULL",
+	).Scan(&publicationTableExists); err != nil {
+		return databaseError(operation+".publicationSchema", err)
+	}
+	if !publicationTableExists {
+		return nil
+	}
+	var publicationPrepared, publicationPublished bool
+	if err := tx.QueryRow(ctx, `
+		SELECT
+		  EXISTS (
+		    SELECT 1
+		    FROM forja.delivery_publications AS dp
+		    JOIN forja.attempts AS a
+		      ON a.tenant_id=dp.tenant_id AND a.attempt_id=dp.attempt_id
+		    WHERE dp.tenant_id=$1 AND dp.repository_id=$2
+		      AND a.run_id=$3 AND dp.state='prepared'
+		  ),
+		  EXISTS (
+		    SELECT 1
+		    FROM forja.delivery_publications AS dp
+		    JOIN forja.attempts AS a
+		      ON a.tenant_id=dp.tenant_id AND a.attempt_id=dp.attempt_id
+		    WHERE dp.tenant_id=$1 AND dp.repository_id=$2
+		      AND a.run_id=$3 AND dp.state='published'
+		  )`,
+		s.tenantID, s.repositoryID, runID,
+	).Scan(&publicationPrepared, &publicationPublished); err != nil {
+		return databaseError(operation+".publicationFence", err)
+	}
+	if publicationPrepared ||
+		(publicationPublished && target != runstate.StateCompleted) {
+		return fault.New(
+			fault.CodeConflict,
+			operation,
+			"a prepared or published delivery has committed this Run to publication",
+		)
+	}
+	return nil
 }
 
 func (s *Store) appendRunEvent(
@@ -969,5 +1029,5 @@ func databaseError(operation string, err error) error {
 
 func isPrivilegedResumeTransition(source string, target runstate.State) bool {
 	return (source == string(runstate.StateFailedRetryable) && target == runstate.StateQueued) ||
-		(source == string(runstate.StateAwaitingDecision) && target == runstate.StateRunning)
+		(source == string(runstate.StateAwaitingDecision) && target == runstate.StateQueued)
 }

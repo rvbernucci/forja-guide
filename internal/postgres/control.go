@@ -642,7 +642,7 @@ func resumeTarget(run contracts.Run) (runstate.State, error) {
 	case string(runstate.StateFailedRetryable):
 		return runstate.StateQueued, nil
 	case string(runstate.StateAwaitingDecision):
-		return runstate.StateRunning, nil
+		return runstate.StateQueued, nil
 	default:
 		return "", fault.New(
 			fault.CodeConflict,

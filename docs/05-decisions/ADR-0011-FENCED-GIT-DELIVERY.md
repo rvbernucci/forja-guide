@@ -17,23 +17,43 @@ and replayable.
 
 Forja will deliver changes through a supervisor-owned pipeline:
 
-1. Acquire one atomic PostgreSQL lease set containing the worktree lease plus
+1. Require an immutable, attempt-scoped `delivery.authorized` event that binds
+   the complete canonical delivery request and its SHA-256 digest to an
+   independent human approver, the exact approved queued Run, its exact queued
+   Attempt, and a live scheduler fence. The pipeline revalidates that authority
+   before any side effect begins; recovery revalidates it before resuming. A
+   retry uses a new Attempt and therefore requires a new exact authorization.
+2. Acquire one atomic PostgreSQL lease set containing the worktree lease plus
    normalized hierarchical file and artifact leases. Keys are sorted before
    locking; any conflict aborts the complete acquisition.
-2. Derive a new worktree beneath an operator-owned root and check out one exact
-   40-character commit. The worker receives only pre-created writable roots.
-3. Let the bounded worker produce uncommitted changes and a constrained report.
+3. Derive a new worktree beneath an operator-owned root and check out one exact
+   40-character commit. The worker receives only the canonical union of
+   pre-created write and artifact roots.
+4. Let the bounded worker produce uncommitted changes and a constrained report.
    The worker has no Git commit, ref-update, lease, validator, or publication
    authority.
-4. Have the delivery service inspect scope, create the commit, and compute
+5. Have the delivery service inspect scope, create the commit, and compute
    canonical changed-path, tree, patch, and evidence hashes.
-5. Run bounded mechanical checks, then assign an independent validator whose
+6. Run bounded mechanical checks, then assign an independent validator whose
    identity differs from the author. Independent checks run against a clean
-   checkout of the result commit.
-6. Publish only a namespaced delivery ref with Git compare-and-swap semantics.
+   checkout of the result commit. Persisted validation IDs bind delivery,
+   Attempt, validator, and result commit so recovery cannot reuse another
+   Attempt's bundle.
+7. Publish only a namespaced delivery ref with Git compare-and-swap semantics.
    Default and protected branches remain outside this Sprint's authority.
-7. Persist a content-addressed receipt and release only the exact fenced lease
+8. Persist a content-addressed receipt and release only the exact fenced lease
    set. Dirty or unverifiable failures are quarantined rather than reset.
+
+The durable Attempt is the authority boundary for retryability. A Run cannot
+enter a resumable state until its active Attempt has been durably finalized as
+terminal. If Attempt finalization fails, the Run remains non-resumable in its
+active state; delivery resources are retired, and fenced recovery must later
+reconcile the abandoned Attempt after proving process quiescence.
+The same rule applies before worker start: a queued Attempt paired with a
+`preparing` Run cannot become retryable merely because lease acquisition,
+worktree preparation, or Attempt start returned an error. Preparation is
+treated as potentially byte-producing from invocation onward, and the exact
+delivery lease set remains held until quarantine or proven pre-worker absence.
 
 The Git and PostgreSQL transaction boundary uses a write-ahead publication
 journal. The service first persists one immutable `prepared` intent, performs
@@ -118,7 +138,8 @@ and process filters before checkout. An atomic filesystem lifecycle lock
 serializes prepare, inspect, and quarantine for one attempt across manager
 instances. Interrupted mutations are reconciled into preserved quarantine
 bytes or a non-reusable tombstone, receive a `reconciliation-required` marker,
-and return failure rather than treating filesystem position as proof of Git
+in a supervisor-owned sibling metadata namespace, and return failure rather
+than treating filesystem position as proof of Git
 administrative state. Attempt
 paths are derived from delivery and attempt identities beneath a rooted
 operator directory. Each attempt also stores a supervisor-owned digest of its
@@ -134,7 +155,14 @@ quiescence proof; until that proof is implemented, the runtime preserves the
 bytes rather than trusting a check-then-delete sequence.
 Quarantine verifies the same immutable request digest and invokes Git move only
 when the attempt's common directory matches the authorized repository; foreign
-or unverifiable Git metadata is never mutated.
+or unverifiable Git metadata is never mutated. Its request-bound authority
+marker is stored outside repository-owned bytes; its complete metadata parent
+chain is synced before quarantine is reported as durable. Reconciliation
+markers for independent-validation quarantine use the same rooted ancestor
+sync algorithm against their own namespace rather than assuming delivery
+metadata paths. The rooted source and destination parents, namespace
+parent, and worktree root are then synced so the move itself cannot disappear
+after a successful return.
 
 Result commits are built with a temporary index, deterministic supervisor
 identity, deterministic parent-relative timestamp, and a fixed delivery
@@ -166,6 +194,7 @@ Positive:
 - every accepted patch can be reconstructed and revalidated from a clean
   clone;
 - retries cannot inherit a dirty or adversarial workspace;
+- transient Attempt persistence failures cannot create concurrent retries;
 - Git refs provide an atomic, inspectable publication boundary.
 
 Negative:
@@ -195,3 +224,6 @@ window, pre-prepare and in-fence persisted-evidence revalidation, concurrent
 completion and recovery ref rechecks, stable operation timestamps, evidence-root
 and repository-path replacement rejection, cross-repository isolation, and rollback refusal while
 publication history exists.
+Authorization tests must also reject absent, mutated, cross-attempt, or
+non-human delivery authority before side effects, and execution tests must
+prove that a failed Attempt finalization never exposes a resumable Run.

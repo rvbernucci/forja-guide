@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -24,6 +25,10 @@ const (
 	deliveryGitReadTimeout     = 2 * time.Second
 	deliveryGitMutationTimeout = 30 * time.Second
 	attemptLockTimeout         = 5 * time.Second
+	quarantineMetadataRoot     = ".forja-quarantine-metadata"
+	quarantineMarkerName       = "authority.json"
+	reconciliationMarkerName   = "reconciliation-required"
+	maximumQuarantineMarkerLen = 512
 )
 
 var (
@@ -36,6 +41,10 @@ var (
 	// ErrWorktreeDirty identifies bytes that must be preserved rather than
 	// removed or reused.
 	ErrWorktreeDirty = errors.New("delivery worktree is dirty")
+	// ErrWorktreeNotFound identifies an attempt with neither an active worktree
+	// nor a previously completed quarantine.
+	ErrWorktreeNotFound        = errors.New("delivery worktree was not created")
+	errAuthorityBindingMissing = errors.New("delivery authority binding is missing")
 	// ErrGitReconciliationRequired identifies preserved bytes whose Git
 	// administrative registration requires explicit operator reconciliation.
 	ErrGitReconciliationRequired = errors.New("delivery Git reconciliation required")
@@ -227,6 +236,20 @@ func (m *WorktreeManager) Quarantine(
 		m.afterAttemptLockTest("quarantine")
 	}
 	if err := ensureRequestAuthority(resolved.worktreeRoot, request, false); err != nil {
+		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errAuthorityBindingMissing) {
+			quarantinePath := filepath.Join(
+				resolved.worktreeRoot,
+				"quarantine",
+				request.DeliveryID,
+				request.AttemptID,
+			)
+			_, sourceErr := os.Lstat(resolved.worktreePath)
+			_, quarantineErr := os.Lstat(quarantinePath)
+			if errors.Is(sourceErr, os.ErrNotExist) &&
+				errors.Is(quarantineErr, os.ErrNotExist) {
+				return QuarantineResult{}, ErrWorktreeNotFound
+			}
+		}
 		return QuarantineResult{}, err
 	}
 	authorizedCommon := ""
@@ -236,6 +259,13 @@ func (m *WorktreeManager) Quarantine(
 		}
 	}
 	info, err := os.Lstat(resolved.worktreePath)
+	if errors.Is(err, os.ErrNotExist) {
+		replayed, replayErr := m.inspectQuarantineReplay(ctx, resolved)
+		if errors.Is(replayErr, os.ErrNotExist) {
+			return QuarantineResult{}, ErrWorktreeNotFound
+		}
+		return replayed, replayErr
+	}
 	if err != nil {
 		return QuarantineResult{}, fmt.Errorf("stat worktree for quarantine: %w", err)
 	}
@@ -262,10 +292,16 @@ func (m *WorktreeManager) Quarantine(
 	)
 	quarantineParent := filepath.Dir(quarantineRelative)
 	quarantinePath := filepath.Join(resolved.worktreeRoot, quarantineRelative)
+	metadataRelative := quarantineMetadataRelative(request)
 	if _, err := root.Lstat(quarantineRelative); err == nil {
 		return QuarantineResult{}, fmt.Errorf("%w: quarantine destination already exists", ErrWorktreeConflict)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return QuarantineResult{}, fmt.Errorf("inspect quarantine destination: %w", err)
+	}
+	if _, err := root.Lstat(metadataRelative); err == nil {
+		return QuarantineResult{}, fmt.Errorf("%w: quarantine metadata already exists", ErrWorktreeConflict)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return QuarantineResult{}, fmt.Errorf("inspect quarantine metadata destination: %w", err)
 	}
 	if err := root.MkdirAll(quarantineParent, 0o700); err != nil {
 		return QuarantineResult{}, fmt.Errorf("create quarantine namespace: %w", err)
@@ -324,11 +360,213 @@ func (m *WorktreeManager) Quarantine(
 	if physicalQuarantine != filepath.Join(resolved.rootPhysical, quarantineRelative) {
 		return QuarantineResult{}, fmt.Errorf("quarantine path traverses a symlink")
 	}
+	if err := writeQuarantineMarker(
+		root, metadataRelative, request, registered,
+	); err != nil {
+		return QuarantineResult{}, errors.Join(
+			ErrGitReconciliationRequired,
+			err,
+			writeReconciliationMarker(root, metadataRelative),
+		)
+	}
+	for _, directory := range []struct {
+		path  string
+		label string
+	}{
+		{resolved.deliveryRelative, "quarantine source parent"},
+		{quarantineParent, "quarantine destination parent"},
+		{filepath.Dir(quarantineParent), "quarantine namespace parent"},
+		{".", "worktree root"},
+	} {
+		if err := syncRootedDirectory(root, directory.path, directory.label); err != nil {
+			return QuarantineResult{}, errors.Join(
+				ErrGitReconciliationRequired,
+				err,
+				writeReconciliationMarker(root, metadataRelative),
+			)
+		}
+	}
 	return QuarantineResult{
 		SourcePath:     resolved.worktreePath,
 		QuarantinePath: quarantinePath,
 		GitRegistered:  registered,
 	}, nil
+}
+
+func (m *WorktreeManager) inspectQuarantineReplay(
+	ctx context.Context,
+	resolved resolvedRequest,
+) (QuarantineResult, error) {
+	quarantinePath := filepath.Join(
+		resolved.worktreeRoot,
+		"quarantine",
+		resolved.request.DeliveryID,
+		resolved.request.AttemptID,
+	)
+	physical, err := canonicalDirectory(quarantinePath, "quarantined worktree")
+	if err != nil {
+		return QuarantineResult{}, fmt.Errorf("verify prior quarantine: %w", err)
+	}
+	expected := filepath.Join(
+		resolved.rootPhysical,
+		"quarantine",
+		resolved.request.DeliveryID,
+		resolved.request.AttemptID,
+	)
+	if physical != expected {
+		return QuarantineResult{}, fmt.Errorf("%w: prior quarantine traverses a symlink", ErrWorktreeConflict)
+	}
+	root, err := os.OpenRoot(resolved.worktreeRoot)
+	if err != nil {
+		return QuarantineResult{}, fmt.Errorf("open worktree root for quarantine replay: %w", err)
+	}
+	defer root.Close()
+	metadataRelative := quarantineMetadataRelative(resolved.request)
+	reconciliationMarker := filepath.Join(metadataRelative, reconciliationMarkerName)
+	if _, err := root.Lstat(reconciliationMarker); err == nil {
+		return QuarantineResult{}, ErrGitReconciliationRequired
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return QuarantineResult{}, fmt.Errorf("inspect quarantine reconciliation marker: %w", err)
+	}
+	registered, err := verifyQuarantineMarker(
+		root, metadataRelative, resolved.request,
+	)
+	if err != nil {
+		return QuarantineResult{}, err
+	}
+	return QuarantineResult{
+		SourcePath:     resolved.worktreePath,
+		QuarantinePath: quarantinePath,
+		GitRegistered:  registered,
+	}, nil
+}
+
+type quarantineMarker struct {
+	SchemaVersion string `json:"schema_version"`
+	RequestSHA256 string `json:"request_sha256"`
+	GitRegistered bool   `json:"git_registered"`
+}
+
+func quarantineMarkerBytes(
+	request contracts.DeliveryRequest,
+	registered bool,
+) ([]byte, error) {
+	requestJSON, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("encode quarantine request authority: %w", err)
+	}
+	digest := sha256.Sum256(requestJSON)
+	content, err := json.Marshal(quarantineMarker{
+		SchemaVersion: contracts.DeliverySchemaVersion,
+		RequestSHA256: fmt.Sprintf("%x", digest),
+		GitRegistered: registered,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode quarantine marker: %w", err)
+	}
+	return content, nil
+}
+
+func writeQuarantineMarker(
+	root *os.Root,
+	metadataRelative string,
+	request contracts.DeliveryRequest,
+	registered bool,
+) error {
+	content, err := quarantineMarkerBytes(request, registered)
+	if err != nil {
+		return err
+	}
+	if err := root.MkdirAll(metadataRelative, 0o700); err != nil {
+		return fmt.Errorf("create quarantine metadata namespace: %w", err)
+	}
+	marker := filepath.Join(metadataRelative, quarantineMarkerName)
+	file, err := root.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return fmt.Errorf("create quarantine authority marker: %w", err)
+	}
+	if _, err := file.Write(content); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write quarantine authority marker: %w", err)
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync quarantine authority marker: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close quarantine authority marker: %w", err)
+	}
+	return syncRootedDirectoryChain(root, metadataRelative, "quarantine metadata")
+}
+
+func syncRootedDirectory(root *os.Root, relative string, label string) error {
+	directory, err := root.Open(relative)
+	if err != nil {
+		return fmt.Errorf("open %s for durability: %w", label, err)
+	}
+	info, statErr := directory.Stat()
+	if statErr != nil || !info.IsDir() {
+		_ = directory.Close()
+		if statErr != nil {
+			return fmt.Errorf("stat %s for durability: %w", label, statErr)
+		}
+		return fmt.Errorf("%s is not a directory", label)
+	}
+	if err := directory.Sync(); err != nil {
+		_ = directory.Close()
+		return fmt.Errorf("sync %s: %w", label, err)
+	}
+	if err := directory.Close(); err != nil {
+		return fmt.Errorf("close %s: %w", label, err)
+	}
+	return nil
+}
+
+func verifyQuarantineMarker(
+	root *os.Root,
+	metadataRelative string,
+	request contracts.DeliveryRequest,
+) (bool, error) {
+	marker := filepath.Join(metadataRelative, quarantineMarkerName)
+	expectedInfo, err := root.Lstat(marker)
+	if errors.Is(err, os.ErrNotExist) {
+		return false, errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("prior quarantine has no durable authority marker"),
+		)
+	}
+	if err != nil {
+		return false, fmt.Errorf("inspect quarantine authority marker: %w", err)
+	}
+	if !expectedInfo.Mode().IsRegular() || expectedInfo.Size() > maximumQuarantineMarkerLen {
+		return false, fmt.Errorf("%w: quarantine authority marker is not a bounded regular file", ErrWorktreeConflict)
+	}
+	file, err := root.Open(marker)
+	if err != nil {
+		return false, fmt.Errorf("open quarantine authority marker: %w", err)
+	}
+	defer file.Close()
+	openedInfo, err := file.Stat()
+	if err != nil {
+		return false, fmt.Errorf("stat opened quarantine authority marker: %w", err)
+	}
+	if !os.SameFile(expectedInfo, openedInfo) || !openedInfo.Mode().IsRegular() {
+		return false, fmt.Errorf("%w: quarantine authority marker changed while opening", ErrWorktreeConflict)
+	}
+	content, err := io.ReadAll(io.LimitReader(file, maximumQuarantineMarkerLen+1))
+	if err != nil {
+		return false, fmt.Errorf("read quarantine authority marker: %w", err)
+	}
+	for _, registered := range []bool{false, true} {
+		expected, encodeErr := quarantineMarkerBytes(request, registered)
+		if encodeErr != nil {
+			return false, encodeErr
+		}
+		if bytes.Equal(content, expected) {
+			return registered, nil
+		}
+	}
+	return false, fmt.Errorf("%w: quarantine authority marker disagrees with the request", ErrWorktreeConflict)
 }
 
 func resolveQuarantineRequest(request contracts.DeliveryRequest) (resolvedRequest, error) {
@@ -398,6 +636,7 @@ func retireFailedPrepare(resolved resolvedRequest) error {
 	quarantineRelative := filepath.Join(
 		"quarantine", resolved.request.DeliveryID, resolved.request.AttemptID,
 	)
+	metadataRelative := quarantineMetadataRelative(resolved.request)
 	if _, err := root.Lstat(quarantineRelative); err == nil {
 		return ErrGitReconciliationRequired
 	} else if !errors.Is(err, os.ErrNotExist) {
@@ -425,7 +664,7 @@ func retireFailedPrepare(resolved resolvedRequest) error {
 		}
 		return errors.Join(
 			ErrGitReconciliationRequired,
-			writeReconciliationMarker(root, quarantineRelative),
+			writeReconciliationMarker(root, metadataRelative),
 		)
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return errors.Join(
@@ -441,7 +680,7 @@ func retireFailedPrepare(resolved resolvedRequest) error {
 	}
 	return errors.Join(
 		ErrGitReconciliationRequired,
-		writeReconciliationMarker(root, quarantineRelative),
+		writeReconciliationMarker(root, metadataRelative),
 	)
 }
 
@@ -450,6 +689,7 @@ func reconcileQuarantineMutation(
 	resolved resolvedRequest,
 	quarantineRelative string,
 ) error {
+	metadataRelative := quarantineMetadataRelative(resolved.request)
 	_, sourceErr := root.Lstat(resolved.attemptRelative)
 	_, destinationErr := root.Lstat(quarantineRelative)
 	sourceExists := sourceErr == nil
@@ -468,7 +708,7 @@ func reconcileQuarantineMutation(
 	}
 	switch {
 	case destinationExists && !sourceExists:
-		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+		if err := writeReconciliationMarker(root, metadataRelative); err != nil {
 			return errors.Join(ErrGitReconciliationRequired, err)
 		}
 	case sourceExists && !destinationExists:
@@ -478,11 +718,11 @@ func reconcileQuarantineMutation(
 				fmt.Errorf("preserve source after interrupted Git move: %w", err),
 			)
 		}
-		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+		if err := writeReconciliationMarker(root, metadataRelative); err != nil {
 			return errors.Join(ErrGitReconciliationRequired, err)
 		}
 	case sourceExists && destinationExists:
-		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+		if err := writeReconciliationMarker(root, metadataRelative); err != nil {
 			return errors.Join(ErrGitReconciliationRequired, err)
 		}
 		return errors.Join(
@@ -496,7 +736,7 @@ func reconcileQuarantineMutation(
 				fmt.Errorf("retire missing interrupted Git move: %w", err),
 			)
 		}
-		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+		if err := writeReconciliationMarker(root, metadataRelative); err != nil {
 			return errors.Join(ErrGitReconciliationRequired, err)
 		}
 		return errors.Join(
@@ -507,8 +747,11 @@ func reconcileQuarantineMutation(
 	return ErrGitReconciliationRequired
 }
 
-func writeReconciliationMarker(root *os.Root, quarantineRelative string) error {
-	marker := filepath.Join(quarantineRelative, ".forja-reconciliation-required")
+func writeReconciliationMarker(root *os.Root, metadataRelative string) error {
+	if err := root.MkdirAll(metadataRelative, 0o700); err != nil {
+		return fmt.Errorf("create quarantine reconciliation namespace: %w", err)
+	}
+	marker := filepath.Join(metadataRelative, reconciliationMarkerName)
 	file, err := root.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if errors.Is(err, os.ErrExist) {
 		return nil
@@ -520,7 +763,39 @@ func writeReconciliationMarker(root *os.Root, quarantineRelative string) error {
 		_ = file.Close()
 		return fmt.Errorf("write Git reconciliation marker: %w", err)
 	}
-	return file.Close()
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync Git reconciliation marker: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close Git reconciliation marker: %w", err)
+	}
+	return syncRootedDirectoryChain(root, metadataRelative, "reconciliation marker")
+}
+
+func quarantineMetadataRelative(request contracts.DeliveryRequest) string {
+	return filepath.Join(
+		quarantineMetadataRoot,
+		request.DeliveryID,
+		request.AttemptID,
+	)
+}
+
+func syncRootedDirectoryChain(root *os.Root, relative string, label string) error {
+	relative = filepath.Clean(relative)
+	if relative == "." || filepath.IsAbs(relative) || relative == ".." ||
+		strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("%s parent is not a rooted child path", label)
+	}
+	for current := relative; ; current = filepath.Dir(current) {
+		if err := syncRootedDirectory(root, current, label+" parent"); err != nil {
+			return err
+		}
+		if current == "." {
+			break
+		}
+	}
+	return nil
 }
 
 func acquireAttemptLock(
@@ -1057,7 +1332,7 @@ func ensureRequestAuthority(
 	info, err := root.Lstat(name)
 	if errors.Is(err, os.ErrNotExist) {
 		if !create {
-			return fmt.Errorf("delivery authority binding is missing")
+			return errAuthorityBindingMissing
 		}
 		file, err := root.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 		if err != nil {

@@ -84,6 +84,14 @@ func (s *Store) PrepareDeliveryPublication(
 			return existing, nil
 		}
 	}
+	// Recheck lifecycle authority for both new rows and prepared journals from
+	// older binaries. Only an immutable published receipt is replayable after
+	// its Run or Attempt leaves the publication-ready state.
+	if err := s.requirePublicationLifecycleFence(
+		ctx, tx, intent.AttemptID, "postgres.PrepareDeliveryPublication",
+	); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
 	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
 		ctx, tx, leaseSet, keys, proofs, digest, 0, approvedTTL,
 	); err != nil {
@@ -177,6 +185,13 @@ func (s *Store) CompleteDeliveryPublication(
 			return record, nil
 		}
 	}
+	if found {
+		if err := s.requirePublicationLifecycleFence(
+			ctx, tx, intent.AttemptID, "postgres.CompleteDeliveryPublication",
+		); err != nil {
+			return persistence.DeliveryPublication{}, err
+		}
+	}
 	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
 		ctx, tx, leaseSet, keys, proofs, digest,
 		minimumPublicationAuthorityTimeRemaining, approvedTTL,
@@ -237,6 +252,41 @@ func (s *Store) CompleteDeliveryPublication(
 	record.PublishedAt = &publishedAt
 	record.UpdatedAt = updatedAt
 	return record, nil
+}
+
+func (s *Store) requirePublicationLifecycleFence(
+	ctx context.Context,
+	tx pgx.Tx,
+	attemptID string,
+	operation string,
+) error {
+	var runState, attemptStatus string
+	if err := tx.QueryRow(ctx, `
+		SELECT r.state, a.status
+		FROM forja.attempts AS a
+		JOIN forja.runs AS r
+		  ON r.tenant_id=a.tenant_id AND r.run_id=a.run_id
+		WHERE a.tenant_id=$1 AND r.repository_id=$2
+		  AND a.attempt_id=$3
+		FOR UPDATE OF r, a`,
+		s.tenantID, s.repositoryID, attemptID,
+	).Scan(&runState, &attemptStatus); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fault.New(
+				fault.CodeNotFound,
+				operation,
+				"publication attempt or Run was not found",
+			)
+		}
+		return databaseError(operation+".run_fence", err)
+	}
+	if runState != "validating" || attemptStatus != "succeeded" {
+		return conflictError(
+			operation,
+			"publication requires a validating Run and succeeded attempt",
+		)
+	}
+	return nil
 }
 
 // RecoverDeliveryPublication closes the crash window only when a trusted Git

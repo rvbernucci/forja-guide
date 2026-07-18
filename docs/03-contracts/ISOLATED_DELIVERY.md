@@ -1,6 +1,7 @@
 # Isolated Delivery Contract
 
-Status: Contract implemented; Sprint 05 runtime in progress
+Status: Contract and governed execution pipeline implemented; Sprint 05
+closure pending
 
 ## Boundary
 
@@ -11,7 +12,7 @@ reference and one content-addressed receipt. It separates five authorities:
 | --- | --- |
 | approve objective, identities, scopes, budgets, and validator IDs | control plane |
 | acquire worktree, file, and artifact lease set | delivery service |
-| edit pre-created writable roots | bounded worker |
+| edit the pre-created union of write and artifact roots | bounded worker |
 | create commit, validate, and hash evidence | delivery service |
 | independently validate a clean checkout | assigned validator |
 
@@ -46,6 +47,24 @@ The public prefixes remain present in requests, reports, manifests, and
 receipts. One validated boundary strips only those prefixes to obtain the UUID
 keys used by PostgreSQL journals and leases; no caller may provide storage keys
 directly.
+
+The scheduler cannot self-assert that this envelope was approved. An
+independent human with decision authority records the complete request as an
+immutable `delivery.authorized` event after the Sprint decision and queued
+attempt exist. The event payload contains the request, its SHA-256, the
+approver, and the approval timestamp. Pipeline execution requires an exact hash
+match; changing any field requires a new approval. Its aggregate identity is
+the ordered `(delivery_id, attempt_id)` pair. A retry with a new attempt under
+the same delivery therefore creates a separate version-1 authorization stream
+and cannot reuse or overwrite the prior approval.
+Archive verification reconstructs the governed predecessor state from the
+committed outbox sequence, not from wall-clock timestamps. This preserves exact
+transaction order even when the application and PostgreSQL clocks differ. It
+also independently reapplies the complete request schema and semantic rules,
+including identity, root, scope, budget, retry, validator, and lease bounds;
+a self-consistent hash cannot legitimize malformed authority. Optional pointer
+fields must be absent when nil, matching canonical Go `omitempty` encoding;
+an explicit JSON `null` cannot produce runtime-equivalent authority.
 
 Repository and worktree roots must be clean, non-root absolute paths and must
 not contain one another. The attempt worktree is derived beneath the approved
@@ -88,6 +107,25 @@ fence with a higher token. The sorted set is immutable for the attempt. Partial
 acquisition is invalid.
 Each protected commit, validation, receipt, and publication operation checks
 the exact live owner and fencing token. Expiry or replacement fails closed.
+Preparation, worker execution, and validation also run beneath a continuous
+dual heartbeat for the scheduler fence and delivery lease set. Losing either
+authority cancels the worker context before overlapping authority can be
+accepted.
+After potentially blocking lease-set acquisition, the pipeline synchronously
+renews the delivery set and then the scheduler fence before `Prepare`; no Git
+mutation relies on waiting for the heartbeat's first interval.
+At the worker boundary, the heartbeat is stopped and its final outcome is
+settled before the Attempt result is persisted. Authority-induced cancellation
+is therefore recorded as `failed_retryable`, never as an intentional
+`cancelled` attempt. A worker-reported cancellation is accepted only after a
+fresh durable Run read proves that the governed control path already moved the
+Run to `cancelling` or `cancelled`; caller-context cancellation alone remains
+retryable. Successful workers trigger a synchronous refresh of both
+authorities and a new heartbeat before result commit and validation begin.
+If authority is then lost during result-commit creation, the Run remains
+retryable rather than being misclassified as a terminal Git failure. Caller
+cancellation or deadline expiry during commit is also an interruption, not
+proof of a terminal Git defect, and remains resumable through a fresh attempt.
 Receipt worktree fences use the delivery ID as their resource ID. File and
 artifact fence IDs are canonical repository-relative scopes.
 Requests authorize a lease TTL of at least 60 seconds and strictly greater than
@@ -128,7 +166,8 @@ inspect, and quarantine across manager instances; an abandoned lock fails
 closed for later lease-aware reconciliation. Repository Git reads have a
 two-second deadline and mutations a 30-second deadline. Interrupted mutations
 preserve any reachable bytes under quarantine, write an explicit
-`reconciliation-required` marker, and return failure because filesystem
+`reconciliation-required` marker in a supervisor-owned sibling metadata
+namespace, and return failure because filesystem
 position cannot prove Git administrative registration. The identity remains
 non-reusable. Hooks are disabled, and effective local or worktree-scoped
 clean, smudge, or process filters are rejected before checkout because they
@@ -142,8 +181,16 @@ deleting bytes; registered worktrees move through Git so their administrative
 metadata remains inspectable only when their Git common directory matches the
 request's authorized repository. Otherwise, rooted quarantine preserves bytes
 without mutating external Git metadata. Quarantine also verifies the immutable
-request digest before touching the attempt path. An interrupted Git move never
-reports successful quarantine until its administrative metadata is reconciled.
+request digest before touching the attempt path. A successful move writes and
+syncs a canonical marker bound to the complete request digest and observed Git
+registration state under
+`<worktree-root>/.forja-quarantine-metadata/<delivery-id>/<attempt-id>`.
+The marker file, attempt directory, delivery directory, metadata root, and
+worktree root are all synced before cleanup is reported. Control markers never occupy repository-owned paths, so a checkout may
+legitimately contain similarly named files. Replay requires that exact bounded regular file; a missing,
+changed, planted, or reconciliation-marked destination fails closed. An
+interrupted Git move never reports successful quarantine until its
+administrative metadata is reconciled.
 Physical deletion after worker
 exposure remains pending a joint live-lease and process-quiescence proof. Only a fresh checkout
 whose preparation failed before exposure may be removed immediately.
@@ -170,6 +217,16 @@ Publication follows a durable cross-system protocol:
    tenant and repository, delivery attempt, lease set, authority digest,
    receipt bytes and digest,
    previous object ID, result object ID, and namespaced ref.
+   Every non-published preparation or replay locks the attempt and its Run and
+   requires the durable pair `Run=validating` and `attempt=succeeded`. This
+   includes prepared journals created by an older binary; missing Attempts and
+   contradictory lifecycle states fail before Git callbacks. Governed resume
+   uses the same fence and cannot move a legacy journal-bearing Run back to
+   `queued`. Cancellation locks the same Run and
+   refuses any linked journal already in `prepared` or `published`. Whichever
+   operation wins that fence therefore commits first; a cancelled Run cannot
+   reach Git mutation, and a publication-committed Run cannot be cancelled
+   between journal preparation and compare-and-swap.
 2. PostgreSQL reacquires and verifies the exact lease-set fences with enough
    time remaining for the bounded Git operation. One transaction holds every
    resource and publication advisory lock while Git updates only
@@ -178,6 +235,9 @@ Publication follows a durable cross-system protocol:
    again inside this fence; PostgreSQL then rechecks the same lease fences and
    minimum authority horizon immediately before Git mutation. Ref observation verifies the exact ref name, a
    direct commit object, and no symbolic target.
+   Live execution first renews the delivery lease set and then refreshes the
+   scheduler fence on the same bounded, cancellation-detached context. A
+   scheduler that loses authority after validation therefore cannot reach CAS.
 3. Before releasing those locks, the same transaction changes the exact
    prepared row to `published`, retaining the canonical receipt and observed
    result object ID.
@@ -201,6 +261,9 @@ prepared intent. It also cannot deadlock an already authenticated prepared
 intent: recovery validates the canonical authority artifacts and exact durable
 intent, then may retire it only when the locked Git observation still proves
 the approved pre-CAS state.
+Loaded validation evidence also recomputes the deterministic validation ID from
+the exact delivery, Attempt, validator, and result commit. Copying a valid
+bundle between Attempts therefore cannot authorize recovery.
 
 The request-authorized lease duration is at least 60 seconds and is embedded in
 the canonical publication intent, not in the versioned receipt. The Git callback
@@ -212,9 +275,62 @@ prevents a compliant concurrent acquirer from replacing authority between fence
 verification and compare-and-swap. A process failure after Git
 mutation but before the SQL commit leaves `prepared` authority for exact-ref
 recovery rather than manufacturing a receipt.
+While a journal is `prepared`, no Run transition may contradict the pending
+publication. Once it is `published`, only `validating -> completed` may close
+the Run; failure, decision, and cancellation transitions fail with conflict.
 The integration suite injects this exact fault after the real Git CAS and
 before SQL publication commit, constructs fresh Store and Service instances,
 and proves exact-ref recovery, immutable receipt bytes, and lease release.
+
+Execution recovery trusts only durable stage evidence. A live attempt is not
+restarted or killed by inference. After the original scheduler fence expires,
+a newly fenced scheduler for the same recorded scheduler resource reconciles
+that attempt to retryable. A lease on an unrelated scheduler resource cannot
+adopt even a terminal attempt. A succeeded
+attempt may resume from the deterministic result commit and a byte-identical
+persisted validation bundle; a prepared publication uses the dedicated
+journal recovery protocol rather than reissuing an unproven CAS.
+When recovery renews an active delivery lease set, it synchronously renews the
+same scheduler fence again before starting its heartbeat or invoking any Git
+operation. A blocking database read or delivery renewal therefore cannot leave
+stale scheduler authority in the heartbeat's first-tick window.
+If the delivery lease is no longer live, the journal's schema-validated receipt
+supplies the commit identity; recovery must not invoke `commit-tree` or any
+other Git mutation merely to rebuild that identity.
+Normal publication and publication recovery run on uncancelled cleanup contexts
+with their own 45-second deadlines; caller cancellation cannot interrupt durable
+reconciliation, but a stalled Git or PostgreSQL operation cannot make the phase
+unbounded.
+Before `StartAttempt`, execution failures preserve the non-resumable pair
+`Run=preparing` and `Attempt=queued` until the original scheduler fence expires
+and recovery reconciles the Attempt. A failed `Prepare` is a cleanup candidate
+even when it returns no worktree object: exact lease authority remains held
+until the attempt path is durably quarantined or pre-worker absence is proven.
+Recovery of an already completed Run also loads and rehashes its persisted
+validation bundle, reconstructs the receipt-bound commit identity, invokes the
+publication service, freshly rereads the namespaced Git ref, and idempotently
+releases any lease set left active after receipt persistence. A recovered failed
+validation with no publication journal first quarantines the worktree while its
+lease remains authoritative, then releases the exact set, and only then
+transitions the Run terminal.
+Cleanup failure leaves the Run recoverable instead of claiming terminal
+closure. A failed validation that contradicts an existing publication journal
+fails closed for investigation.
+Durable `blocked`, `failed_retryable`, and `failed_terminal` attempts receive
+the same treatment during live execution and after restart: quarantine and
+exact lease release complete before the corresponding Run state is claimed. A
+`cancelled` Attempt completes
+cancellation only when the Run already carries durable `cancelling` or
+`cancelled` authority; otherwise recovery classifies the interruption as
+retryable. Replaying recovery for an already `cancelled` Run is idempotent for
+every terminal Attempt status. A blocked Run resumes to `queued` and requires a fresh Attempt,
+scheduler fence, and attempt-scoped human authorization. A journaled
+publication conflict is settled before commit reconstruction so an already
+quarantined source path cannot strand recovery. A `succeeded` attempt paired
+with an already failed Run indicates interrupted cleanup after a later stage.
+Recovery rejects any active prepared or published journal, then idempotently
+quarantines the worktree and releases the historical lease set without
+rewriting the existing failed Run state.
 
 ## Validation
 
@@ -272,7 +388,10 @@ operator-owned root. It contains the canonical independent report, mechanical
 report, and bounded stdout/stderr for both lanes. The manifest inventories all
 content except itself; symlinked namespaces, unexpected files or directories,
 changed bytes, or missing entries fail closed. Directory traversal is limited
-to the exact parent set required by the manifest and manifest path.
+to the exact parent set required by the manifest and manifest path. Recovery
+also binds report and manifest identities to the requested delivery, tenant,
+repository, base commit, author, and validator; moving an intact bundle into
+another attempt namespace cannot grant authority.
 
 ## Failure and Retry
 
