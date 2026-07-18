@@ -77,12 +77,10 @@ objective is supplied only over stdin. The invocation forces ephemeral mode,
 ignores user configuration, sets `approval_policy=never`, uses the
 `workspace-write` sandbox, disables sandbox command network access, and asks
 Codex CLI to validate its final message against the embedded report schema.
-Adapter registration requires isolation capability version `1.0` with
-full-worktree reads, declared-root writes, and denied command-network access.
-Before every launch, the supervisor derives the effective roots from the actual
-Codex argv and requires the complete invocation, including stdin and
-supervisor-owned report paths, to equal the canonical invocation rebuilt from
-the approved task. A capability claim alone grants no authority, and no alias,
+Adapter registration requires isolation metadata version `1.0` naming a trusted
+supervisor-side policy. For Codex, that policy independently rebuilds the
+complete invocation, including stdin and supervisor-owned report paths, from
+the approved task. Adapter-provided metadata grants no authority, and no alias,
 compact flag, duplicate override, or ungenerated argument is accepted.
 The evidence directory is the primary writable workspace and each declared
 write scope is an explicit additional writable root. The model reads the

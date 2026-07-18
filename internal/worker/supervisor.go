@@ -32,17 +32,19 @@ var evidenceReferencePattern = regexp.MustCompile(`^([A-Za-z0-9._/-]+)#sha256=([
 
 // Supervisor owns process authority, runtime budgets, and result validation.
 type Supervisor struct {
-	registry *contracts.Registry
-	adapter  Adapter
-	events   EventSink
-	environ  []string
-	now      func() time.Time
+	registry  *contracts.Registry
+	adapter   Adapter
+	isolation InvocationIsolationPolicy
+	events    EventSink
+	environ   []string
+	now       func() time.Time
 }
 
 // NewSupervisor creates one bounded worker supervisor.
 func NewSupervisor(
 	registry *contracts.Registry,
 	adapter Adapter,
+	isolation InvocationIsolationPolicy,
 	events EventSink,
 	environ []string,
 ) (*Supervisor, error) {
@@ -52,11 +54,11 @@ func NewSupervisor(
 	if adapter == nil {
 		return nil, fmt.Errorf("worker supervisor requires an adapter")
 	}
+	if isolation == nil {
+		return nil, fmt.Errorf("worker supervisor requires an isolation policy")
+	}
 	capability := adapter.IsolationCapability()
-	if capability.Version != "1.0" ||
-		capability.ReadBoundary != "full-worktree" ||
-		capability.WriteBoundary != "declared-roots" ||
-		capability.NetworkBoundary != "denied" {
+	if capability.Version != "1.0" || capability.PolicyID != isolation.ID() {
 		return nil, fmt.Errorf("worker adapter lacks the required isolation capability")
 	}
 	if events == nil {
@@ -66,11 +68,12 @@ func NewSupervisor(
 		environ = os.Environ()
 	}
 	return &Supervisor{
-		registry: registry,
-		adapter:  adapter,
-		events:   events,
-		environ:  append([]string(nil), environ...),
-		now:      time.Now,
+		registry:  registry,
+		adapter:   adapter,
+		isolation: isolation,
+		events:    events,
+		environ:   append([]string(nil), environ...),
+		now:       time.Now,
 	}, nil
 }
 
@@ -138,7 +141,7 @@ func (s *Supervisor) Execute(
 	if err := validateInvocation(invocation, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if err := s.adapter.VerifyIsolation(task, paths, invocation); err != nil {
+	if err := s.isolation.Verify(task, paths, invocation); err != nil {
 		return contracts.WorkerResult{}, fmt.Errorf("verify %s isolation: %w", s.adapter.Name(), err)
 	}
 	environment, err := SanitizedEnvironment(s.environ, home)
@@ -760,15 +763,24 @@ func validateGitWorktreeBinding(ctx context.Context, repository string, worktree
 }
 
 func gitWorktreeIdentity(ctx context.Context, path string) (string, string, error) {
+	const maximumIdentityBytes = 64 << 10
 	inspectionContext, cancel := boundedGitInspectionContext(ctx)
 	defer cancel()
 	command := hardenedGitCommand(
 		inspectionContext, path, "rev-parse", "--show-toplevel", "--git-common-dir",
 	)
-	output, err := command.Output()
-	if err != nil {
+	budget := newOutputBudget(maximumIdentityBytes, nil)
+	stdout := &boundedStream{budget: budget, name: "stdout"}
+	stderr := &boundedStream{budget: budget, name: "stderr"}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil {
 		return "", "", fmt.Errorf("git rev-parse failed: %w", err)
 	}
+	if budget.total.Load() > maximumIdentityBytes {
+		return "", "", fmt.Errorf("git worktree identity exceeds %d bytes", maximumIdentityBytes)
+	}
+	output := stdout.Bytes()
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	if len(lines) != 2 || strings.TrimSpace(lines[0]) == "" || strings.TrimSpace(lines[1]) == "" {
 		return "", "", fmt.Errorf("git rev-parse returned an invalid identity")

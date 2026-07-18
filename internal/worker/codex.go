@@ -23,6 +23,7 @@ func (a CodexAdapter) Name() string { return "codex-cli" }
 // each generated invocation before execution.
 func (CodexAdapter) IsolationCapability() IsolationCapability {
 	return IsolationCapability{
+		PolicyID:        "codex-cli-v1",
 		Version:         "1.0",
 		ReadBoundary:    "full-worktree",
 		WriteBoundary:   "declared-roots",
@@ -34,7 +35,15 @@ func (a CodexAdapter) Build(
 	task contracts.WorkerTask,
 	paths ExecutionPaths,
 ) (Invocation, error) {
-	executable := strings.TrimSpace(a.Executable)
+	return buildCodexInvocation(a.Executable, task, paths)
+}
+
+func buildCodexInvocation(
+	executable string,
+	task contracts.WorkerTask,
+	paths ExecutionPaths,
+) (Invocation, error) {
+	executable = strings.TrimSpace(executable)
 	if executable == "" {
 		executable = "codex"
 	}
@@ -70,20 +79,27 @@ func (a CodexAdapter) Build(
 	}, nil
 }
 
-// VerifyIsolation derives the effective writable roots from the actual argv
-// rather than trusting an adapter-authored capability claim alone.
-func (a CodexAdapter) VerifyIsolation(
+// CodexIsolationPolicy rebuilds the canonical invocation independently from
+// the adapter and is the supervisor-owned authority for Codex containment.
+type CodexIsolationPolicy struct {
+	Executable string
+}
+
+func (CodexIsolationPolicy) ID() string { return "codex-cli-v1" }
+
+// Verify rejects any invocation that differs from the canonical isolated form.
+func (p CodexIsolationPolicy) Verify(
 	task contracts.WorkerTask,
 	paths ExecutionPaths,
 	invocation Invocation,
 ) error {
-	expected, err := a.Build(task, paths)
+	expected, err := buildCodexInvocation(p.Executable, task, paths)
 	if err != nil {
 		return err
 	}
 	if invocation.Path != expected.Path || invocation.Dir != expected.Dir ||
 		invocation.Stdin != expected.Stdin || !slices.Equal(invocation.Args, expected.Args) {
-		return fmt.Errorf("Codex invocation differs from the canonical isolated invocation")
+		return fmt.Errorf("codex invocation differs from the canonical isolated invocation")
 	}
 	return nil
 }

@@ -27,24 +27,41 @@ type processAdapter struct {
 }
 
 type missingIsolationAdapter struct{ processAdapter }
+type codexClaimingAdapter struct{ processAdapter }
+
+type processIsolationPolicy struct{}
+
+func (processIsolationPolicy) ID() string { return "test-process-v1" }
+
+func (processIsolationPolicy) Verify(
+	task contracts.WorkerTask,
+	_ ExecutionPaths,
+	invocation Invocation,
+) error {
+	if invocation.Dir != task.WorktreePath {
+		return fmt.Errorf("test invocation directory escaped the worktree")
+	}
+	return nil
+}
 
 func (missingIsolationAdapter) IsolationCapability() IsolationCapability {
 	return IsolationCapability{}
+}
+
+func (codexClaimingAdapter) IsolationCapability() IsolationCapability {
+	return IsolationCapability{PolicyID: "codex-cli-v1", Version: "1.0"}
 }
 
 func (a processAdapter) Name() string { return "test-process" }
 
 func (processAdapter) IsolationCapability() IsolationCapability {
 	return IsolationCapability{
+		PolicyID:        "test-process-v1",
 		Version:         "1.0",
 		ReadBoundary:    "full-worktree",
 		WriteBoundary:   "declared-roots",
 		NetworkBoundary: "denied",
 	}
-}
-
-func (processAdapter) VerifyIsolation(contracts.WorkerTask, ExecutionPaths, Invocation) error {
-	return nil
 }
 
 func (a processAdapter) Build(
@@ -292,6 +309,7 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 		ReportSchemaPath: "/tmp/schema.json",
 	}
 	adapter := CodexAdapter{Executable: "/usr/bin/codex"}
+	policy := CodexIsolationPolicy{Executable: "/usr/bin/codex"}
 	invocation, err := adapter.Build(task, paths)
 	if err != nil {
 		t.Fatal(err)
@@ -325,7 +343,7 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 	if !strings.Contains(invocation.Stdin, "Repository path: "+task.WorktreePath) {
 		t.Fatal("repository path missing from stdin prompt")
 	}
-	if err := adapter.VerifyIsolation(task, paths, invocation); err != nil {
+	if err := policy.Verify(task, paths, invocation); err != nil {
 		t.Fatalf("valid Codex isolation rejected: %v", err)
 	}
 	for index, argument := range invocation.Args {
@@ -334,7 +352,7 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 			break
 		}
 	}
-	if err := adapter.VerifyIsolation(task, paths, invocation); err == nil {
+	if err := policy.Verify(task, paths, invocation); err == nil {
 		t.Fatal("network-enabled Codex invocation passed isolation verification")
 	}
 	secureInvocation, err := adapter.Build(task, paths)
@@ -345,7 +363,7 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 		secureInvocation.Args[:len(secureInvocation.Args)-1],
 		"--config", "sandbox_workspace_write.network_access=true", "-",
 	)
-	if err := adapter.VerifyIsolation(task, paths, secureInvocation); err == nil {
+	if err := policy.Verify(task, paths, secureInvocation); err == nil {
 		t.Fatal("later network override passed isolation verification")
 	}
 	for name, override := range map[string][]string{
@@ -366,7 +384,7 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 			}
 			mutated.Args = append(mutated.Args[:len(mutated.Args)-1], override...)
 			mutated.Args = append(mutated.Args, "-")
-			if err := adapter.VerifyIsolation(task, paths, mutated); err == nil {
+			if err := policy.Verify(task, paths, mutated); err == nil {
 				t.Fatal("non-canonical Codex override passed isolation verification")
 			}
 		})
@@ -377,11 +395,33 @@ func TestSupervisorRejectsAdapterWithoutIsolationCapability(t *testing.T) {
 	_, err := NewSupervisor(
 		mustRegistry(t),
 		missingIsolationAdapter{processAdapter{mode: "success"}},
+		processIsolationPolicy{},
 		nil,
 		nil,
 	)
 	if err == nil || !strings.Contains(err.Error(), "required isolation capability") {
 		t.Fatalf("missing isolation capability error = %v", err)
+	}
+}
+
+func TestSupervisorPolicyRejectsAdapterSelfAuthorization(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	task := workerTaskAt(repository)
+	mustPrepareTaskDirectories(t, task)
+	supervisor, err := NewSupervisor(
+		mustRegistry(t),
+		codexClaimingAdapter{processAdapter{mode: "success"}},
+		CodexIsolationPolicy{Executable: os.Args[0]},
+		nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "canonical isolated invocation") {
+		t.Fatalf("adapter self-authorization error = %v", err)
 	}
 }
 
@@ -515,6 +555,7 @@ func TestSupervisorCancellationKillsProcessGroup(t *testing.T) {
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "child"},
+		processIsolationPolicy{},
 		nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
@@ -563,6 +604,7 @@ func TestSupervisorCancellationKillsTermIgnoringDescendant(t *testing.T) {
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "term-resistant-child"},
+		processIsolationPolicy{},
 		nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
@@ -745,7 +787,7 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -775,7 +817,7 @@ func TestSupervisorRejectsExternalFSMonitorBeforeGitStatus(t *testing.T) {
 		t.Fatal(err)
 	}
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -854,6 +896,27 @@ func TestGitExecutionConfigInspectionHonorsCancellation(t *testing.T) {
 	}
 }
 
+func TestGitWorktreeIdentityOutputIsBounded(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable Git fixture requires a Unix host")
+	}
+	directory := t.TempDir()
+	payload := filepath.Join(directory, "payload")
+	if err := os.WriteFile(payload, []byte(strings.Repeat("x", (64<<10)+1)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	gitPath := filepath.Join(directory, "git")
+	script := "#!/bin/sh\n/bin/cat " + shellQuote(payload) + "\n"
+	if err := os.WriteFile(gitPath, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", directory)
+	if _, _, err := gitWorktreeIdentity(t.Context(), directory); err == nil ||
+		!strings.Contains(err.Error(), "identity exceeds") {
+		t.Fatalf("oversized Git identity error = %v", err)
+	}
+}
+
 func TestSupervisorDoesNotMaterializeScopeThroughExternalSymlink(t *testing.T) {
 	repository := t.TempDir()
 	outside := t.TempDir()
@@ -867,7 +930,7 @@ func TestSupervisorDoesNotMaterializeScopeThroughExternalSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -895,7 +958,7 @@ func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -917,6 +980,7 @@ func TestSupervisorRequiresDeclaredRepositoryBinding(t *testing.T) {
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "success"},
+		processIsolationPolicy{},
 		nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
@@ -940,7 +1004,7 @@ func TestSupervisorRejectsSymlinkedWorktreeRoot(t *testing.T) {
 	task := workerTaskAt(link)
 	task.RepositoryPath = repository
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -967,7 +1031,7 @@ func TestSupervisorRequiresPrecreatedEvidenceAndWriteScopes(t *testing.T) {
 		mustInitGitRepository(t, repository)
 		task := workerTaskAt(repository)
 		supervisor, err := NewSupervisor(
-			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 			[]string{"PATH=" + os.Getenv("PATH")},
 		)
 		if err != nil {
@@ -989,7 +1053,7 @@ func TestSupervisorRequiresPrecreatedEvidenceAndWriteScopes(t *testing.T) {
 			t.Fatal(err)
 		}
 		supervisor, err := NewSupervisor(
-			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 			[]string{"PATH=" + os.Getenv("PATH")},
 		)
 		if err != nil {
@@ -1027,6 +1091,7 @@ func TestSupervisorRejectsEvidenceSymlinkResolvingToWorktreeRoot(t *testing.T) {
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "success"},
+		processIsolationPolicy{},
 		nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
@@ -1052,7 +1117,7 @@ func TestSupervisorRejectsEvidenceSymlinkAliasInsideWorktree(t *testing.T) {
 	task := workerTaskAt(repository)
 	task.EvidenceOutputDir = filepath.Join(repository, "alias", "evidence")
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -1074,7 +1139,7 @@ func TestSupervisorDoesNotMaterializeEvidenceThroughExternalSymlink(t *testing.T
 	task := workerTaskAt(repository)
 	task.EvidenceOutputDir = filepath.Join(repository, "link", "new")
 	supervisor, err := NewSupervisor(
-		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		mustRegistry(t), processAdapter{mode: "success"}, processIsolationPolicy{}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
 	if err != nil {
@@ -1158,6 +1223,7 @@ func TestSupervisorRejectsEvidenceSymlinkBeforeMutation(t *testing.T) {
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "success"},
+		processIsolationPolicy{},
 		nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
 	)
@@ -1232,6 +1298,7 @@ func executePreparedTaskWithEvents(
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		adapter,
+		processIsolationPolicy{},
 		events,
 		[]string{"PATH=" + os.Getenv("PATH"), "HOME=" + t.TempDir()},
 	)

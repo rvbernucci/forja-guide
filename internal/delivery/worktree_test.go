@@ -7,7 +7,10 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
@@ -52,6 +55,12 @@ func TestWorktreeLifecyclePreparesIdempotentlyAndRemovesCleanCheckout(t *testing
 	}
 	if _, err := os.Stat(quarantined.QuarantinePath); err != nil {
 		t.Fatalf("quarantined clean worktree is not preserved: %v", err)
+	}
+	if _, err := manager.Prepare(t.Context(), request); !errors.Is(err, ErrWorktreeConflict) {
+		t.Fatalf("retired attempt replay error = %v", err)
+	}
+	if _, err := os.Lstat(prepared.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("retired attempt replay recreated its worktree: %v", err)
 	}
 }
 
@@ -101,6 +110,51 @@ func TestWorktreeLifecycleQuarantinesDirtyAttemptAndRetriesFromBase(t *testing.T
 	}
 	if _, err := manager.Quarantine(t.Context(), retry); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestWorktreeLifecycleSerializesQuarantineAgainstPrepareReplay(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	prepared, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	locked := make(chan struct{})
+	releaseQuarantine := make(chan struct{})
+	var signal sync.Once
+	manager.afterAttemptLockTest = func(operation string) {
+		if operation == "quarantine" {
+			signal.Do(func() { close(locked) })
+			<-releaseQuarantine
+		}
+	}
+	quarantineDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Quarantine(t.Context(), request)
+		quarantineDone <- err
+	}()
+	<-locked
+	prepareDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Prepare(t.Context(), request)
+		prepareDone <- err
+	}()
+	select {
+	case err := <-prepareDone:
+		t.Fatalf("prepare bypassed the quarantine lifecycle lock: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(releaseQuarantine)
+	if err := <-quarantineDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-prepareDone; !errors.Is(err, ErrWorktreeConflict) {
+		t.Fatalf("concurrent retired replay error = %v", err)
+	}
+	if _, err := os.Lstat(prepared.Path); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("concurrent replay recreated the retired worktree: %v", err)
 	}
 }
 
@@ -192,6 +246,124 @@ func TestWorktreeLifecycleQuarantineDoesNotMutateForeignGitMetadata(t *testing.T
 	}
 	if _, err := os.Stat(quarantined.QuarantinePath); err != nil {
 		t.Fatalf("foreign checkout bytes were not preserved: %v", err)
+	}
+}
+
+func TestInterruptedGitMoveRequiresAdministrativeReconciliation(t *testing.T) {
+	for _, test := range []struct {
+		name                string
+		metadataDestination bool
+	}{
+		{name: "filesystem moved before Git metadata"},
+		{name: "Git metadata moved before filesystem", metadataDestination: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository, rootPath, base := deliveryRepository(t)
+			manager := testWorktreeManager(t)
+			request := deliveryRequest(repository, rootPath, base)
+			prepared, err := manager.Prepare(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			resolved, err := manager.resolveRequest(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.OpenRoot(rootPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			quarantineRelative := filepath.Join("quarantine", request.DeliveryID, request.AttemptID)
+			if err := root.MkdirAll(filepath.Dir(quarantineRelative), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			quarantinePath := filepath.Join(rootPath, quarantineRelative)
+			if test.metadataDestination {
+				runGitTest(
+					t,
+					prepared.Path,
+					"worktree", "move", prepared.Path, quarantinePath,
+				)
+				if err := root.Rename(quarantineRelative, resolved.attemptRelative); err != nil {
+					t.Fatal(err)
+				}
+			} else if err := root.Rename(resolved.attemptRelative, quarantineRelative); err != nil {
+				t.Fatal(err)
+			}
+			if err := reconcileQuarantineMutation(root, resolved, quarantineRelative); !errors.Is(err, ErrGitReconciliationRequired) {
+				t.Fatalf("interrupted move reconciliation error = %v", err)
+			}
+			if _, err := os.Stat(filepath.Join(quarantinePath, ".forja-reconciliation-required")); err != nil {
+				t.Fatalf("interrupted move lacks reconciliation marker: %v", err)
+			}
+			if _, err := os.Lstat(prepared.Path); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("interrupted move source was not retired: %v", err)
+			}
+			registration := runGitTest(t, repository, "worktree", "list", "--porcelain")
+			if test.metadataDestination {
+				if !strings.Contains(registration, filepath.Join("quarantine", request.DeliveryID, request.AttemptID)) {
+					t.Fatalf("Git destination registration was not preserved: %s", registration)
+				}
+			} else if !strings.Contains(registration, filepath.Join(request.DeliveryID, request.AttemptID)) ||
+				strings.Contains(registration, filepath.Join("quarantine", request.DeliveryID, request.AttemptID)) {
+				t.Fatalf("Git source registration was not preserved for reconciliation: %s", registration)
+			}
+		})
+	}
+}
+
+func TestInterruptedGitMoveFailureShapesRetainSentinel(t *testing.T) {
+	for _, shape := range []string{"both", "neither", "rename-failure"} {
+		t.Run(shape, func(t *testing.T) {
+			if shape == "rename-failure" && runtime.GOOS == "windows" {
+				t.Skip("permission fixture requires a Unix host")
+			}
+			repository, rootPath, base := deliveryRepository(t)
+			manager := testWorktreeManager(t)
+			request := deliveryRequest(repository, rootPath, base)
+			resolved, err := manager.resolveRequest(t.Context(), request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			root, err := os.OpenRoot(rootPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer root.Close()
+			quarantineRelative := filepath.Join("quarantine", request.DeliveryID, request.AttemptID)
+			quarantineParent := filepath.Dir(quarantineRelative)
+			if err := root.MkdirAll(quarantineParent, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			switch shape {
+			case "both":
+				if err := root.MkdirAll(resolved.attemptRelative, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				if err := root.Mkdir(quarantineRelative, 0o700); err != nil {
+					t.Fatal(err)
+				}
+			case "rename-failure":
+				if err := root.MkdirAll(resolved.attemptRelative, 0o700); err != nil {
+					t.Fatal(err)
+				}
+				parentPath := filepath.Join(rootPath, quarantineParent)
+				if err := os.Chmod(parentPath, 0o500); err != nil {
+					t.Fatal(err)
+				}
+				defer os.Chmod(parentPath, 0o700)
+			}
+			err = reconcileQuarantineMutation(root, resolved, quarantineRelative)
+			if !errors.Is(err, ErrGitReconciliationRequired) {
+				t.Fatalf("%s reconciliation error = %v", shape, err)
+			}
+			if shape == "rename-failure" {
+				if _, sourceErr := root.Lstat(resolved.attemptRelative); sourceErr != nil {
+					t.Fatalf("rename failure fixture did not retain its source: %v", sourceErr)
+				}
+			}
+		})
 	}
 }
 
@@ -327,6 +499,73 @@ func TestWorktreeLifecycleRejectsRepositoryContentFilterBeforeCheckout(t *testin
 	derived := filepath.Join(root, request.DeliveryID, request.AttemptID)
 	if _, err := os.Lstat(derived); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("content-filter rejection created a worktree: %v", err)
+	}
+}
+
+func TestWorktreeLifecycleGitCommandsHaveInternalDeadline(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("FIFO fixture requires a Unix host")
+	}
+	repository, root, base := deliveryRepository(t)
+	fifo := filepath.Join(t.TempDir(), "blocked.gitconfig")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("FIFO unavailable: %v", err)
+	}
+	runGitTest(t, repository, "config", "include.path", fifo)
+	manager := testWorktreeManager(t)
+	started := time.Now()
+	if _, err := manager.Prepare(t.Context(), deliveryRequest(repository, root, base)); err == nil {
+		t.Fatal("blocking Git include bypassed the delivery deadline")
+	}
+	if elapsed := time.Since(started); elapsed > 4*time.Second {
+		t.Fatalf("delivery Git deadline was not enforced: %v", elapsed)
+	}
+}
+
+func TestWorktreeLifecycleRetiresInterruptedMutation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable Git wrapper fixture requires a Unix host")
+	}
+	realGit, err := exec.LookPath("git")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := filepath.Join(t.TempDir(), "git-wrapper")
+	script := "#!/bin/sh\n" +
+		"next=0\n" +
+		"for arg in \"$@\"; do\n" +
+		"  if [ \"$next\" = 1 ]; then\n" +
+		"    mkdir -p \"$arg\"\n" +
+		"    printf partial > \"$arg/partial.txt\"\n" +
+		"    exec /bin/sleep 60\n" +
+		"  fi\n" +
+		"  if [ \"$arg\" = --detach ]; then next=1; fi\n" +
+		"done\n" +
+		"exec " + shellSingleQuote(realGit) + " \"$@\"\n"
+	if err := os.WriteFile(wrapper, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	repository, root, base := deliveryRepository(t)
+	manager, err := NewWorktreeManager(wrapper, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager.readTimeout = 30 * time.Second
+	manager.mutationTimeout = 100 * time.Millisecond
+	request := deliveryRequest(repository, root, base)
+	if _, err := manager.Prepare(t.Context(), request); !errors.Is(err, ErrGitReconciliationRequired) {
+		t.Fatalf("interrupted worktree mutation error = %v", err)
+	}
+	quarantinePath := filepath.Join(root, "quarantine", request.DeliveryID, request.AttemptID)
+	content, err := os.ReadFile(filepath.Join(quarantinePath, "partial.txt"))
+	if err != nil || string(content) != "partial" {
+		t.Fatalf("interrupted mutation bytes were not preserved: content=%q err=%v", content, err)
+	}
+	if _, err := manager.Prepare(t.Context(), request); !errors.Is(err, ErrWorktreeConflict) {
+		t.Fatalf("interrupted mutation identity was reusable: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(quarantinePath, ".forja-reconciliation-required")); err != nil {
+		t.Fatalf("interrupted mutation lacks reconciliation marker: %v", err)
 	}
 }
 
@@ -501,7 +740,11 @@ func testWorktreeManager(t *testing.T) *WorktreeManager {
 
 func runGitTest(t *testing.T, directory string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command("git", append([]string{"-C", directory}, arguments...)...)
+	command := exec.CommandContext(
+		t.Context(),
+		"git",
+		append([]string{"-C", directory}, arguments...)...,
+	)
 	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "LC_ALL=C")
 	output, err := command.CombinedOutput()
 	if err != nil {

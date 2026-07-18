@@ -91,10 +91,18 @@ The attempt path is derived as
 `<worktree-root>/<delivery-id>/<attempt-id>`. A repeated prepare may reuse that
 path only when repository identity, detached `HEAD`, base commit, cleanliness,
 ignored-file absence, and index flags all still match. A retry uses a new
-attempt ID and therefore a new path at the original base commit. Repository Git
-hooks are disabled for service operations, and effective local or
-worktree-scoped clean, smudge, or process filters are rejected before checkout
-because they could execute host commands outside the worker sandbox.
+attempt ID and therefore a new path at the original base commit. An attempt
+identity with an existing quarantine destination is retired and cannot be
+prepared again. A rooted, atomic per-attempt lifecycle lock serializes prepare,
+inspect, and quarantine across manager instances; an abandoned lock fails
+closed for later lease-aware reconciliation. Repository Git reads have a
+two-second deadline and mutations a 30-second deadline. Interrupted mutations
+preserve any reachable bytes under quarantine, write an explicit
+`reconciliation-required` marker, and return failure because filesystem
+position cannot prove Git administrative registration. The identity remains
+non-reusable. Hooks are disabled, and effective local or worktree-scoped
+clean, smudge, or process filters are rejected before checkout because they
+could execute host commands outside the worker sandbox.
 
 Write and artifact directories are created through a rooted filesystem handle
 while the lease set is live. Their logical and resolved positions must match;
@@ -104,7 +112,9 @@ deleting bytes; registered worktrees move through Git so their administrative
 metadata remains inspectable only when their Git common directory matches the
 request's authorized repository. Otherwise, rooted quarantine preserves bytes
 without mutating external Git metadata. Quarantine also verifies the immutable
-request digest before touching the attempt path. Physical deletion after worker
+request digest before touching the attempt path. An interrupted Git move never
+reports successful quarantine until its administrative metadata is reconciled.
+Physical deletion after worker
 exposure remains pending a joint live-lease and process-quiescence proof. Only a fresh checkout
 whose preparation failed before exposure may be removed immediately.
 

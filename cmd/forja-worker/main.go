@@ -69,6 +69,7 @@ func run(
 	supervisor, err := worker.NewSupervisor(
 		registry,
 		worker.CodexAdapter{Executable: *codexPath},
+		worker.CodexIsolationPolicy{Executable: *codexPath},
 		&eventWriter{writer: stderr},
 		environ,
 	)

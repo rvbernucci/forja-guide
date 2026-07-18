@@ -19,7 +19,12 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
 
-const maximumGitOutputBytes = 16 << 20
+const (
+	maximumGitOutputBytes      = 16 << 20
+	deliveryGitReadTimeout     = 2 * time.Second
+	deliveryGitMutationTimeout = 30 * time.Second
+	attemptLockTimeout         = 5 * time.Second
+)
 
 var (
 	deliveryIDPattern = regexp.MustCompile(`^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -31,6 +36,9 @@ var (
 	// ErrWorktreeDirty identifies bytes that must be preserved rather than
 	// removed or reused.
 	ErrWorktreeDirty = errors.New("delivery worktree is dirty")
+	// ErrGitReconciliationRequired identifies preserved bytes whose Git
+	// administrative registration requires explicit operator reconciliation.
+	ErrGitReconciliationRequired = errors.New("delivery Git reconciliation required")
 )
 
 // Worktree is the verified identity of one detached delivery checkout.
@@ -53,8 +61,11 @@ type QuarantineResult struct {
 
 // WorktreeManager creates and quarantines only derived, detached worktrees.
 type WorktreeManager struct {
-	gitPath string
-	environ []string
+	gitPath              string
+	environ              []string
+	readTimeout          time.Duration
+	mutationTimeout      time.Duration
+	afterAttemptLockTest func(string)
 }
 
 // NewWorktreeManager constructs a manager with a fixed Git executable and
@@ -65,14 +76,16 @@ func NewWorktreeManager(gitPath string, environ []string) (*WorktreeManager, err
 		gitPath = "git"
 	}
 	if strings.ContainsRune(gitPath, '\x00') {
-		return nil, fmt.Errorf("Git executable contains a NUL byte")
+		return nil, fmt.Errorf("git executable contains a NUL byte")
 	}
 	if environ == nil {
 		environ = os.Environ()
 	}
 	return &WorktreeManager{
-		gitPath: gitPath,
-		environ: gitEnvironment(environ),
+		gitPath:         gitPath,
+		environ:         gitEnvironment(environ),
+		readTimeout:     deliveryGitReadTimeout,
+		mutationTimeout: deliveryGitMutationTimeout,
 	}, nil
 }
 
@@ -86,8 +99,21 @@ func (m *WorktreeManager) Prepare(
 	if err != nil {
 		return Worktree{}, err
 	}
+	release, err := acquireAttemptLock(ctx, resolved)
+	if err != nil {
+		return Worktree{}, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	if m.afterAttemptLockTest != nil {
+		m.afterAttemptLockTest("prepare")
+	}
 	if err := ensureRequestAuthority(resolved.worktreeRoot, request, true); err != nil {
 		return Worktree{}, err
+	}
+	if retired, err := quarantineDestinationExists(resolved); err != nil {
+		return Worktree{}, err
+	} else if retired {
+		return Worktree{}, fmt.Errorf("%w: attempt identity is already quarantined", ErrWorktreeConflict)
 	}
 	if _, err := os.Lstat(resolved.worktreePath); err == nil {
 		worktree, err := m.inspectResolved(ctx, resolved, true)
@@ -117,24 +143,30 @@ func (m *WorktreeManager) Prepare(
 	); err != nil {
 		return Worktree{}, fmt.Errorf("validate delivery worktree namespace: %w", err)
 	}
-	if _, err := m.git(
+	created := false
+	defer func() {
+		if resultErr == nil || !created {
+			return
+		}
+		cleanupContext, cancel := context.WithTimeout(context.Background(), 35*time.Second)
+		defer cancel()
+		if cleanupErr := m.removeFreshCleanResolved(cleanupContext, resolved); cleanupErr != nil {
+			resultErr = errors.Join(resultErr, cleanupErr, retireFailedPrepare(resolved))
+		}
+	}()
+	if _, err := m.gitMutation(
 		ctx,
 		resolved.repositoryPath,
 		"worktree", "add", "--quiet", "--detach",
 		resolved.worktreePath,
 		resolved.baseCommit,
 	); err != nil {
-		return Worktree{}, fmt.Errorf("create detached worktree: %w", err)
+		return Worktree{}, errors.Join(
+			fmt.Errorf("create detached worktree: %w", err),
+			retireFailedPrepare(resolved),
+		)
 	}
-	created := true
-	defer func() {
-		if resultErr == nil || !created {
-			return
-		}
-		cleanupContext, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		_ = m.removeFreshCleanResolved(cleanupContext, resolved)
-	}()
+	created = true
 
 	worktree, err = m.inspectResolved(ctx, resolved, true)
 	if err != nil {
@@ -156,10 +188,18 @@ func (m *WorktreeManager) Prepare(
 func (m *WorktreeManager) Inspect(
 	ctx context.Context,
 	request contracts.DeliveryRequest,
-) (Worktree, error) {
+) (worktree Worktree, resultErr error) {
 	resolved, err := m.resolveRequest(ctx, request)
 	if err != nil {
 		return Worktree{}, err
+	}
+	release, err := acquireAttemptLock(ctx, resolved)
+	if err != nil {
+		return Worktree{}, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	if m.afterAttemptLockTest != nil {
+		m.afterAttemptLockTest("inspect")
 	}
 	if err := ensureRequestAuthority(resolved.worktreeRoot, request, false); err != nil {
 		return Worktree{}, err
@@ -173,10 +213,18 @@ func (m *WorktreeManager) Inspect(
 func (m *WorktreeManager) Quarantine(
 	ctx context.Context,
 	request contracts.DeliveryRequest,
-) (QuarantineResult, error) {
+) (result QuarantineResult, resultErr error) {
 	resolved, err := resolveQuarantineRequest(request)
 	if err != nil {
 		return QuarantineResult{}, err
+	}
+	release, err := acquireAttemptLock(ctx, resolved)
+	if err != nil {
+		return QuarantineResult{}, err
+	}
+	defer func() { resultErr = errors.Join(resultErr, release()) }()
+	if m.afterAttemptLockTest != nil {
+		m.afterAttemptLockTest("quarantine")
 	}
 	if err := ensureRequestAuthority(resolved.worktreeRoot, request, false); err != nil {
 		return QuarantineResult{}, err
@@ -244,12 +292,21 @@ func (m *WorktreeManager) Quarantine(
 			if err := root.Rename(resolved.attemptRelative, quarantineRelative); err != nil {
 				return QuarantineResult{}, fmt.Errorf("move Git path through rooted quarantine: %w", err)
 			}
-		} else if _, err := m.git(
+		} else if _, err := m.gitMutation(
 			ctx,
 			resolved.worktreePath,
 			"worktree", "move", resolved.worktreePath, quarantinePath,
 		); err != nil {
-			return QuarantineResult{}, fmt.Errorf("move registered worktree to quarantine: %w", err)
+			if reconciliationErr := reconcileQuarantineMutation(
+				root,
+				resolved,
+				quarantineRelative,
+			); reconciliationErr != nil {
+				return QuarantineResult{}, errors.Join(
+					fmt.Errorf("move registered worktree to quarantine: %w", err),
+					reconciliationErr,
+				)
+			}
 		}
 	} else if err := root.Rename(resolved.attemptRelative, quarantineRelative); err != nil {
 		return QuarantineResult{}, fmt.Errorf("move unverifiable path to quarantine: %w", err)
@@ -311,6 +368,204 @@ type resolvedRequest struct {
 	repositoryCommon   string
 	repositoryPhysical string
 	rootPhysical       string
+}
+
+func quarantineDestinationExists(resolved resolvedRequest) (bool, error) {
+	root, err := os.OpenRoot(resolved.worktreeRoot)
+	if err != nil {
+		return false, fmt.Errorf("open worktree root for quarantine check: %w", err)
+	}
+	defer root.Close()
+	name := filepath.Join("quarantine", resolved.request.DeliveryID, resolved.request.AttemptID)
+	if _, err := root.Lstat(name); err == nil {
+		return true, nil
+	} else if errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else {
+		return false, fmt.Errorf("inspect quarantine destination: %w", err)
+	}
+}
+
+func retireFailedPrepare(resolved resolvedRequest) error {
+	root, err := os.OpenRoot(resolved.worktreeRoot)
+	if err != nil {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("open worktree root for failed-prepare retirement: %w", err),
+		)
+	}
+	defer root.Close()
+	quarantineRelative := filepath.Join(
+		"quarantine", resolved.request.DeliveryID, resolved.request.AttemptID,
+	)
+	if _, err := root.Lstat(quarantineRelative); err == nil {
+		return ErrGitReconciliationRequired
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("inspect failed-prepare retirement: %w", err),
+		)
+	}
+	parent := filepath.Dir(quarantineRelative)
+	if err := root.MkdirAll(parent, 0o700); err != nil {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("create failed-prepare retirement namespace: %w", err),
+		)
+	}
+	if err := validateScopePosition(resolved.worktreeRoot, parent, parent); err != nil {
+		return errors.Join(ErrGitReconciliationRequired, err)
+	}
+	if _, err := root.Lstat(resolved.attemptRelative); err == nil {
+		if err := root.Rename(resolved.attemptRelative, quarantineRelative); err != nil {
+			return errors.Join(
+				ErrGitReconciliationRequired,
+				fmt.Errorf("preserve failed-prepare bytes: %w", err),
+			)
+		}
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			writeReconciliationMarker(root, quarantineRelative),
+		)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("inspect failed-prepare source: %w", err),
+		)
+	}
+	if err := root.Mkdir(quarantineRelative, 0o700); err != nil {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("create failed-prepare tombstone: %w", err),
+		)
+	}
+	return errors.Join(
+		ErrGitReconciliationRequired,
+		writeReconciliationMarker(root, quarantineRelative),
+	)
+}
+
+func reconcileQuarantineMutation(
+	root *os.Root,
+	resolved resolvedRequest,
+	quarantineRelative string,
+) error {
+	_, sourceErr := root.Lstat(resolved.attemptRelative)
+	_, destinationErr := root.Lstat(quarantineRelative)
+	sourceExists := sourceErr == nil
+	destinationExists := destinationErr == nil
+	if sourceErr != nil && !errors.Is(sourceErr, os.ErrNotExist) {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("inspect quarantine source after interrupted move: %w", sourceErr),
+		)
+	}
+	if destinationErr != nil && !errors.Is(destinationErr, os.ErrNotExist) {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("inspect quarantine destination after interrupted move: %w", destinationErr),
+		)
+	}
+	switch {
+	case destinationExists && !sourceExists:
+		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+			return errors.Join(ErrGitReconciliationRequired, err)
+		}
+	case sourceExists && !destinationExists:
+		if err := root.Rename(resolved.attemptRelative, quarantineRelative); err != nil {
+			return errors.Join(
+				ErrGitReconciliationRequired,
+				fmt.Errorf("preserve source after interrupted Git move: %w", err),
+			)
+		}
+		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+			return errors.Join(ErrGitReconciliationRequired, err)
+		}
+	case sourceExists && destinationExists:
+		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+			return errors.Join(ErrGitReconciliationRequired, err)
+		}
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("interrupted Git move left both source and quarantine destination"),
+		)
+	default:
+		if err := root.Mkdir(quarantineRelative, 0o700); err != nil && !errors.Is(err, os.ErrExist) {
+			return errors.Join(
+				ErrGitReconciliationRequired,
+				fmt.Errorf("retire missing interrupted Git move: %w", err),
+			)
+		}
+		if err := writeReconciliationMarker(root, quarantineRelative); err != nil {
+			return errors.Join(ErrGitReconciliationRequired, err)
+		}
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("interrupted Git move left neither source nor preserved bytes"),
+		)
+	}
+	return ErrGitReconciliationRequired
+}
+
+func writeReconciliationMarker(root *os.Root, quarantineRelative string) error {
+	marker := filepath.Join(quarantineRelative, ".forja-reconciliation-required")
+	file, err := root.OpenFile(marker, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("create Git reconciliation marker: %w", err)
+	}
+	if _, err := file.Write([]byte("manual Git administrative reconciliation required\n")); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write Git reconciliation marker: %w", err)
+	}
+	return file.Close()
+}
+
+func acquireAttemptLock(
+	ctx context.Context,
+	resolved resolvedRequest,
+) (func() error, error) {
+	root, err := os.OpenRoot(resolved.worktreeRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open worktree root for attempt lock: %w", err)
+	}
+	parent := filepath.Join(".forja-locks", resolved.request.DeliveryID)
+	name := filepath.Join(parent, resolved.request.AttemptID+".lock")
+	if err := root.MkdirAll(parent, 0o700); err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("create attempt lock namespace: %w", err)
+	}
+	if err := validateScopePosition(resolved.worktreeRoot, parent, parent); err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("validate attempt lock namespace: %w", err)
+	}
+	lockContext, cancel := context.WithTimeout(ctx, attemptLockTimeout)
+	defer cancel()
+	for {
+		if err := root.Mkdir(name, 0o700); err == nil {
+			return func() error {
+				removeErr := root.Remove(name)
+				closeErr := root.Close()
+				if removeErr != nil {
+					removeErr = fmt.Errorf("release attempt lock: %w", removeErr)
+				}
+				return errors.Join(removeErr, closeErr)
+			}, nil
+		} else if !errors.Is(err, os.ErrExist) {
+			_ = root.Close()
+			return nil, fmt.Errorf("acquire attempt lock: %w", err)
+		}
+		timer := time.NewTimer(10 * time.Millisecond)
+		select {
+		case <-lockContext.Done():
+			timer.Stop()
+			_ = root.Close()
+			return nil, fmt.Errorf("acquire attempt lock: %w", lockContext.Err())
+		case <-timer.C:
+		}
+	}
 }
 
 func (m *WorktreeManager) resolveRequest(
@@ -440,7 +695,7 @@ func (m *WorktreeManager) removeFreshCleanResolved(ctx context.Context, resolved
 	if _, err := m.inspectResolved(ctx, resolved, true); err != nil {
 		return err
 	}
-	if _, err := m.git(
+	if _, err := m.gitMutation(
 		ctx,
 		resolved.repositoryPath,
 		"worktree", "remove", resolved.worktreePath,
@@ -537,7 +792,7 @@ func (m *WorktreeManager) worktreeIdentity(
 	}
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	if len(lines) != 2 || lines[0] == "" || lines[1] == "" {
-		return "", "", fmt.Errorf("Git returned an invalid worktree identity")
+		return "", "", fmt.Errorf("git returned an invalid worktree identity")
 	}
 	top, err := canonicalGitPath(directory, lines[0])
 	if err != nil {
@@ -555,6 +810,23 @@ func (m *WorktreeManager) git(
 	directory string,
 	arguments ...string,
 ) ([]byte, error) {
+	return m.gitWithTimeout(ctx, m.readTimeout, directory, arguments...)
+}
+
+func (m *WorktreeManager) gitMutation(
+	ctx context.Context,
+	directory string,
+	arguments ...string,
+) ([]byte, error) {
+	return m.gitWithTimeout(ctx, m.mutationTimeout, directory, arguments...)
+}
+
+func (m *WorktreeManager) gitWithTimeout(
+	ctx context.Context,
+	timeout time.Duration,
+	directory string,
+	arguments ...string,
+) ([]byte, error) {
 	args := []string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "core.fsmonitor=false",
@@ -563,7 +835,9 @@ func (m *WorktreeManager) git(
 		"-C", directory,
 	}
 	args = append(args, arguments...)
-	command := exec.CommandContext(ctx, m.gitPath, args...)
+	gitContext, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	command := exec.CommandContext(gitContext, m.gitPath, args...)
 	command.Env = m.environ
 	stdout := &boundedBuffer{limit: maximumGitOutputBytes}
 	stderr := &boundedBuffer{limit: maximumGitOutputBytes}
@@ -571,7 +845,7 @@ func (m *WorktreeManager) git(
 	command.Stderr = stderr
 	err := command.Run()
 	if stdout.exceeded || stderr.exceeded {
-		return nil, fmt.Errorf("Git output exceeded %d bytes", maximumGitOutputBytes)
+		return nil, fmt.Errorf("git output exceeded %d bytes", maximumGitOutputBytes)
 	}
 	if err != nil {
 		detail := strings.TrimSpace(stderr.String())
