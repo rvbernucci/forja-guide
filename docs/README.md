@@ -12,11 +12,13 @@ language.
 5. [Runtime and MCP](02-architecture/RUNTIME_AND_MCP.md)
 6. [Contract model](03-contracts/CONTRACTS.md)
 7. [MCP control API](03-contracts/MCP_CONTROL_API.md)
-8. [Master development plan](04-roadmap/MASTER_DEVELOPMENT_PLAN.md)
-9. [Architecture decisions](05-decisions/)
-10. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
-11. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
-12. [Sprint evidence](evidence/)
+8. [Worker execution contract](03-contracts/WORKER_EXECUTION.md)
+9. [Isolated delivery contract](03-contracts/ISOLATED_DELIVERY.md)
+10. [Master development plan](04-roadmap/MASTER_DEVELOPMENT_PLAN.md)
+11. [Architecture decisions](05-decisions/)
+12. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
+13. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
+14. [Sprint evidence](evidence/)
 
 ## Documentation States
 
