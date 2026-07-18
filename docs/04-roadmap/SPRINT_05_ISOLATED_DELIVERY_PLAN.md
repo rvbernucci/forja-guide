@@ -2,6 +2,10 @@
 
 Status: In progress
 
+Schema `1.1` and migrations 005-006 form one unreleased Sprint 05 delivery.
+After release, their contract bytes and migration checksums are immutable; any
+later change requires a new contract version or forward migration.
+
 ## Outcome
 
 Convert one approved worker task into a bounded Git commit, reproducible
@@ -53,6 +57,10 @@ contaminated worktree is quarantined and never reused.
 - [x] Require distinct author and independent-validator identities.
 - [x] Define canonical patch, changed-path, tree, and evidence hashes.
 - [x] Add strict Go contract mappings and valid/invalid fixtures.
+- [x] Bind request, report, manifest, receipt, journal, and leases to one
+  tenant/repository identity and operator-authorized canonical Git root.
+- [x] Publish the repository-scoped delivery artifacts as schema version `1.1`;
+  reject the unclosed `1.0` draft rather than changing it silently.
 
 ### 2. Atomic lease authority
 
@@ -62,6 +70,12 @@ contaminated worktree is quarantined and never reused.
 - [x] Renew and release only the exact owner and fencing-token set.
 - [x] Reject overlapping writers, stale fences, partial grants, and lease
   expansion after work starts.
+- [x] Bind the request and publication intent's minimum 60-second lease TTL to
+  the exact persisted lease-set and member duration.
+- [x] Persist the lease set's immutable authorized TTL and reject replay or
+  renewal that attempts to change it.
+- [x] Require legacy lease sets to drain before migration 006 rather than
+  inferring their original TTL from independently sampled timestamps.
 
 ### 3. Worktree lifecycle
 
@@ -90,20 +104,37 @@ contaminated worktree is quarantined and never reused.
 ### 5. Controlled publication and recovery
 
 - [x] Create the commit with a supervisor-owned deterministic identity.
-- [ ] Publish only to `refs/forja/deliveries/<delivery-id>` using compare and
+- [x] Publish only to `refs/forja/deliveries/<delivery-id>` using compare and
   swap against the expected old object ID.
-- [ ] Persist the delivery receipt before releasing the lease set.
-- [ ] Make receipt creation and publication replay-safe.
-- [ ] Reconcile expired attempts without deleting quarantined evidence.
+- [x] Persist the delivery receipt before releasing the lease set.
+- [x] Make receipt creation and publication replay-safe.
+- [x] Reopen and hash the persisted evidence inventory before journal mutation
+  and again inside the fenced Git callback, with enumeration and reads pinned to
+  one opened directory identity.
+- [x] Revalidate the exact lease set and minimum authority horizon after the
+  in-fence evidence read and immediately before Git mutation.
+- [x] Reobserve the exact publication ref after concurrent completion or
+  recovery transition before releasing any lease.
+- [x] Pin one stable publication-operation timestamp across receipt, journal,
+  concurrent replay, and crash recovery.
+- [x] Reconcile exact prepared attempts after lease expiry without deleting
+  quarantined evidence or inferring publication from timing.
+- [x] Reobserve the approved pre-CAS ref under the publication lock, retire the
+  exact intent as `abandoned`, and release its lease so a clean retry can proceed.
+- [x] Reject cross-repository path redirection before journal or Git mutation.
+- [x] Detect replacement of the operator-authorized physical repository path
+  before durable publication.
+- [x] Recover through fresh PostgreSQL Store and publication-service instances
+  after an injected crash between real Git CAS and SQL publication commit.
 
 ### 6. Acceptance and closure
 
-- [ ] Complete one synthetic approved task through validated publication.
-- [ ] Prove concurrent overlapping authors cannot both acquire authority.
-- [ ] Prove stale fencing tokens cannot commit or publish.
-- [ ] Prove out-of-scope, ignored, symlink, and hidden-index mutations fail.
-- [ ] Reproduce validation from a clean clone using only receipt references.
-- [ ] Run race, integration, rollback, and independent security reviews.
+- [x] Complete one synthetic approved task through validated publication.
+- [x] Prove concurrent overlapping authors cannot both acquire authority.
+- [x] Prove stale fencing tokens cannot commit or publish.
+- [x] Prove out-of-scope, ignored, symlink, and hidden-index mutations fail.
+- [x] Reproduce validation from a clean clone using only receipt references.
+- [x] Run race, integration, rollback, and independent security reviews.
 - [ ] Publish a fail-closed Sprint 05 evidence candidate and close it through
   the two-phase protocol.
 
@@ -122,6 +153,9 @@ contaminated worktree is quarantined and never reused.
 
 Stop new delivery intake, let live leases expire or release their exact fence,
 retain quarantined worktrees and receipts, remove only verified-clean temporary
-worktrees, reverse Sprint 05 migrations under the existing migration barrier,
-and deploy the authoritative Sprint 04 commit. Never reset an operator branch
-or delete unverified work to roll back the service.
+worktrees, and inspect the publication journal. When that journal is empty,
+reverse Sprint 05 migrations under the existing migration barrier and deploy
+the authoritative Sprint 04 commit. After any publication history exists,
+schema downgrade is deliberately refused: preserve the journal, keep delivery
+intake disabled, and use forward repair. Never delete receipts, reset an
+operator branch, or delete unverified work to force a rollback.

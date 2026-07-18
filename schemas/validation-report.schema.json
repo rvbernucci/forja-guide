@@ -5,14 +5,16 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "validation_id", "delivery_id", "schema_version", "status",
+    "validation_id", "delivery_id", "tenant_id", "repository_id", "schema_version", "status",
     "base_commit", "result_commit", "patch_sha256", "author_id",
     "validator_id", "clean_checkout", "checks", "created_at"
   ],
   "properties": {
     "validation_id": {"type": "string", "pattern": "^validation_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
     "delivery_id": {"type": "string", "pattern": "^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
-    "schema_version": {"const": "1.0"},
+    "tenant_id": {"type": "string", "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "schema_version": {"const": "1.1"},
     "status": {"enum": ["passed", "failed"]},
     "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
     "result_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},

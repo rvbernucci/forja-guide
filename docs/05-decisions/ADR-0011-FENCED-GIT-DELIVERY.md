@@ -35,6 +35,64 @@ Forja will deliver changes through a supervisor-owned pipeline:
 7. Persist a content-addressed receipt and release only the exact fenced lease
    set. Dirty or unverifiable failures are quarantined rather than reset.
 
+The Git and PostgreSQL transaction boundary uses a write-ahead publication
+journal. The service first persists one immutable `prepared` intent, performs
+an exact `update-ref --no-deref` compare-and-swap while a PostgreSQL transaction
+holds every resource and publication advisory lock, commits the canonical
+receipt as `published` before releasing those locks, and only then releases the
+lease set. Before preparing and again inside the fenced callback, it reopens
+the physical evidence bundle, pins the opened directory identity, and recomputes
+the complete manifest inventory through the same rooted handle. PostgreSQL
+revalidates the exact lease set and 40-second horizon again after that read and
+immediately before Git mutation.
+Every published return path then rereads the exact ref before release. Newly
+prepared receipts and the journal share a microsecond publication-operation
+timestamp; replay and recovery preserve any earlier receipt's exact timestamp
+precision and RFC3339 offsets. The journal `updated_at` retains the database transition clock. The
+transaction requires at least 40 seconds of live authority for
+the bounded 30-second Git mutation, so expiry or replacement fails before Git
+is invoked. The request authorizes at least a 60-second TTL that must also
+strictly exceed its worker wall-clock plus cancellation-grace budgets. The
+publication intent binds it into its identity digest, and the adapter requires the persisted
+immutable lease-set TTL and every member duration to equal that hashed
+authority. A renewal must reuse the same TTL. Recovery trusts neither a
+caller assertion nor timing: it rereads the exact direct Git ref. It finalizes
+only when that ref equals the intent's result commit. When the approved previous
+state remains, including an absent ref authorized for ref creation, it
+reobserves under the publication lock, persists `abandoned`,
+releases the exact lease, and reports not-applied; every other state records a
+terminal conflict. Exact release is replay-safe after expiry or an earlier release,
+but a changed fence is still rejected while authority remains live.
+Recovery authenticates the canonical request, report, manifest, receipt, and
+durable intent without treating the continued availability of evidence files
+as proof that a CAS occurred. Missing or damaged files still block a new CAS,
+but cannot prevent retirement when Git proves the CAS was not applied or exact
+lease release when the durable journal and Git prove it was published.
+Migration rollback is available only before this journal contains history.
+After the first prepared or terminal publication row, downgrade fails closed;
+operators preserve receipt authority and use forward repair rather than delete
+audit state to start an older binary.
+Migration 006 requires every pre-006 lease set to release before upgrade rather
+than inferring its original TTL from timestamps. Released historical sets
+receive a non-renewable sentinel duration. Its rollback likewise refuses any
+active lease set.
+
+Delivery request, validation, evidence, and receipt contracts use version
+`1.1`. They carry the canonical public `tenant_<uuidv4>` and `repo_<uuidv4>`
+identities. A validated trusted-internal conversion boundary in the publication
+service removes those prefixes before persistence into PostgreSQL UUID keys and
+fenced lease records; public callers never provide raw storage authority.
+
+Each publication service instance is constructed for exactly one public tenant,
+one public repository, and one operator-configured canonical Git checkout. The
+service pins the checkout's filesystem identity and rechecks it around Git reads
+and compare-and-swap mutation. Requests, leases, journal records, reports,
+manifests, and receipts must resolve to that same authority. Replacing the path
+with another checkout or redirecting a request to an accessible repository
+fails before publication can become durable. Administrative replacement of
+filesystem objects remains inside the trusted host-operator boundary rather
+than an untrusted worker capability.
+
 Canonical patch identity is the SHA-256 of Git's binary, full-index diff from
 the exact base commit to the result commit. Changed paths are normalized,
 deduplicated, byte-sorted repository-relative paths. Validator definitions are
@@ -117,6 +175,10 @@ Negative:
 - clean-checkout validation costs additional I/O and execution time;
 - delivery requires complete local Git objects and a durable PostgreSQL lease
   service;
+- publication deliberately holds one bounded database transaction across the
+  local Git compare-and-swap to remove the stale-fence interval;
+- each publication service requires operator configuration for one canonical
+  repository checkout, whose host administration remains trusted;
 - the default branch still requires an external governed merge process.
 
 ## Guardrail
@@ -125,4 +187,11 @@ Tests must reject partial lease sets, ancestor/descendant write conflicts,
 stale fencing tokens, arbitrary worktree paths, symbolic-link escapes,
 self-validation, mutable validator commands, non-reproducible hashes,
 publication compare-and-swap failures, worktree reuse after contamination, and
-receipt replay with different content.
+receipt replay with different content. They must also prove journal-before-CAS,
+live-fence locks across CAS, no mutation on stale or short-horizon authority,
+authority revalidation after the in-fence evidence read,
+receipt-before-release, exact-ref observation, recovery after the Git/SQL crash
+window, pre-prepare and in-fence persisted-evidence revalidation, concurrent
+completion and recovery ref rechecks, stable operation timestamps, evidence-root
+and repository-path replacement rejection, cross-repository isolation, and rollback refusal while
+publication history exists.

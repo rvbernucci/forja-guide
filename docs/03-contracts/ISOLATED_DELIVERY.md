@@ -24,19 +24,28 @@ The canonical schemas are:
 - [`evidence-manifest.schema.json`](../../schemas/evidence-manifest.schema.json);
 - [`delivery-receipt.schema.json`](../../schemas/delivery-receipt.schema.json).
 
-All four use schema version `1.0`, reject unknown fields, and require semantic
-validation in addition to JSON Schema. Publication validation is joint: the
-approved request, canonical validation report bytes, evidence manifest bytes,
-and receipt are checked as one authority proof rather than independently.
+All four use schema version `1.1`, reject unknown fields, and require semantic
+validation in addition to JSON Schema. Version `1.1` intentionally supersedes
+the unclosed `1.0` draft by making tenant and repository identity mandatory;
+there is no accepted Sprint 05 `1.0` publication history to migrate. Publication
+validation is joint: the approved request, canonical validation report bytes,
+evidence manifest bytes, and receipt are checked as one authority proof rather
+than independently.
 
 ## Request Semantics
 
-The control plane provides an exact base commit and a publication ref beneath
+The control plane provides canonical `tenant_<uuidv4>` and `repo_<uuidv4>`
+public identities, an exact base commit, and a publication ref beneath
 `refs/forja/deliveries/`, plus the nullable expected previous commit for
 compare-and-swap publication. It supplies repository and worktree-root paths, but
 the delivery service derives the attempt worktree path. Repository-relative
 read, write, artifact, and evidence scopes must be canonical non-overlapping
 paths without empty, absolute, dot, or parent-traversal components.
+
+The public prefixes remain present in requests, reports, manifests, and
+receipts. One validated boundary strips only those prefixes to obtain the UUID
+keys used by PostgreSQL journals and leases; no caller may provide storage keys
+directly.
 
 Repository and worktree roots must be clean, non-root absolute paths and must
 not contain one another. The attempt worktree is derived beneath the approved
@@ -53,6 +62,16 @@ the canonical request before creating or inspecting a worktree. A replay must
 present byte-equivalent canonical authority; changing the repository, base
 commit, scopes, identities, or any other request field fails closed instead of
 reusing the existing attempt path.
+
+Each publication service instance is operator-bound to one immutable tenant,
+repository, and canonical physical Git root. The request, validation report,
+evidence manifest, receipt, publication-intent hash, journal scope, and every
+lease member must identify that same tenant and repository. Valid authority for
+repository A therefore cannot redirect a publication to another accessible
+checkout B. The service also pins the directory identity at construction and
+rechecks it around Git operations, so replacing the configured path with a
+different checkout fails before publication can become durable. Host-level
+filesystem administration remains part of the trusted operator boundary.
 
 ## Lease Set
 
@@ -71,6 +90,17 @@ Each protected commit, validation, receipt, and publication operation checks
 the exact live owner and fencing token. Expiry or replacement fails closed.
 Receipt worktree fences use the delivery ID as their resource ID. File and
 artifact fence IDs are canonical repository-relative scopes.
+Requests authorize a lease TTL of at least 60 seconds and strictly greater than
+the approved worker wall-clock plus cancellation-grace budgets. The publication
+intent binds that value into its identity digest. PostgreSQL requires the
+persisted lease set to retain that immutable duration in `authorized_ttl_us`
+and requires every member to share the same acquisition, renewal, expiry, and
+exact duration (`expires_at - updated_at`). Replay or renewal with a different
+TTL fails closed; authority cannot be expanded and later disguised by renewing
+back to the approved duration.
+Upgrading to this invariant requires every pre-existing lease set to release;
+migration 006 fails closed instead of guessing an original TTL from historical
+timestamps.
 
 Hierarchical ancestor leasing is intentionally conservative. It prevents
 `internal/worker` and `internal/worker/file.go` from being written by different
@@ -130,6 +160,62 @@ The service publishes with compare-and-swap ref semantics. A missing target is
 created only if it is still missing; an existing target advances only from the
 approved previous object ID.
 
+Publication follows a durable cross-system protocol:
+
+1. The publication service reopens the physical evidence root, pins its file
+   identity across open, enumerates and reads through that same rooted handle,
+   rejects links, missing or additional files, and recomputes every manifest
+   size and SHA-256 before journal mutation. PostgreSQL then records a canonical `prepared`
+   intent containing the exact
+   tenant and repository, delivery attempt, lease set, authority digest,
+   receipt bytes and digest,
+   previous object ID, result object ID, and namespaced ref.
+2. PostgreSQL reacquires and verifies the exact lease-set fences with enough
+   time remaining for the bounded Git operation. One transaction holds every
+   resource and publication advisory lock while Git updates only
+   `refs/forja/deliveries/<delivery-id>` with `update-ref --no-deref` and the
+   approved old object ID. The callback revalidates the persisted evidence
+   again inside this fence; PostgreSQL then rechecks the same lease fences and
+   minimum authority horizon immediately before Git mutation. Ref observation verifies the exact ref name, a
+   direct commit object, and no symbolic target.
+3. Before releasing those locks, the same transaction changes the exact
+   prepared row to `published`, retaining the canonical receipt and observed
+   result object ID.
+4. After every path that returns a published row, including a concurrent exact
+   completion, the service rereads the ref and requires the exact result
+   commit. Only then does it release the exact fenced lease set.
+
+An attempt can move from `prepared` only to `published`, `conflict`, or
+`abandoned`.
+Replaying a published attempt requires byte-identical intent and a fresh Git
+read at the exact result commit. Recovery may finalize a prepared row without
+a live lease only when that trusted read proves the CAS already happened;
+finding the approved old object triggers a second observation under the
+publication lock, transitions the intent to `abandoned`, releases its exact
+lease set, and reports not-applied. Any other object records a terminal
+conflict. Exact lease release is idempotent, so recovery
+also closes a crash after receipt persistence but before release. No recovery
+path deletes quarantine evidence or updates a default branch.
+Damaged or missing persisted evidence can never authorize the Git CAS or a new
+prepared intent. It also cannot deadlock an already authenticated prepared
+intent: recovery validates the canonical authority artifacts and exact durable
+intent, then may retire it only when the locked Git observation still proves
+the approved pre-CAS state.
+
+The request-authorized lease duration is at least 60 seconds and is embedded in
+the canonical publication intent, not in the versioned receipt. The Git callback
+is bounded to 30 seconds; publication requires at least 40 seconds of lease
+authority both before evidence revalidation and again
+immediately before invoking Git. Expired, replaced, or short-horizon fences fail
+before Git mutation. Holding the advisory locks over both checks and callbacks
+prevents a compliant concurrent acquirer from replacing authority between fence
+verification and compare-and-swap. A process failure after Git
+mutation but before the SQL commit leaves `prepared` authority for exact-ref
+recovery rather than manufacturing a receipt.
+The integration suite injects this exact fault after the real Git CAS and
+before SQL publication commit, constructs fresh Store and Service instances,
+and proves exact-ref recovery, immutable receipt bytes, and lease release.
+
 ## Validation
 
 Built-in checks always run before configured validators:
@@ -143,9 +229,7 @@ Built-in checks always run before configured validators:
 Their stable receipt IDs are `scope-boundary`, `filesystem-safety`,
 `secret-scan`, `schema-validation`, and `generated-file-policy`. All five must
 be present as passing `built_in` checks; another check kind cannot impersonate
-them.
-
-Configured format and test validators are trusted argv arrays stored in the
+them. Configured format and test validators are trusted argv arrays stored in the
 runtime registry. They have wall-clock and output budgets and receive a
 sanitized environment. Registration resolves the executable to a physical
 path, copies its bytes into an operator-private executable registry, and binds
@@ -186,8 +270,9 @@ artifact bytes changed while the commit was created.
 Validation evidence is staged and atomically renamed beneath a distinct
 operator-owned root. It contains the canonical independent report, mechanical
 report, and bounded stdout/stderr for both lanes. The manifest inventories all
-content except itself; symlinked namespaces, unexpected files, changed bytes,
-or missing entries fail closed.
+content except itself; symlinked namespaces, unexpected files or directories,
+changed bytes, or missing entries fail closed. Directory traversal is limited
+to the exact parent set required by the manifest and manifest path.
 
 ## Failure and Retry
 
@@ -201,6 +286,13 @@ or missing entries fail closed.
   durable.
 - A receipt replay must be byte-equivalent; the same delivery ID cannot publish
   different content.
+- A prepared publication whose ref still has the approved old state is
+  reobserved under the publication lock, retired as `abandoned`, and releases
+  its exact lease before recovery reports not-applied. For ref-creation
+  attempts, an absent ref (`null`) is that approved old state. A fresh attempt
+  may then reacquire the delivery fence.
+- A prepared publication whose ref has any unapproved object becomes a durable
+  conflict and is never overwritten.
 
 ## Receipt Authority
 
@@ -210,7 +302,8 @@ the recorded lease fences, and the exact hashes in the receipt. Branch merge
 and release policy remain separate governed decisions.
 
 The receipt is authoritative only when its request and passing independent
-report agree on delivery, commits, patch, identities, and publication ref; its
+report agree on tenant, repository, delivery, commits, patch, identities, and
+publication ref; its
 content digests match the canonical report and manifest bytes; every changed
 path is within the approved write scopes; every evidence reference is within
 the evidence scope; and its sorted lease fences exactly equal the hierarchical
@@ -219,6 +312,16 @@ The canonical evidence manifest inventories byte-sorted paths, hashes, sizes,
 and media types. Every entry must remain inside the approved evidence scope,
 the manifest cannot include itself, and it must include the exact canonical
 validation report referenced by the receipt.
+The receipt's equal `created_at` and `published_at` values identify the first
+canonical publication operation, not validation completion. New operations
+use PostgreSQL-compatible microsecond precision, and exact concurrent
+publishers and recovery reuse the immutable recorded value. PostgreSQL stores
+the same `published_at` for newly prepared intents; replay and recovery preserve
+the exact bytes of any earlier contract-valid receipt, including distinct
+creation/publication values, RFC3339 offsets, and nanosecond precision, rather
+than rewriting its authority. The persistence adapter surfaces that exact receipt publication
+timestamp despite PostgreSQL's internal microsecond normalization. The journal
+`updated_at` records the database transition clock.
 Every mechanical validator ID approved by the request must also appear as a
 passing check in the independent report. The receipt's previous publication
 commit must exactly match the request, including `null` when creating a ref.

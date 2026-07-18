@@ -134,6 +134,11 @@ first acquires the projection watermark with a bounded lock timeout, then its
 complete relation barrier with `NOWAIT`; lock contention fails closed with
 PostgreSQL `lock_not_available` (`55P03`). Retry only after confirming the
 writer window is quiescent.
+Migration 006 additionally requires every lease set to be released before the
+upgrade. Stop delivery intake, allow active attempts to finish or cancel them
+through the governed path, verify that no `forja.lease_sets` row remains
+`active`, and only then retry. The migration deliberately refuses to infer an
+original TTL from legacy timestamps.
 See [ADR-0007](../05-decisions/ADR-0007-FAIL-FAST-INCREMENTAL-MIGRATIONS.md)
 for the authoritative barrier order and writer classes.
 Before removing an incompatible governed receipt, the rollback writes an
@@ -154,6 +159,12 @@ Receipt-free migration events are accepted only when their event IDs, fixed
 migration identity, and deterministic legacy Sprint-to-Run relationship all
 recompute exactly; an ordinary caller named `migration-003` receives no
 exemption.
+
+Migration 005 is reversible only while `forja.delivery_publications` is empty.
+Its down migration first crosses the lease writer barrier and then refuses any
+prepared, published, conflicted, or abandoned publication history. If history
+exists, stop delivery intake and use forward repair; never delete canonical
+receipts merely to run an older schema or binary.
 
 ## Automated Drill
 

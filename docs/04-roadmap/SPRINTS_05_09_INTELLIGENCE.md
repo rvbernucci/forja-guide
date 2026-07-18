@@ -21,7 +21,7 @@ validation.
   generated files, and path scope.
 - [x] Implement independent validator assignment.
 - [x] Prevent the author from being the only validator.
-- [ ] Produce evidence bundles and close receipts.
+- [x] Produce hash-bound validation evidence bundles and delivery receipts.
 - [x] Implement retry from clean base and explicit conflict handling.
 - [x] Add concurrent-author and stale-lease tests.
 

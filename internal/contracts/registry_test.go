@@ -242,7 +242,8 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	emptyDigest := "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	report := ValidationReport{
 		ValidationID: "validation_33333333-4444-4555-8666-777777777777",
-		DeliveryID:   request.DeliveryID, SchemaVersion: "1.0", Status: "passed",
+		DeliveryID:   request.DeliveryID, SchemaVersion: DeliverySchemaVersion, Status: "passed",
+		TenantID: request.TenantID, RepositoryID: request.RepositoryID,
 		BaseCommit: request.BaseCommit, ResultCommit: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		PatchSHA256: strings.Repeat("c", 64), AuthorID: request.AuthorID,
 		ValidatorID: request.ValidatorID, CleanCheckout: true,
@@ -274,9 +275,10 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	evidenceManifest := canonicalEvidenceManifest(t, request.DeliveryID, canonicalReport)
+	evidenceManifest := canonicalEvidenceManifest(t, request, canonicalReport)
 	receipt := DeliveryReceipt{
-		DeliveryID: request.DeliveryID, SchemaVersion: "1.0", Status: "published",
+		DeliveryID: request.DeliveryID, SchemaVersion: DeliverySchemaVersion, Status: "published",
+		TenantID: request.TenantID, RepositoryID: request.RepositoryID,
 		BaseCommit: request.BaseCommit, ResultCommit: report.ResultCommit,
 		ResultTree:  "dddddddddddddddddddddddddddddddddddddddd",
 		PatchSHA256: report.PatchSHA256, ChangedPaths: []string{"internal/delivery/delivery.go"},
@@ -311,6 +313,16 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	}
 	if err := ValidateValidationReport(report); err != nil {
 		t.Fatalf("valid validation report rejected: %v", err)
+	}
+	oldReport := report
+	oldReport.SchemaVersion = "1.0"
+	if err := ValidateValidationReport(oldReport); err == nil {
+		t.Fatal("validation report with superseded schema version passed")
+	}
+	oldReceipt := receipt
+	oldReceipt.SchemaVersion = "1.0"
+	if err := ValidateDeliveryPublication(request, report, evidenceManifest, oldReceipt); err == nil {
+		t.Fatal("delivery receipt with superseded schema version passed")
 	}
 	failedReport := report
 	failedReport.Status = "failed"
@@ -390,7 +402,7 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	}
 	omittedValidatorReceipt := receipt
 	omittedValidatorReceipt.ValidationReportRef = "evidence/attempt-1/validation.json#sha256=" + sha256Hex(omittedValidatorJSON)
-	omittedValidatorManifest := canonicalEvidenceManifest(t, request.DeliveryID, omittedValidatorJSON)
+	omittedValidatorManifest := canonicalEvidenceManifest(t, request, omittedValidatorJSON)
 	omittedValidatorReceipt.EvidenceManifestRef = "evidence/attempt-1/manifest.json#sha256=" + sha256Hex(omittedValidatorManifest)
 	if err := ValidateDeliveryPublication(request, omittedValidatorReport, omittedValidatorManifest, omittedValidatorReceipt); err == nil {
 		t.Fatal("delivery receipt with an omitted approved validator passed")
@@ -408,7 +420,7 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	}
 	spoofedValidatorReceipt := receipt
 	spoofedValidatorReceipt.ValidationReportRef = "evidence/attempt-1/validation.json#sha256=" + sha256Hex(spoofedValidatorJSON)
-	spoofedValidatorManifest := canonicalEvidenceManifest(t, request.DeliveryID, spoofedValidatorJSON)
+	spoofedValidatorManifest := canonicalEvidenceManifest(t, request, spoofedValidatorJSON)
 	spoofedValidatorReceipt.EvidenceManifestRef = "evidence/attempt-1/manifest.json#sha256=" + sha256Hex(spoofedValidatorManifest)
 	if err := ValidateDeliveryPublication(request, spoofedValidatorReport, spoofedValidatorManifest, spoofedValidatorReceipt); err == nil {
 		t.Fatal("delivery receipt with a spoofed validator check kind passed")
@@ -419,7 +431,7 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	missingBuiltInManifest := canonicalEvidenceManifest(t, request.DeliveryID, missingBuiltInJSON)
+	missingBuiltInManifest := canonicalEvidenceManifest(t, request, missingBuiltInJSON)
 	missingBuiltInReceipt := receipt
 	missingBuiltInReceipt.ValidationReportRef = "evidence/attempt-1/validation.json#sha256=" + sha256Hex(missingBuiltInJSON)
 	missingBuiltInReceipt.EvidenceManifestRef = "evidence/attempt-1/manifest.json#sha256=" + sha256Hex(missingBuiltInManifest)
@@ -447,6 +459,25 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	}
 }
 
+func TestDeliveryIdentityValidatorsRejectNonCanonicalValues(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		validate func(string) error
+		value    string
+	}{
+		"delivery prefix":       {ValidateDeliveryID, "attempt_11111111-2222-4333-8444-555555555555"},
+		"delivery UUID version": {ValidateDeliveryID, "delivery_11111111-2222-3333-8444-555555555555"},
+		"attempt prefix":        {ValidateDeliveryAttemptID, "delivery_11111111-2222-4333-8444-555555555555"},
+		"attempt UUID variant":  {ValidateDeliveryAttemptID, "attempt_11111111-2222-4333-7444-555555555555"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := test.validate(test.value); err == nil {
+				t.Fatalf("non-canonical identity %q passed validation", test.value)
+			}
+		})
+	}
+}
+
 func passingValidationCheck(
 	checkID string,
 	kind string,
@@ -461,10 +492,11 @@ func passingValidationCheck(
 	}
 }
 
-func canonicalEvidenceManifest(t *testing.T, deliveryID string, canonicalReport []byte) []byte {
+func canonicalEvidenceManifest(t *testing.T, request DeliveryRequest, canonicalReport []byte) []byte {
 	t.Helper()
 	manifest := EvidenceManifest{
-		DeliveryID: deliveryID, SchemaVersion: "1.0",
+		DeliveryID: request.DeliveryID, TenantID: request.TenantID,
+		RepositoryID: request.RepositoryID, SchemaVersion: DeliverySchemaVersion,
 		Entries: []EvidenceEntry{{
 			Path: "evidence/attempt-1/validation.json", SHA256: sha256Hex(canonicalReport),
 			SizeBytes: int64(len(canonicalReport)), MediaType: "application/json",
@@ -500,11 +532,19 @@ func TestDeliverySemanticValidationFailsClosed(t *testing.T) {
 	t.Parallel()
 	base := validDeliveryRequest()
 	for name, mutate := range map[string]func(*DeliveryRequest){
+		"superseded schema version": func(value *DeliveryRequest) { value.SchemaVersion = "1.0" },
+		"invalid tenant identity":   func(value *DeliveryRequest) { value.TenantID = "tenant" },
+		"invalid repository identity": func(value *DeliveryRequest) {
+			value.RepositoryID = "repository"
+		},
 		"self validation":          func(value *DeliveryRequest) { value.ValidatorID = value.AuthorID },
 		"unscoped evidence":        func(value *DeliveryRequest) { value.EvidenceScope = "other/evidence" },
 		"injected publication ref": func(value *DeliveryRequest) { value.PublicationRef += "/other" },
 		"short lease":              func(value *DeliveryRequest) { value.LeaseTTLMS = value.WorkerBudgets.WallClockMS },
-		"path traversal":           func(value *DeliveryRequest) { value.WriteScopes = []string{"../escape"} },
+		"short publication horizon": func(value *DeliveryRequest) {
+			value.LeaseTTLMS = MinimumPublicationLeaseTTLMS - 1
+		},
+		"path traversal": func(value *DeliveryRequest) { value.WriteScopes = []string{"../escape"} },
 		"unclean repository root": func(value *DeliveryRequest) {
 			value.RepositoryPath = "/srv/repos/../sensitive"
 		},
@@ -540,10 +580,12 @@ func TestDeliverySemanticValidationFailsClosed(t *testing.T) {
 func validDeliveryRequest() DeliveryRequest {
 	return DeliveryRequest{
 		DeliveryID:    "delivery_00010203-0405-4607-8809-0a0b0c0d0e0f",
+		TenantID:      "tenant_00000000-0000-4000-8000-000000000001",
+		RepositoryID:  "repo_00000000-0000-4000-8000-000000000002",
 		TaskID:        "task_11111111-2222-4333-8444-555555555555",
 		AttemptID:     "attempt_22222222-3333-4444-8555-666666666666",
 		RunID:         "run_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-		SchemaVersion: "1.0", RepositoryPath: "/srv/repos/forja",
+		SchemaVersion: DeliverySchemaVersion, RepositoryPath: "/srv/repos/forja",
 		WorktreeRoot: "/srv/worktrees", BaseCommit: strings.Repeat("a", 40),
 		PublicationRef:            "refs/forja/deliveries/delivery_00010203-0405-4607-8809-0a0b0c0d0e0f",
 		PublicationPreviousCommit: nil,
@@ -557,7 +599,7 @@ func validDeliveryRequest() DeliveryRequest {
 			CancellationGraceMS: 100, MaxRetries: 1,
 		},
 		MechanicalValidatorIDs: []string{"go-format", "go-test"},
-		LeaseTTLMS:             5000,
+		LeaseTTLMS:             MinimumPublicationLeaseTTLMS,
 	}
 }
 

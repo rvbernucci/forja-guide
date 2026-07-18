@@ -10,8 +10,8 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the closed **Sprint 03 governed control plane** and
-the implemented **Sprint 04 bounded worker supervisor** alongside the public
+This repository includes the closed **Sprint 04 bounded worker supervisor** and
+the in-progress **Sprint 05 isolated delivery boundary** alongside the public
 architecture and roadmap. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
@@ -30,8 +30,13 @@ cancellation, and resumption. The Go worker runner now executes Codex CLI in an
 independent process group with sanitized environment, sandbox write roots
 derived from declared task scopes, bounded runtime and output,
 schema-constrained reports, deterministic result classification, and fenced
-PostgreSQL attempt recovery. Sprint 05 still must validate and deliver worktree
-diffs before the end-to-end factory is complete. Sprint 04 is not a production
+PostgreSQL attempt recovery. The isolated-delivery library now creates
+supervisor-owned commits, performs mechanical and independent clean-checkout
+validation, persists content-addressed evidence, and publishes only a
+namespaced Git ref through a PostgreSQL-journaled compare-and-swap protocol.
+Its full Git/PostgreSQL path is exercised by deterministic integration tests;
+the production scheduler/MCP command that composes worker execution with this
+library remains pending. Sprint 04 is not a production
 confidentiality boundary: workers require a dedicated disposable host until
 separate-identity containment and credential brokerage close the documented
 Sprint 12 gate.
@@ -88,6 +93,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
+| [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
 
