@@ -81,6 +81,10 @@ retryable failure before new work is scheduled.
 - Raw process output is bounded, canonicalized to valid UTF-8, and hashed from
   that exact persisted representation. It remains sensitive evidence and must
   not be copied into logs.
+- A failed, blocked, cancelled, or otherwise non-successful attempt that leaves
+  observed or unverifiable worktree changes becomes terminal
+  `worktree_contaminated`. Sprint 04 preserves the worktree for quarantine and
+  forbids retry; Sprint 05 owns leased disposal and replacement.
 - Higher-risk tasks may later replace the process launcher with a container or
   stronger sandbox without changing public task/result contracts.
 

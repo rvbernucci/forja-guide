@@ -86,6 +86,12 @@ Do not treat a process group as hostile-process containment: a descendant can
 create a new session. Production deployment must wrap workers in a cgroup,
 container, or equivalent job object that can atomically kill every descendant.
 
+If a result has termination reason `worktree_contaminated`, do not retry or
+reuse that worktree. Quarantine it for inspection, reconcile the terminal
+attempt, and provision a clean replacement. The Sprint 04 supervisor preserves
+the bytes for evidence rather than running destructive Git cleanup; Sprint 05
+must automate replacement while holding the exclusive worktree lease.
+
 Set inactivity budgets for the selected model behavior: inference that emits
 no streaming output is indistinguishable from a hung process at this boundary.
 Keep output limits below the 16 MiB contract maximum. Captured output is

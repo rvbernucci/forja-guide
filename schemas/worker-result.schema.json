@@ -13,7 +13,7 @@
     "adapter": {"type": "string", "minLength": 1, "maxLength": 120},
     "status": {"enum": ["succeeded", "blocked", "failed_retryable", "failed_terminal", "cancelled"]},
     "retryable": {"type": "boolean"},
-    "termination_reason": {"enum": ["completed", "worker_blocked", "cancelled", "wall_timeout", "inactivity_timeout", "telemetry_failure", "output_limit", "start_failure", "process_failure", "invalid_report", "budget_rejected"]},
+    "termination_reason": {"enum": ["completed", "worker_blocked", "cancelled", "wall_timeout", "inactivity_timeout", "telemetry_failure", "output_limit", "start_failure", "process_failure", "invalid_report", "budget_rejected", "worktree_contaminated"]},
     "started_at": {"type": "string", "format": "date-time"},
     "finished_at": {"type": "string", "format": "date-time"},
     "duration_ms": {"type": "integer", "minimum": 0},
@@ -91,7 +91,7 @@
       "then": {
         "properties": {
           "retryable": {"const": false},
-          "termination_reason": {"enum": ["output_limit", "process_failure", "invalid_report", "budget_rejected"]},
+          "termination_reason": {"enum": ["output_limit", "process_failure", "invalid_report", "budget_rejected", "worktree_contaminated"]},
           "report": {"type": "null"}
         }
       }
