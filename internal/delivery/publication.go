@@ -228,7 +228,7 @@ func (s *PublicationService) Publish(
 		},
 		func(applyContext context.Context) error {
 			callbackRan = true
-			return s.applyPublicationCAS(applyContext, request, intent)
+			return s.applyPublicationCAS(applyContext, intent)
 		},
 	)
 	if err != nil {
@@ -325,7 +325,7 @@ func (s *PublicationService) Recover(
 		}
 		return s.releasePublishedLease(ctx, receipt, leaseSet, true)
 	}
-	if optionalCommitEqual(observed, request.PublicationPreviousCommit) {
+	if optionalCommitEqual(observed, intent.PublicationPreviousCommit) {
 		record, err = s.journal.AbandonDeliveryPublication(
 			ctx, intent,
 			func(observeContext context.Context) (*string, error) {
@@ -603,17 +603,16 @@ func receiptFences(
 
 func (s *PublicationService) applyPublicationCAS(
 	ctx context.Context,
-	request contracts.DeliveryRequest,
 	intent persistence.DeliveryPublicationIntent,
 ) error {
-	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
+	observed, err := s.observePublicationRef(ctx, intent.PublicationRef)
 	if err != nil {
 		return err
 	}
 	if observed != nil && *observed == intent.ResultCommit {
 		return nil
 	}
-	if !optionalCommitEqual(observed, request.PublicationPreviousCommit) {
+	if !optionalCommitEqual(observed, intent.PublicationPreviousCommit) {
 		return &publicationRefConflict{
 			observed: cloneOptionalString(observed),
 			cause: fmt.Errorf(
@@ -623,27 +622,27 @@ func (s *PublicationService) applyPublicationCAS(
 		}
 	}
 	oldCommit := strings.Repeat("0", 40)
-	if request.PublicationPreviousCommit != nil {
-		oldCommit = *request.PublicationPreviousCommit
+	if intent.PublicationPreviousCommit != nil {
+		oldCommit = *intent.PublicationPreviousCommit
 	}
 	if err := s.verifyRepositoryAuthority(); err != nil {
 		return err
 	}
 	_, updateErr := s.manager.gitMutation(
 		ctx, s.authority.RepositoryPath,
-		"update-ref", "--no-deref", request.PublicationRef, intent.ResultCommit, oldCommit,
+		"update-ref", "--no-deref", intent.PublicationRef, intent.ResultCommit, oldCommit,
 	)
 	if updateErr == nil {
 		return s.verifyRepositoryAuthority()
 	}
-	observed, observeErr := s.observePublicationRef(ctx, request.PublicationRef)
+	observed, observeErr := s.observePublicationRef(ctx, intent.PublicationRef)
 	if observeErr == nil && observed != nil && *observed == intent.ResultCommit {
 		return nil
 	}
 	if observeErr != nil {
 		return errors.Join(fmt.Errorf("compare-and-swap publication: %w", updateErr), observeErr)
 	}
-	if optionalCommitEqual(observed, request.PublicationPreviousCommit) {
+	if optionalCommitEqual(observed, intent.PublicationPreviousCommit) {
 		return fmt.Errorf("compare-and-swap publication did not complete: %w", updateErr)
 	}
 	return &publicationRefConflict{

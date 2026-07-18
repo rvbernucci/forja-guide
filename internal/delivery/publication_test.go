@@ -71,6 +71,42 @@ func TestPublicationServicePersistsBeforeCASAndReleasesAfterReceipt(t *testing.T
 	}
 }
 
+func TestPublicationServiceCASUsesImmutablePreparedAuthority(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	journal := newMemoryPublicationJournal()
+	leases := &recordingLeaseSets{events: &journal.events}
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
+	if err != nil {
+		t.Fatal(err)
+	}
+	approvedPreviousCommit := *fixture.request.PublicationPreviousCommit
+	journal.onPrepare = func() {
+		*fixture.request.PublicationPreviousCommit = strings.Repeat("f", 40)
+	}
+
+	outcome, err := service.Publish(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	)
+	if err != nil {
+		t.Fatalf("publish after caller authority mutation: %v", err)
+	}
+	if outcome.Receipt.PublicationPreviousCommit == nil ||
+		*outcome.Receipt.PublicationPreviousCommit != approvedPreviousCommit {
+		t.Fatalf("receipt previous commit = %v, want immutable %s",
+			outcome.Receipt.PublicationPreviousCommit, approvedPreviousCommit)
+	}
+	if journal.record.Intent.PublicationPreviousCommit == nil ||
+		*journal.record.Intent.PublicationPreviousCommit != approvedPreviousCommit {
+		t.Fatalf("intent previous commit = %v, want immutable %s",
+			journal.record.Intent.PublicationPreviousCommit, approvedPreviousCommit)
+	}
+	if ref := strings.TrimSpace(runGitTest(
+		t, fixture.repository, "rev-parse", fixture.request.PublicationRef,
+	)); ref != fixture.result.ResultCommit {
+		t.Fatalf("published ref = %s, want %s", ref, fixture.result.ResultCommit)
+	}
+}
+
 func TestPublicationServiceRecoversCrashAfterGitCAS(t *testing.T) {
 	fixture := newPublicationFixture(t)
 	journal := newMemoryPublicationJournal()
