@@ -1,6 +1,8 @@
 # Sprint 04 Worker Supervisor Plan
 
-Status: Non-authoritative closure candidate complete; immutable review pending
+Status: Implementation complete. The Sprint 04 evidence package records its
+governed state; only an authoritative close receipt can close the Sprint and
+authorize its successor.
 
 ## Outcome
 

@@ -1,6 +1,6 @@
 # Runtime and MCP Architecture
 
-Status: Sprint 03 closed; Sprint 04 bounded worker implementation candidate
+Status: Sprint 03 control surface and Sprint 04 bounded worker implemented
 
 ## MCP Boundary
 

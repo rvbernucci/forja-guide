@@ -10,10 +10,12 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the closed **Sprint 03 governed control plane** and a
-**Sprint 04 bounded worker supervisor implementation candidate** alongside the
-public architecture and roadmap. It is not yet a production-ready multi-agent
-runtime.
+This repository includes the closed **Sprint 03 governed control plane** and
+the implemented **Sprint 04 bounded worker supervisor** alongside the public
+architecture and roadmap. Sprint state is recorded by the mutually exclusive
+candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
+close receipt closes a Sprint and authorizes its successor. It is not yet a
+production-ready multi-agent runtime.
 
 The implemented kernel provides `forjad`, `forja`, canonical contract
 validation, a deterministic run state machine, PostgreSQL-backed aggregates and
