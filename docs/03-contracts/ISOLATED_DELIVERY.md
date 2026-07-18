@@ -147,13 +147,31 @@ them.
 
 Configured format and test validators are trusted argv arrays stored in the
 runtime registry. They have wall-clock and output budgets and receive a
-sanitized environment. Reports contain hashes and bounded details, not raw
-unbounded output.
+sanitized environment. Registration resolves the executable to a physical
+path and binds its content hash, canonical argv, sanitized environment,
+timeout, and output budget into the command digest. A changed executable,
+timeout, output overflow, or process-tree cancellation fails the check.
+Reports contain hashes and bounded details, not raw unbounded output.
 
-Independent validation checks out the result commit into a new clean worktree,
-recomputes the patch identity, and reruns the required registry entries under a
-validator identity different from the author. A passing author-side check
-cannot substitute for this lane.
+The delivery service first runs the complete mechanical lane in a fresh
+supervisor-only checkout. It then creates another clean checkout, recomputes
+the Git identity, and reruns the built-ins and every required registry entry
+under a validator identity different from the author. Only the second lane
+forms the authoritative validation report; the mechanical lane has a separate
+canonical report in the same evidence manifest. A passing first-lane check
+cannot substitute for independent reproduction.
+
+The supervisor creates the result through a temporary Git index, leaving the
+author worktree's detached `HEAD` and index unchanged. Commit author,
+committer, message, parent, and timestamp are deterministic. The service then
+derives the result tree, byte-sorted changed paths, and SHA-256 of Git's
+`--binary --full-index --no-renames` patch directly from immutable commits.
+
+Validation evidence is staged and atomically renamed beneath a distinct
+operator-owned root. It contains the canonical independent report, mechanical
+report, and bounded stdout/stderr for both lanes. The manifest inventories all
+content except itself; symlinked namespaces, unexpected files, changed bytes,
+or missing entries fail closed.
 
 ## Failure and Retry
 

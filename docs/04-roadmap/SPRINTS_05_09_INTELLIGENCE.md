@@ -13,14 +13,14 @@ validation.
 - [ ] Create and remove isolated Git worktrees per attempt. Creation and
   quarantine are implemented; proof-bound physical deletion remains pending.
 - [x] Implement file and artifact write leases with fencing tokens.
-- [ ] Reject writes outside the declared write set.
+- [x] Reject writes outside the declared write set.
 - [x] Require every untrusted adapter to prove equivalent OS-enforced writable
   roots before registration.
-- [ ] Capture base commit, resulting commit, diff hash, and changed paths.
-- [ ] Implement mechanical validators for tests, formatting, schemas, secrets,
+- [x] Capture base commit, resulting commit, diff hash, and changed paths.
+- [x] Implement mechanical validators for tests, formatting, schemas, secrets,
   generated files, and path scope.
-- [ ] Implement independent validator assignment.
-- [ ] Prevent the author from being the only validator.
+- [x] Implement independent validator assignment.
+- [x] Prevent the author from being the only validator.
 - [ ] Produce evidence bundles and close receipts.
 - [x] Implement retry from clean base and explicit conflict handling.
 - [x] Add concurrent-author and stale-lease tests.

@@ -76,20 +76,20 @@ contaminated worktree is quarantined and never reused.
 
 ### 4. Validation and evidence
 
-- [ ] Capture the base commit, result commit, tree hash, canonical binary patch
+- [x] Capture the base commit, result commit, tree hash, canonical binary patch
   hash, and sorted changed paths.
-- [ ] Run trusted argv-only validators with bounded time and output.
-- [ ] Always enforce path scope, secret scanning, JSON schema validity, and
+- [x] Run trusted argv-only validators with bounded time and output.
+- [x] Always enforce path scope, secret scanning, JSON schema validity, and
   generated-file policy before configured format and test validators.
-- [ ] Reproduce the result commit in a clean checkout for independent
+- [x] Reproduce the result commit in a clean checkout for independent
   validation.
-- [ ] Hash every validation result and produce a canonical evidence manifest.
-- [ ] Reject self-validation, missing checks, output overflow, and changed
+- [x] Hash every validation result and produce a canonical evidence manifest.
+- [x] Reject self-validation, missing checks, output overflow, and changed
   evidence.
 
 ### 5. Controlled publication and recovery
 
-- [ ] Create the commit with a supervisor-owned deterministic identity.
+- [x] Create the commit with a supervisor-owned deterministic identity.
 - [ ] Publish only to `refs/forja/deliveries/<delivery-id>` using compare and
   swap against the expected old object ID.
 - [ ] Persist the delivery receipt before releasing the lease set.

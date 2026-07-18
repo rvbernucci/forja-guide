@@ -78,6 +78,18 @@ Quarantine verifies the same immutable request digest and invokes Git move only
 when the attempt's common directory matches the authorized repository; foreign
 or unverifiable Git metadata is never mutated.
 
+Result commits are built with a temporary index, deterministic supervisor
+identity, deterministic parent-relative timestamp, and a fixed delivery
+message. This does not stage the author checkout or move its detached `HEAD`.
+The service snapshots the tree twice and rejects concurrent byte changes.
+Mechanical and independent validation use separate fresh worktrees. Trusted
+validators are direct argv invocations whose resolved executable content,
+environment, timeout, and output budget are bound into their command digest;
+process groups are terminated on cancellation, timeout, or overflow. The
+independent lane must reproduce every required check after mechanical
+preflight. Both lanes' bounded outputs and reports are atomically persisted in
+a content-addressed manifest beneath a disjoint operator evidence root.
+
 ## Consequences
 
 Positive:
