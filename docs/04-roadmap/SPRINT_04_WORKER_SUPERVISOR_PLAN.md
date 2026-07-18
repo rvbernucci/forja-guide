@@ -1,6 +1,6 @@
 # Sprint 04 Worker Supervisor Plan
 
-Status: Implementation candidate complete; closure review pending
+Status: Non-authoritative closure candidate complete; immutable review pending
 
 ## Outcome
 
@@ -36,8 +36,8 @@ giving model output scheduler or approval authority.
 - [x] Implement Codex JSONL usage parsing and final-report validation.
 - [x] Persist attempt start, completion, and restart reconciliation.
 - [x] Add the one-shot operational CLI and smoke test.
-- [ ] Complete security, rollback, metrics, and validation evidence.
-- [ ] Publish a fail-closed closure candidate for immutable review.
+- [x] Complete security, rollback, metrics, and validation evidence.
+- [x] Publish a fail-closed closure candidate for immutable review.
 
 ## Acceptance
 

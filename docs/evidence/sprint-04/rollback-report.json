@@ -1,0 +1,34 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "status": "passed",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "strategy": "Stop worker intake, cancel or drain live process groups, reconcile durable queued and running attempts under the current scheduler fence, quarantine any contaminated worktree, then deploy the exact pre-Sprint-04 commit. No Sprint 04 schema migration was added, so database downgrade is not required; forward repair remains preferred after worker lifecycle evidence becomes operationally authoritative.",
+  "rollback_target": "b419628985b8da11fd5e237e63563db7499f399b",
+  "tests": [
+    {
+      "name": "isolated code rollback target",
+      "command": "git worktree add --detach <temporary-directory> b419628985b8da11fd5e237e63563db7499f399b && make -C <temporary-directory> validate",
+      "result": "passed",
+      "summary": "The exact pre-Sprint-04 public commit passed its complete validation gate in an isolated Git worktree."
+    },
+    {
+      "name": "process termination before rollback",
+      "result": "passed",
+      "summary": "Cancellation, timeout, and residual-child tests prove bounded process-group termination before runtime replacement."
+    },
+    {
+      "name": "durable attempt reconciliation",
+      "result": "passed",
+      "summary": "Abandoned queued and running attempts become retryable only under a replacement live scheduler fence, without trusting stale operating-system process identifiers."
+    },
+    {
+      "name": "contaminated worktree preservation",
+      "result": "passed",
+      "summary": "A failed dirty attempt cannot reuse its worktree; bytes remain available for quarantine evidence instead of destructive cleanup."
+    }
+  ],
+  "data_migration_required": false,
+  "runtime_state_impact": "The rollback target does not execute Sprint 04 workers or lifecycle transitions. Operators must first reconcile or drain active attempts and retain append-only audit evidence; automated worktree replacement remains unavailable until Sprint 05.",
+  "recorded_at": "2026-07-18T02:58:05Z"
+}

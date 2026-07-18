@@ -1,0 +1,48 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "status": "passed",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-04/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "b5ae54ddcfa4cb39e85f84ad2d9e43556bd817c480eaab2a71bab63bfc29353b"
+    },
+    {
+      "name": "worker process authority",
+      "result": "passed",
+      "summary": "The model process has no scheduler, approval, database, Forja control, proxy, or caller Git credential environment and executes in its own cancellable process group."
+    },
+    {
+      "name": "filesystem scope integrity",
+      "result": "passed",
+      "summary": "Write scopes and evidence roots must be pre-created real directories at matching logical and resolved positions; hidden Git index state and out-of-scope or ignored mutations fail closed."
+    },
+    {
+      "name": "report and evidence integrity",
+      "result": "passed",
+      "summary": "Strict schemas, exact observed-path equality, scope checks, regular-file checks, size bounds, and SHA-256 verification prevent model-authored success claims from becoming authority."
+    },
+    {
+      "name": "failed-worktree quarantine",
+      "result": "passed",
+      "summary": "A failed attempt with changed or unverifiable worktree state becomes terminal, loses report authority, cannot retry, and leaves bytes intact for Sprint 05 leased disposal."
+    },
+    {
+      "name": "fenced durable attempt lifecycle",
+      "result": "passed",
+      "summary": "Every attempt mutation is tenant- and repository-scoped, version-checked, idempotent, protected by a live scheduler fence, and committed with append-only event and outbox evidence."
+    }
+  ],
+  "residual_risks": [
+    "Sprint 04 is an integrity boundary, not a production confidentiality sandbox; workers require a dedicated disposable host until separate-identity containment and credential brokerage close the Sprint 12 gate.",
+    "Sprint 04 preserves contaminated worktrees but intentionally does not automate their disposal or replacement; Sprint 05 owns that operation under an exclusive lease.",
+    "Network egress control and remote container isolation are deployment responsibilities outside this Sprint."
+  ],
+  "recorded_at": "2026-07-18T02:58:05Z"
+}

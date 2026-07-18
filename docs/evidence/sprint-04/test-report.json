@@ -1,0 +1,57 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "status": "passed",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Module verification, formatting, vet, unit tests, race tests, reproducible cross-architecture builds, kernel, MCP and worker smoke tests, Python tests, and repository validation passed."
+    },
+    {
+      "name": "official PostgreSQL 18.3 main CI",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29627817659",
+      "head_sha": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+      "database": "PostgreSQL 18.3",
+      "summary": "The exact public implementation commit passed repository validation and the complete PostgreSQL durability suite."
+    },
+    {
+      "name": "worker process and contract suite",
+      "command": "go test -count=1 -cover ./internal/worker ./cmd/forja-worker",
+      "result": "passed",
+      "coverage": {
+        "internal_worker_statement_percent": 83.1,
+        "worker_cli_statement_percent": 64.5
+      },
+      "summary": "The suite covers process-tree cancellation, residual children, timeouts, output bounds, invalid UTF-8, environment filtering, report schemas, exact changed paths, scope escapes, evidence hashes, ignored mutations, blocked work, contamination quarantine, usage budgets, and one-shot CLI behavior."
+    },
+    {
+      "name": "fenced attempt lifecycle and restart recovery",
+      "result": "passed",
+      "coverage": [
+        "monotonic attempt ordinals and replay-safe creation",
+        "fenced queued-to-running and running-to-terminal transitions",
+        "safe result persistence without raw stdout or stderr",
+        "abandoned queued and running attempt reconciliation",
+        "empty reconciliation receipt replay",
+        "stale owner rejection and concurrent lease replacement"
+      ]
+    },
+    {
+      "name": "scope and failure-state hardening",
+      "result": "passed",
+      "coverage": [
+        "pre-created non-symlink write and evidence directories",
+        "Git worktree identity and hidden index-flag rejection",
+        "exact equality between reported and observed changed paths",
+        "terminal quarantine after failed or unverifiable mutation",
+        "validated blocked changes retained for human inspection",
+        "no retry on a contaminated worktree"
+      ]
+    }
+  ],
+  "recorded_at": "2026-07-18T02:58:05Z"
+}
