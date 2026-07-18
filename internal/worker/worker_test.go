@@ -114,10 +114,14 @@ func TestWorkerProcess(t *testing.T) {
 	}
 	switch mode {
 	case "success":
+		_ = os.WriteFile("docs/result.md", []byte("bounded result\n"), 0o600)
 		report("completed", []string{"docs/result.md"})
 		fmt.Print("SECRET_OUTPUT\n")
 		fmt.Print(`{"type":"turn.completed","usage":{"input_tokens":11,"cached_input_tokens":3,"output_tokens":5}}` + "\n")
 		fmt.Print(`{"type":"item.completed","item":{"type":"command_execution"}}` + "\n")
+	case "extra-reported-path":
+		_ = os.WriteFile("docs/result.md", []byte("bounded result\n"), 0o600)
+		report("completed", []string{"docs/result.md", "docs/not-created.md"})
 	case "blocked":
 		report("blocked", nil)
 	case "invalid-report":
@@ -345,6 +349,7 @@ func TestSupervisorClassifications(t *testing.T) {
 		{"blocked", "blocked", "blocked", "worker_blocked", false, func(*contracts.WorkerTask) {}},
 		{"invalid report", "invalid-report", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"scope escape", "scope-escape", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
+		{"extra reported path", "extra-reported-path", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"hidden scope escape", "hidden-scope-escape", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"evidence root poisoning", "poison-evidence-root", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"invalid evidence", "invalid-evidence", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
