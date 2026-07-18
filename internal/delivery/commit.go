@@ -4,11 +4,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"path"
+	"path/filepath"
 	"regexp"
 	"slices"
 	"strconv"
@@ -53,13 +56,13 @@ func (m *WorktreeManager) CreateResultCommit(
 		return CommitResult{}, err
 	}
 
-	fullTree, allChangedPaths, err := m.snapshotTree(ctx, resolved, []string{"."})
+	workspace, err := m.snapshotWorkspace(ctx, resolved)
 	if err != nil {
 		return CommitResult{}, err
 	}
 	allowedScopes := append([]string(nil), request.WriteScopes...)
 	allowedScopes = append(allowedScopes, request.ArtifactScopes...)
-	for _, changedPath := range allChangedPaths {
+	for _, changedPath := range workspace.changedPaths {
 		if !pathCoveredByScopes(changedPath, allowedScopes) {
 			return CommitResult{}, fmt.Errorf("changed path %q is outside approved write and artifact scopes", changedPath)
 		}
@@ -109,7 +112,7 @@ func (m *WorktreeManager) CreateResultCommit(
 		return CommitResult{}, fmt.Errorf("Git returned a noncanonical result commit")
 	}
 
-	secondFullTree, secondAllChangedPaths, err := m.snapshotTree(ctx, resolved, []string{"."})
+	secondWorkspace, err := m.snapshotWorkspace(ctx, resolved)
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -117,8 +120,8 @@ func (m *WorktreeManager) CreateResultCommit(
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if secondTree != tree || secondFullTree != fullTree ||
-		!slices.Equal(secondAllChangedPaths, allChangedPaths) {
+	if secondTree != tree || secondWorkspace.digest != workspace.digest ||
+		!slices.Equal(secondWorkspace.changedPaths, workspace.changedPaths) {
 		return CommitResult{}, fmt.Errorf("%w: worker bytes changed while creating the result commit", ErrWorktreeDirty)
 	}
 	result, err = m.inspectCommitResult(ctx, resolved, resultCommit)
@@ -134,6 +137,120 @@ func (m *WorktreeManager) CreateResultCommit(
 		}
 	}
 	return result, nil
+}
+
+type workspaceSnapshot struct {
+	changedPaths []string
+	digest       string
+}
+
+func (m *WorktreeManager) snapshotWorkspace(
+	ctx context.Context,
+	resolved resolvedRequest,
+) (workspaceSnapshot, error) {
+	tracked, err := m.git(
+		ctx, resolved.worktreePath,
+		"diff", "--no-ext-diff", "--no-renames", "--name-only", "-z",
+		resolved.baseCommit, "--",
+	)
+	if err != nil {
+		return workspaceSnapshot{}, fmt.Errorf("enumerate tracked worker changes: %w", err)
+	}
+	trackedPaths, err := parseChangedPaths(tracked)
+	if err != nil {
+		return workspaceSnapshot{}, err
+	}
+	untracked, err := m.git(
+		ctx, resolved.worktreePath,
+		"ls-files", "--others", "--exclude-standard", "-z",
+	)
+	if err != nil {
+		return workspaceSnapshot{}, fmt.Errorf("enumerate untracked worker changes: %w", err)
+	}
+	untrackedPaths, err := parseChangedPaths(untracked)
+	if err != nil {
+		return workspaceSnapshot{}, err
+	}
+	changedPaths := append(trackedPaths, untrackedPaths...)
+	slices.Sort(changedPaths)
+	changedPaths = slices.Compact(changedPaths)
+	root, err := os.OpenRoot(resolved.worktreePath)
+	if err != nil {
+		return workspaceSnapshot{}, fmt.Errorf("open worktree for stable snapshot: %w", err)
+	}
+	defer root.Close()
+	digest := sha256.New()
+	for _, changedPath := range changedPaths {
+		if err := hashWorkspacePath(root, digest, changedPath); err != nil {
+			return workspaceSnapshot{}, err
+		}
+	}
+	return workspaceSnapshot{
+		changedPaths: changedPaths,
+		digest:       fmt.Sprintf("%x", digest.Sum(nil)),
+	}, nil
+}
+
+func hashWorkspacePath(root *os.Root, digest io.Writer, repositoryPath string) error {
+	if err := validateRepositoryRelativePath(repositoryPath); err != nil {
+		return err
+	}
+	if err := writeDigestField(digest, []byte(repositoryPath)); err != nil {
+		return err
+	}
+	name := filepath.FromSlash(repositoryPath)
+	info, err := root.Lstat(name)
+	if errors.Is(err, os.ErrNotExist) {
+		return writeDigestField(digest, []byte("deleted"))
+	}
+	if err != nil {
+		return fmt.Errorf("inspect changed path %q: %w", repositoryPath, err)
+	}
+	mode := []byte(info.Mode().String())
+	if err := writeDigestField(digest, mode); err != nil {
+		return err
+	}
+	switch {
+	case info.Mode().IsRegular():
+		file, err := root.Open(name)
+		if err != nil {
+			return fmt.Errorf("open changed file %q: %w", repositoryPath, err)
+		}
+		contentDigest := sha256.New()
+		_, copyErr := io.Copy(contentDigest, file)
+		after, statErr := file.Stat()
+		closeErr := file.Close()
+		if copyErr != nil || statErr != nil || closeErr != nil {
+			return errors.Join(
+				fmt.Errorf("hash changed file %q", repositoryPath), copyErr, statErr, closeErr,
+			)
+		}
+		if info.Size() != after.Size() || info.Mode() != after.Mode() ||
+			!info.ModTime().Equal(after.ModTime()) {
+			return fmt.Errorf("%w: changed file %q mutated while hashing", ErrWorktreeDirty, repositoryPath)
+		}
+		return writeDigestField(digest, contentDigest.Sum(nil))
+	case info.Mode()&os.ModeSymlink != 0:
+		target, err := root.Readlink(name)
+		if err != nil {
+			return fmt.Errorf("read changed symlink %q: %w", repositoryPath, err)
+		}
+		return writeDigestField(digest, []byte(target))
+	case info.IsDir():
+		return writeDigestField(digest, []byte("directory"))
+	default:
+		return writeDigestField(digest, []byte("special"))
+	}
+}
+
+func writeDigestField(destination io.Writer, value []byte) error {
+	var length [8]byte
+	binary.BigEndian.PutUint64(length[:], uint64(len(value)))
+	if _, err := destination.Write(length[:]); err != nil {
+		return err
+	}
+	_, err := destination.Write(value)
+	return err
 }
 
 func (m *WorktreeManager) inspectCommitResult(

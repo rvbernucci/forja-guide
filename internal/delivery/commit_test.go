@@ -3,6 +3,7 @@ package delivery
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -134,6 +135,14 @@ func TestCreateResultCommitAllowsArtifactsWithoutCommittingThem(t *testing.T) {
 	content, err := os.ReadFile(filepath.Join(worktree.Path, "evidence", "worker-report.json"))
 	if err != nil || !strings.Contains(string(content), "completed") {
 		t.Fatalf("worker artifact was not preserved: %q err=%v", content, err)
+	}
+	objectID := strings.TrimSpace(runGitTest(
+		t, worktree.Path, "hash-object", "--no-filters", "evidence/worker-report.json",
+	))
+	command := exec.CommandContext(t.Context(), "git", "-C", repository, "cat-file", "-e", objectID)
+	command.Env = append(os.Environ(), "GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1", "LC_ALL=C")
+	if err := command.Run(); err == nil {
+		t.Fatal("artifact content was retained as an unreferenced Git object")
 	}
 }
 

@@ -167,9 +167,9 @@ committer, message, parent, and timestamp are deterministic. The service then
 derives the result tree, byte-sorted changed paths, and SHA-256 of Git's
 `--binary --full-index --no-renames` patch directly from immutable commits.
 Only declared write scopes enter the result tree. Artifact scopes remain
-outside the Git commit; a second full-worktree snapshot proves that every
-changed path belongs to either set and that neither code nor artifact bytes
-changed while the commit was created.
+outside the Git object database; a rooted SHA-256 filesystem inventory proves
+that every changed path belongs to either set and that neither code nor
+artifact bytes changed while the commit was created.
 
 Validation evidence is staged and atomically renamed beneath a distinct
 operator-owned root. It contains the canonical independent report, mechanical
