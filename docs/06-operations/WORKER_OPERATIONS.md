@@ -47,9 +47,13 @@ This protects the child-command environment, not every same-user readable file.
 Use a dedicated disposable worker host with no unrelated secrets until Sprint
 12 provides external identity isolation and credential brokerage.
 
-Declared write scopes are directories. The supervisor creates and physically
-validates them, uses the evidence directory as Codex's primary writable root,
-and passes only declared scopes as additional writable roots. Start only from a
+Declared write scopes and the evidence root must be pre-created real
+directories. The Sprint 04 supervisor never materializes them; Sprint 05 owns
+their race-free creation under an exclusive worktree lease. The supervisor uses
+the evidence directory as Codex's primary writable root and passes only
+declared scopes as additional writable roots. Do not run the Sprint 04
+supervisor against a worktree with another writer; path validation is not a
+substitute for the Sprint 05 exclusive lease. Start only from a
 clean worktree; a dirty baseline is rejected, and post-run Git paths must be
 reported and remain
 inside the task's write or evidence scope. Ignored files are not exempt: a

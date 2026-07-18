@@ -19,6 +19,9 @@ func TestRunExecutesOneShotWorker(t *testing.T) {
 	if err := os.Mkdir(evidence, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.Mkdir(filepath.Join(repository, "docs"), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	fake := filepath.Join(t.TempDir(), "fake-codex")
 	script := `#!/bin/sh
 set -eu

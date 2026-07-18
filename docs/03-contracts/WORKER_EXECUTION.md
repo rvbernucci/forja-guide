@@ -34,13 +34,20 @@ evidence location, attempt ordinal, optional model, and budgets. Paths are
 absolute at the process boundary; declared scopes are clean repository-relative
 paths. Before launch, the supervisor resolves both Git identities and requires
 the worktree root to share the declared repository's canonical common Git
-directory. An unrelated directory cannot acquire worker sandbox authority.
+directory. The repository, worktree, and evidence root entries themselves must
+be real directories rather than symlinks; symlinks in operating-system ancestor
+paths remain compatible. An unrelated directory cannot acquire worker sandbox authority.
 Sprint 04 accepts only `read_scopes: ["."]`: the current Codex sandbox cannot
 enforce narrower confidentiality boundaries. A narrower scope is rejected
 rather than represented as security. Write scopes are mechanically enforced.
-Each write scope names a directory root. Missing directories are created and
-physically resolved before launch; non-directories and paths that traverse
-symlinks away from their declared repository location are rejected.
+Each write scope and the evidence root must already exist as a real directory.
+The supervisor never creates them, so validation cannot mutate a path through a
+symlink or check-to-create race. Non-directories and paths that traverse
+symlinks away from their declared repository location are rejected. Sprint 05
+creates these directories while holding the worktree's exclusive delivery
+lease. Until then, the caller must provide an exclusively owned worktree;
+Sprint 04 path validation does not claim to exclude an external concurrent
+writer.
 
 `max_retries` counts retries after the first attempt. Therefore an
 `attempt_ordinal` greater than `max_retries + 1` is rejected before process

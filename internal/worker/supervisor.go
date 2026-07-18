@@ -89,10 +89,10 @@ func (s *Supervisor) Execute(
 	if err := prepareWorkerHome(home); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if err := prepareEvidenceDirectory(task.EvidenceOutputDir, task.WorktreePath); err != nil {
+	if err := validateEvidenceDirectory(task.EvidenceOutputDir, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if err := prepareWriteScopeDirectories(task); err != nil {
+	if err := validateWriteScopeDirectories(task); err != nil {
 		return contracts.WorkerResult{}, err
 	}
 	if changed, err := gitWorktreeChanges(task.WorktreePath); err != nil {
@@ -626,7 +626,7 @@ func validEvidenceReferences(
 	return true
 }
 
-func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
+func validateWriteScopeDirectories(task contracts.WorkerTask) error {
 	resolvedRoot, err := filepath.EvalSymlinks(task.WorktreePath)
 	if err != nil {
 		return fmt.Errorf("resolve worktree path: %w", err)
@@ -635,25 +635,37 @@ func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
 		path := task.WorktreePath
 		if scope != "." {
 			path = filepath.Join(task.WorktreePath, filepath.FromSlash(scope))
-			if err := os.MkdirAll(path, 0o700); err != nil {
-				return fmt.Errorf("create worker write scope %q: %w", scope, err)
-			}
 		}
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() {
-			return fmt.Errorf("worker write scope %q must be a directory", scope)
+		if err := validateAbsoluteDirectory(path, "worker write scope "+scope); err != nil {
+			return err
 		}
-		resolved, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return fmt.Errorf("resolve worker write scope %q: %w", scope, err)
+		if err := validateScopeDirectoryPosition(
+			path, task.WorktreePath, resolvedRoot, scope,
+		); err != nil {
+			return err
 		}
-		if !pathWithin(resolved, resolvedRoot) {
-			return fmt.Errorf("worker write scope %q escapes the worktree", scope)
-		}
-		resolvedScope, err := filepath.Rel(resolvedRoot, resolved)
-		if err != nil || filepath.Clean(resolvedScope) != filepath.Clean(scope) {
-			return fmt.Errorf("worker write scope %q must not traverse symlinks", scope)
-		}
+	}
+	return nil
+}
+
+func validateScopeDirectoryPosition(
+	path string,
+	worktree string,
+	resolvedRoot string,
+	scope string,
+) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("resolve worker write scope %q: %w", scope, err)
+	}
+	if !pathWithin(resolved, resolvedRoot) {
+		return fmt.Errorf("worker write scope %q escapes the worktree", scope)
+	}
+	logicalPosition, logicalErr := filepath.Rel(worktree, path)
+	resolvedPosition, resolvedErr := filepath.Rel(resolvedRoot, resolved)
+	if logicalErr != nil || resolvedErr != nil ||
+		filepath.Clean(logicalPosition) != filepath.Clean(resolvedPosition) {
+		return fmt.Errorf("worker write scope %q must not traverse symlinks", scope)
 	}
 	return nil
 }
@@ -968,9 +980,12 @@ func validateAbsoluteDirectory(path string, label string) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("%s path must be absolute and clean", label)
 	}
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("stat %s path: %w", label, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s path must not be a symlink", label)
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("%s path must be a directory", label)
@@ -1030,7 +1045,10 @@ func pathWithin(path string, root string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func validateResolvedChild(path string, root string) error {
+func validateEvidenceDirectory(path string, root string) error {
+	if err := validateAbsoluteDirectory(path, "evidence output"); err != nil {
+		return err
+	}
 	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return fmt.Errorf("resolve evidence output directory: %w", err)
@@ -1042,6 +1060,12 @@ func validateResolvedChild(path string, root string) error {
 	if !pathStrictlyWithin(resolvedPath, resolvedRoot) {
 		return fmt.Errorf("resolved evidence output directory must be a proper worktree descendant")
 	}
+	logicalPosition, logicalErr := filepath.Rel(root, path)
+	resolvedPosition, resolvedErr := filepath.Rel(resolvedRoot, resolvedPath)
+	if logicalErr != nil || resolvedErr != nil ||
+		filepath.Clean(logicalPosition) != filepath.Clean(resolvedPosition) {
+		return fmt.Errorf("evidence output directory must not traverse symlinks")
+	}
 	return nil
 }
 
@@ -1051,49 +1075,6 @@ func pathStrictlyWithin(path string, root string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err == nil && relative != "." && relative != ".." &&
 		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func validateEvidenceDirectory(path string, root string) error {
-	if err := validateAbsoluteDirectory(path, "evidence output"); err != nil {
-		return err
-	}
-	return validateResolvedChild(path, root)
-}
-
-func prepareEvidenceDirectory(path string, root string) error {
-	ancestor := path
-	for {
-		info, err := os.Lstat(ancestor)
-		if err == nil {
-			if info.Mode()&os.ModeSymlink == 0 && !info.IsDir() {
-				return fmt.Errorf("evidence output ancestor must be a directory")
-			}
-			break
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("inspect evidence output ancestor: %w", err)
-		}
-		parent := filepath.Dir(ancestor)
-		if parent == ancestor {
-			return fmt.Errorf("evidence output has no existing ancestor")
-		}
-		ancestor = parent
-	}
-	resolvedAncestor, err := filepath.EvalSymlinks(ancestor)
-	if err != nil {
-		return fmt.Errorf("resolve evidence output ancestor: %w", err)
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return fmt.Errorf("resolve worktree path: %w", err)
-	}
-	if !pathWithin(resolvedAncestor, resolvedRoot) {
-		return fmt.Errorf("evidence output ancestor escapes the worktree")
-	}
-	if err := os.MkdirAll(path, 0o700); err != nil {
-		return fmt.Errorf("create evidence output directory: %w", err)
-	}
-	return validateResolvedChild(path, root)
 }
 
 func processExitCode(err error) *int {

@@ -381,6 +381,7 @@ func TestSupervisorCancellationKillsProcessGroup(t *testing.T) {
 	repository := t.TempDir()
 	mustInitGitRepository(t, repository)
 	task := workerTaskAt(repository)
+	mustPrepareTaskDirectories(t, task)
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "child"},
@@ -427,6 +428,7 @@ func TestSupervisorCancellationKillsTermIgnoringDescendant(t *testing.T) {
 	repository := t.TempDir()
 	mustInitGitRepository(t, repository)
 	task := workerTaskAt(repository)
+	mustPrepareTaskDirectories(t, task)
 	task.Budgets.CancellationGraceMS = 100
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
@@ -608,6 +610,9 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	task := workerTaskAt(repository)
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	supervisor, err := NewSupervisor(
 		mustRegistry(t), processAdapter{mode: "success"}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
@@ -616,8 +621,35 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "escapes the worktree") {
+		!strings.Contains(err.Error(), "write scope") {
 		t.Fatalf("write scope symlink escape error=%v", err)
+	}
+}
+
+func TestSupervisorDoesNotMaterializeScopeThroughExternalSymlink(t *testing.T) {
+	repository := t.TempDir()
+	outside := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Symlink(outside, filepath.Join(repository, "link")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	task.WriteScopes = []string{filepath.Join("link", "new")}
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil {
+		t.Fatal("write scope through an external symlink was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scope validation mutated external destination: %v", err)
 	}
 }
 
@@ -631,6 +663,9 @@ func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	task := workerTaskAt(repository)
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	supervisor, err := NewSupervisor(
 		mustRegistry(t), processAdapter{mode: "success"}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
@@ -639,7 +674,7 @@ func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "must not traverse symlinks") {
+		!strings.Contains(err.Error(), "write scope") {
 		t.Fatalf("write scope symlink alias error=%v", err)
 	}
 }
@@ -666,6 +701,29 @@ func TestSupervisorRequiresDeclaredRepositoryBinding(t *testing.T) {
 	}
 }
 
+func TestSupervisorRejectsSymlinkedWorktreeRoot(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	container := t.TempDir()
+	link := filepath.Join(container, "worktree-link")
+	if err := os.Symlink(repository, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(link)
+	task.RepositoryPath = repository
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "must not be a symlink") {
+		t.Fatalf("symlinked worktree root error=%v", err)
+	}
+}
+
 func TestSupervisorRejectsUnsupportedReadScope(t *testing.T) {
 	_, err := executeTask(t, processAdapter{mode: "success"}, nil, func(task *contracts.WorkerTask) {
 		task.ReadScopes = []string{"docs"}
@@ -673,6 +731,51 @@ func TestSupervisorRejectsUnsupportedReadScope(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "full-worktree read scope") {
 		t.Fatalf("read scope error=%v", err)
 	}
+}
+
+func TestSupervisorRequiresPrecreatedEvidenceAndWriteScopes(t *testing.T) {
+	t.Run("evidence", func(t *testing.T) {
+		repository := t.TempDir()
+		mustInitGitRepository(t, repository)
+		task := workerTaskAt(repository)
+		supervisor, err := NewSupervisor(
+			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			[]string{"PATH=" + os.Getenv("PATH")},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+			!strings.Contains(err.Error(), "evidence output") {
+			t.Fatalf("missing evidence error=%v", err)
+		}
+		if _, err := os.Stat(task.EvidenceOutputDir); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("supervisor materialized evidence directory: %v", err)
+		}
+	})
+	t.Run("write scope", func(t *testing.T) {
+		repository := t.TempDir()
+		mustInitGitRepository(t, repository)
+		task := workerTaskAt(repository)
+		if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		supervisor, err := NewSupervisor(
+			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			[]string{"PATH=" + os.Getenv("PATH")},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeScope := filepath.Join(repository, "docs")
+		if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+			!strings.Contains(err.Error(), "worker write scope") {
+			t.Fatalf("missing write scope error=%v", err)
+		}
+		if _, err := os.Stat(writeScope); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("supervisor materialized write scope: %v", err)
+		}
+	})
 }
 
 func TestSupervisorRejectsEvidenceAtWorktreeRoot(t *testing.T) {
@@ -703,8 +806,57 @@ func TestSupervisorRejectsEvidenceSymlinkResolvingToWorktreeRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "proper worktree descendant") {
+		!strings.Contains(err.Error(), "evidence output") {
 		t.Fatalf("root-equivalent evidence symlink error=%v", err)
+	}
+}
+
+func TestSupervisorRejectsEvidenceSymlinkAliasInsideWorktree(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	physicalEvidence := filepath.Join(repository, "other", "evidence")
+	if err := os.MkdirAll(physicalEvidence, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("other", filepath.Join(repository, "alias")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	task.EvidenceOutputDir = filepath.Join(repository, "alias", "evidence")
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "must not traverse symlinks") {
+		t.Fatalf("internal evidence symlink alias error=%v", err)
+	}
+}
+
+func TestSupervisorDoesNotMaterializeEvidenceThroughExternalSymlink(t *testing.T) {
+	repository := t.TempDir()
+	outside := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Symlink(outside, filepath.Join(repository, "link")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	task.EvidenceOutputDir = filepath.Join(repository, "link", "new")
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil {
+		t.Fatal("evidence path through an external symlink was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("evidence validation mutated external destination: %v", err)
 	}
 }
 
@@ -784,7 +936,7 @@ func TestSupervisorRejectsEvidenceSymlinkBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "ancestor escapes") {
+		!strings.Contains(err.Error(), "evidence output") {
 		t.Fatalf("evidence symlink error=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "must-not-exist")); !errors.Is(err, os.ErrNotExist) {
@@ -847,6 +999,7 @@ func executePreparedTaskWithEvents(
 	events EventSink,
 ) (contracts.WorkerResult, error) {
 	t.Helper()
+	mustPrepareTaskDirectories(t, task)
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		adapter,
@@ -857,6 +1010,23 @@ func executePreparedTaskWithEvents(
 		t.Fatal(err)
 	}
 	return supervisor.Execute(t.Context(), task)
+}
+
+func mustPrepareTaskDirectories(t *testing.T, task contracts.WorkerTask) {
+	t.Helper()
+	if err := os.MkdirAll(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatalf("prepare test evidence directory: %v", err)
+	}
+	for _, scope := range task.WriteScopes {
+		if scope == "." {
+			continue
+		}
+		if err := os.MkdirAll(
+			filepath.Join(task.WorktreePath, filepath.FromSlash(scope)), 0o700,
+		); err != nil {
+			t.Fatalf("prepare test write scope %q: %v", scope, err)
+		}
+	}
 }
 
 func mustInitGitRepository(t *testing.T, path string) {
