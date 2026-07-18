@@ -89,10 +89,10 @@ func (s *Supervisor) Execute(
 	if err := prepareWorkerHome(home); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if err := prepareEvidenceDirectory(task.EvidenceOutputDir, task.WorktreePath); err != nil {
+	if err := validateEvidenceDirectory(task.EvidenceOutputDir, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if err := prepareWriteScopeDirectories(task); err != nil {
+	if err := validateWriteScopeDirectories(task); err != nil {
 		return contracts.WorkerResult{}, err
 	}
 	if changed, err := gitWorktreeChanges(task.WorktreePath); err != nil {
@@ -626,7 +626,7 @@ func validEvidenceReferences(
 	return true
 }
 
-func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
+func validateWriteScopeDirectories(task contracts.WorkerTask) error {
 	resolvedRoot, err := filepath.EvalSymlinks(task.WorktreePath)
 	if err != nil {
 		return fmt.Errorf("resolve worktree path: %w", err)
@@ -635,13 +635,9 @@ func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
 		path := task.WorktreePath
 		if scope != "." {
 			path = filepath.Join(task.WorktreePath, filepath.FromSlash(scope))
-			if err := materializeScopeDirectory(task.WorktreePath, scope); err != nil {
-				return fmt.Errorf("create worker write scope %q: %w", scope, err)
-			}
 		}
-		info, err := os.Stat(path)
-		if err != nil || !info.IsDir() {
-			return fmt.Errorf("worker write scope %q must be a directory", scope)
+		if err := validateAbsoluteDirectory(path, "worker write scope "+scope); err != nil {
+			return err
 		}
 		if err := validateScopeDirectoryPosition(
 			path, task.WorktreePath, resolvedRoot, scope,
@@ -1077,17 +1073,6 @@ func validateEvidenceDirectory(path string, root string) error {
 		return err
 	}
 	return validateResolvedChild(path, root)
-}
-
-func prepareEvidenceDirectory(path string, root string) error {
-	relative, err := filepath.Rel(root, path)
-	if err != nil || !validScope(relative) || relative == "." {
-		return fmt.Errorf("evidence output must be a proper worktree descendant")
-	}
-	if err := materializeScopeDirectory(root, relative); err != nil {
-		return fmt.Errorf("create evidence output directory: %w", err)
-	}
-	return validateEvidenceDirectory(path, root)
 }
 
 func processExitCode(err error) *int {

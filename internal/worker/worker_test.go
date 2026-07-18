@@ -381,6 +381,7 @@ func TestSupervisorCancellationKillsProcessGroup(t *testing.T) {
 	repository := t.TempDir()
 	mustInitGitRepository(t, repository)
 	task := workerTaskAt(repository)
+	mustPrepareTaskDirectories(t, task)
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		processAdapter{mode: "child"},
@@ -427,6 +428,7 @@ func TestSupervisorCancellationKillsTermIgnoringDescendant(t *testing.T) {
 	repository := t.TempDir()
 	mustInitGitRepository(t, repository)
 	task := workerTaskAt(repository)
+	mustPrepareTaskDirectories(t, task)
 	task.Budgets.CancellationGraceMS = 100
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
@@ -608,6 +610,9 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	task := workerTaskAt(repository)
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	supervisor, err := NewSupervisor(
 		mustRegistry(t), processAdapter{mode: "success"}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
@@ -655,6 +660,9 @@ func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	task := workerTaskAt(repository)
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	supervisor, err := NewSupervisor(
 		mustRegistry(t), processAdapter{mode: "success"}, nil,
 		[]string{"PATH=" + os.Getenv("PATH")},
@@ -719,6 +727,51 @@ func TestSupervisorRejectsUnsupportedReadScope(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "full-worktree read scope") {
 		t.Fatalf("read scope error=%v", err)
 	}
+}
+
+func TestSupervisorRequiresPrecreatedEvidenceAndWriteScopes(t *testing.T) {
+	t.Run("evidence", func(t *testing.T) {
+		repository := t.TempDir()
+		mustInitGitRepository(t, repository)
+		task := workerTaskAt(repository)
+		supervisor, err := NewSupervisor(
+			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			[]string{"PATH=" + os.Getenv("PATH")},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+			!strings.Contains(err.Error(), "evidence output") {
+			t.Fatalf("missing evidence error=%v", err)
+		}
+		if _, err := os.Stat(task.EvidenceOutputDir); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("supervisor materialized evidence directory: %v", err)
+		}
+	})
+	t.Run("write scope", func(t *testing.T) {
+		repository := t.TempDir()
+		mustInitGitRepository(t, repository)
+		task := workerTaskAt(repository)
+		if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		supervisor, err := NewSupervisor(
+			mustRegistry(t), processAdapter{mode: "success"}, nil,
+			[]string{"PATH=" + os.Getenv("PATH")},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		writeScope := filepath.Join(repository, "docs")
+		if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+			!strings.Contains(err.Error(), "worker write scope") {
+			t.Fatalf("missing write scope error=%v", err)
+		}
+		if _, err := os.Stat(writeScope); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("supervisor materialized write scope: %v", err)
+		}
+	})
 }
 
 func TestSupervisorRejectsEvidenceAtWorktreeRoot(t *testing.T) {
@@ -917,6 +970,7 @@ func executePreparedTaskWithEvents(
 	events EventSink,
 ) (contracts.WorkerResult, error) {
 	t.Helper()
+	mustPrepareTaskDirectories(t, task)
 	supervisor, err := NewSupervisor(
 		mustRegistry(t),
 		adapter,
@@ -927,6 +981,23 @@ func executePreparedTaskWithEvents(
 		t.Fatal(err)
 	}
 	return supervisor.Execute(t.Context(), task)
+}
+
+func mustPrepareTaskDirectories(t *testing.T, task contracts.WorkerTask) {
+	t.Helper()
+	if err := os.MkdirAll(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatalf("prepare test evidence directory: %v", err)
+	}
+	for _, scope := range task.WriteScopes {
+		if scope == "." {
+			continue
+		}
+		if err := os.MkdirAll(
+			filepath.Join(task.WorktreePath, filepath.FromSlash(scope)), 0o700,
+		); err != nil {
+			t.Fatalf("prepare test write scope %q: %v", scope, err)
+		}
+	}
 }
 
 func mustInitGitRepository(t *testing.T, path string) {
