@@ -248,24 +248,22 @@ func (p *Pipeline) resumeSucceeded(
 		outcome.Run = run
 	}
 
-	bundle, loadErr := p.validator.Load(ctx, request)
-	if loadErr != nil {
-		if publicationFound || !errors.Is(loadErr, delivery.ErrValidationEvidenceNotFound) {
-			return outcome, fmt.Errorf("load interrupted validation evidence: %w", loadErr)
+	var bundle delivery.ValidationBundle
+	if !publicationFound {
+		var loadErr error
+		bundle, loadErr = p.validator.Load(ctx, request)
+		if loadErr != nil {
+			if !errors.Is(loadErr, delivery.ErrValidationEvidenceNotFound) {
+				return outcome, fmt.Errorf("load interrupted validation evidence: %w", loadErr)
+			}
+			bundle, err = p.validator.Validate(ctx, request, commit)
+			if err != nil {
+				return outcome, fmt.Errorf("rerun interrupted validation: %w", err)
+			}
 		}
-		bundle, err = p.validator.Validate(ctx, request, commit)
-		if err != nil {
-			return outcome, fmt.Errorf("rerun interrupted validation: %w", err)
-		}
+		outcome.Validation = bundle
 	}
-	outcome.Validation = bundle
-	if bundle.Report.Status != "passed" {
-		if publicationFound {
-			return outcome, fmt.Errorf(
-				"recovered validation status %q contradicts the durable publication journal",
-				bundle.Report.Status,
-			)
-		}
+	if !publicationFound && bundle.Report.Status != "passed" {
 		var heartbeatErr error
 		if guard != nil {
 			leaseSet, heartbeatErr = guard.Stop()
@@ -614,14 +612,10 @@ func (p *Pipeline) replayCompleted(
 	if !leaseFound {
 		return outcome, fmt.Errorf("completed Run has no historical delivery lease proof")
 	}
-	bundle, err := p.validator.Load(ctx, request)
-	if err != nil {
-		return outcome, fmt.Errorf("load completed delivery validation evidence: %w", err)
-	}
 	replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 	defer cancel()
 	publication, publicationErr := p.publisher.Recover(
-		replayCtx, request, commit, bundle, leaseSet,
+		replayCtx, request, commit, delivery.ValidationBundle{}, leaseSet,
 	)
 	if publication.Receipt.Status != "published" {
 		if publicationErr == nil {
@@ -634,7 +628,6 @@ func (p *Pipeline) replayCompleted(
 	}
 	outcome.Run, outcome.Attempt = run, attempt
 	outcome.Commit = commit
-	outcome.Validation = bundle
 	outcome.Publication = publication
 	return outcome, publicationErr
 }

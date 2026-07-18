@@ -260,7 +260,7 @@ func (s *PublicationService) Recover(
 	ctx context.Context,
 	request contracts.DeliveryRequest,
 	result CommitResult,
-	bundle ValidationBundle,
+	_ ValidationBundle,
 	leaseSet persistence.LeaseSet,
 ) (PublicationResult, error) {
 	record, found, err := s.journal.GetDeliveryPublication(
@@ -269,24 +269,13 @@ func (s *PublicationService) Recover(
 	if err != nil {
 		return PublicationResult{}, err
 	}
-	publicationAt := s.now().UTC().Truncate(time.Microsecond)
-	receiptTimes := publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}
-	if found {
-		receiptTimes, err = recordedPublicationTimes(record)
-		if err != nil {
-			return PublicationResult{}, err
-		}
-	}
-	intent, receipt, err := s.publicationIntent(
-		ctx, request, result, bundle, leaseSet, receiptTimes, false,
-	)
-	if err != nil {
-		return PublicationResult{}, err
-	}
 	if !found {
 		return PublicationResult{}, fmt.Errorf("publication intent was not durably prepared")
 	}
-	if err := requireExactPublicationRecord(record, intent); err != nil {
+	intent, receipt, err := s.journaledRecoveryIntent(
+		ctx, request, result, leaseSet, record,
+	)
+	if err != nil {
 		return PublicationResult{}, err
 	}
 	if record.State == "abandoned" {
@@ -364,6 +353,151 @@ func (s *PublicationService) Recover(
 		)
 	}
 	return PublicationResult{}, fmt.Errorf("%w: publication ref moved to an unapproved commit", ErrPublicationConflict)
+}
+
+func (s *PublicationService) journaledRecoveryIntent(
+	ctx context.Context,
+	request contracts.DeliveryRequest,
+	result CommitResult,
+	leaseSet persistence.LeaseSet,
+	record persistence.DeliveryPublication,
+) (persistence.DeliveryPublicationIntent, contracts.DeliveryReceipt, error) {
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if err := contracts.ValidateDeliveryRequest(request); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	physicalRepository, err := canonicalDirectory(request.RepositoryPath, "delivery repository")
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if request.TenantID != s.authority.TenantID ||
+		request.RepositoryID != s.authority.RepositoryID ||
+		physicalRepository != s.authority.RepositoryPath {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"delivery request does not match the publication service repository authority",
+		)
+	}
+	storageTenantID, storageRepositoryID, err := contracts.RepositoryStorageIdentity(
+		request.TenantID, request.RepositoryID,
+	)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if leaseSet.LeaseSetID != request.AttemptID {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"lease set ID must equal the approved attempt ID",
+		)
+	}
+	authorizedRequest := request
+	authorizedRequest.RepositoryPath = s.authority.RepositoryPath
+	resolved, err := s.manager.resolveRequest(ctx, authorizedRequest)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	recomputed, err := s.manager.inspectCommitResult(ctx, resolved, result.ResultCommit)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if !sameCommitResult(result, recomputed) {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"supplied result identity disagrees with Git",
+		)
+	}
+	fences, err := receiptFences(
+		request, leaseSet, storageTenantID, storageRepositoryID,
+	)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if err := s.schemas.ValidateJSON(
+		"delivery-receipt.schema.json", record.Intent.ReceiptJSON,
+	); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"validate journaled delivery receipt schema: %w", err,
+		)
+	}
+	var receipt contracts.DeliveryReceipt
+	if err := json.Unmarshal(record.Intent.ReceiptJSON, &receipt); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"decode journaled delivery receipt: %w", err,
+		)
+	}
+	canonicalReceipt, err := json.Marshal(receipt)
+	if err != nil || !bytes.Equal(canonicalReceipt, record.Intent.ReceiptJSON) {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"journaled delivery receipt bytes are not canonical",
+		)
+	}
+	if receipt.DeliveryID != request.DeliveryID ||
+		receipt.TenantID != request.TenantID ||
+		receipt.RepositoryID != request.RepositoryID ||
+		receipt.SchemaVersion != contracts.DeliverySchemaVersion ||
+		receipt.Status != "published" ||
+		receipt.BaseCommit != result.BaseCommit ||
+		receipt.ResultCommit != result.ResultCommit ||
+		receipt.ResultTree != result.ResultTree ||
+		receipt.PatchSHA256 != result.PatchSHA256 ||
+		!slices.Equal(receipt.ChangedPaths, result.ChangedPaths) ||
+		receipt.PublicationRef != request.PublicationRef ||
+		!optionalCommitEqual(receipt.PublicationPreviousCommit, request.PublicationPreviousCommit) ||
+		receipt.AuthorID != request.AuthorID ||
+		receipt.ValidatorID != request.ValidatorID ||
+		!slices.Equal(receipt.LeaseFences, fences) ||
+		receipt.CreatedAt.IsZero() || receipt.PublishedAt.Before(receipt.CreatedAt) {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"journaled delivery receipt disagrees with approved recovery authority",
+		)
+	}
+	authorityJSON, err := json.Marshal(request)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"encode journaled publication authority: %w", err,
+		)
+	}
+	authorityDigest := sha256.Sum256(authorityJSON)
+	receiptDigest := sha256.Sum256(canonicalReceipt)
+	identityDocument := struct {
+		DeliveryID      string `json:"delivery_id"`
+		TenantID        string `json:"tenant_id"`
+		RepositoryID    string `json:"repository_id"`
+		AttemptID       string `json:"attempt_id"`
+		LeaseSetID      string `json:"lease_set_id"`
+		LeaseTTLMS      int    `json:"lease_ttl_ms"`
+		AuthoritySHA256 string `json:"authority_sha256"`
+		ReceiptSHA256   string `json:"receipt_sha256"`
+	}{
+		request.DeliveryID, storageTenantID, storageRepositoryID,
+		request.AttemptID, leaseSet.LeaseSetID, request.LeaseTTLMS,
+		fmt.Sprintf("%x", authorityDigest), fmt.Sprintf("%x", receiptDigest),
+	}
+	identityJSON, err := json.Marshal(identityDocument)
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"encode journaled publication identity: %w", err,
+		)
+	}
+	intentDigest := sha256.Sum256(identityJSON)
+	intent := persistence.DeliveryPublicationIntent{
+		DeliveryID: request.DeliveryID, TenantID: storageTenantID,
+		RepositoryID: storageRepositoryID, AttemptID: request.AttemptID,
+		LeaseSetID: leaseSet.LeaseSetID, LeaseTTLMS: request.LeaseTTLMS,
+		PublicationRef:            request.PublicationRef,
+		PublicationPreviousCommit: cloneOptionalString(request.PublicationPreviousCommit),
+		ResultCommit:              result.ResultCommit,
+		AuthoritySHA256:           fmt.Sprintf("%x", authorityDigest),
+		ReceiptSHA256:             fmt.Sprintf("%x", receiptDigest),
+		IntentSHA256:              fmt.Sprintf("%x", intentDigest),
+		ReceiptJSON:               canonicalReceipt,
+	}
+	if err := requireExactPublicationRecord(record, intent); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	return intent, receipt, nil
 }
 
 func (s *PublicationService) releasePublishedLease(

@@ -48,6 +48,27 @@ func TestReconciliationMarkerSyncsItsActualNamespace(t *testing.T) {
 	}
 }
 
+func TestQuarantineHonorsMarkerWhenWorktreeAndTombstoneAreMissing(t *testing.T) {
+	repository, rootPath, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, rootPath, base)
+	root, err := os.OpenRoot(rootPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writeReconciliationMarker(root, quarantineMetadataRelative(request)); err != nil {
+		root.Close()
+		t.Fatalf("write reconciliation marker: %v", err)
+	}
+	if err := root.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := manager.Quarantine(t.Context(), request); !errors.Is(err, ErrGitReconciliationRequired) {
+		t.Fatalf("missing worktree with reconciliation marker error = %v", err)
+	}
+}
+
 func TestWorktreeLifecycleReportsNeverCreatedRetryBinding(t *testing.T) {
 	repository, root, base := deliveryRepository(t)
 	manager := testWorktreeManager(t)

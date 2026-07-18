@@ -992,9 +992,7 @@ func TestPipelineRecoveryCompletesPreparedPublicationWithoutRerunningWorker(t *t
 		},
 	}
 	sideEffects := &pipelineSideEffectStub{
-		bundle: delivery.ValidationBundle{
-			Report: contracts.ValidationReport{Status: "passed"},
-		},
+		loadErr: errors.New("persisted evidence was removed after journal prepare"),
 		publicationResult: delivery.PublicationResult{
 			Receipt: receipt, Replayed: true,
 		},
@@ -1012,7 +1010,8 @@ func TestPipelineRecoveryCompletesPreparedPublicationWithoutRerunningWorker(t *t
 	if outcome.Run.State != string(runstate.StateCompleted) ||
 		outcome.Publication.Receipt.Status != "published" ||
 		sideEffects.workerCalls != 0 || sideEffects.recoveryCalls != 1 ||
-		sideEffects.commitCalls != 0 || !sideEffects.publicationDeadline {
+		sideEffects.commitCalls != 0 || sideEffects.loadCalls != 0 ||
+		!sideEffects.publicationDeadline {
 		t.Fatalf("unexpected recovery outcome: %#v sideEffects=%#v", outcome, sideEffects)
 	}
 }
@@ -1319,9 +1318,7 @@ func TestPipelineRecoveryRevalidatesCompletedPublicationAndReleasesLease(t *test
 		Intent: persistence.DeliveryPublicationIntent{ReceiptJSON: receiptJSON},
 	}
 	sideEffects := &pipelineSideEffectStub{
-		bundle: delivery.ValidationBundle{
-			Report: contracts.ValidationReport{Status: "passed"},
-		},
+		loadErr: errors.New("persisted evidence was removed after publication"),
 		publicationResult: delivery.PublicationResult{
 			Receipt: receipt, Replayed: true, LeaseReleased: true,
 		},
@@ -1336,7 +1333,8 @@ func TestPipelineRecoveryRevalidatesCompletedPublicationAndReleasesLease(t *test
 	if err != nil {
 		t.Fatalf("replay completed publication: %v", err)
 	}
-	if sideEffects.recoveryCalls != 1 || !outcome.Publication.LeaseReleased ||
+	if sideEffects.recoveryCalls != 1 || sideEffects.loadCalls != 0 ||
+		!outcome.Publication.LeaseReleased ||
 		outcome.Commit.ResultCommit != receipt.ResultCommit {
 		t.Fatalf("completed replay bypassed publisher: outcome=%#v calls=%d", outcome, sideEffects.recoveryCalls)
 	}
@@ -2069,6 +2067,8 @@ type pipelineSideEffectStub struct {
 	workerResult          contracts.WorkerResult
 	commit                delivery.CommitResult
 	bundle                delivery.ValidationBundle
+	loadCalls             int
+	loadErr               error
 	publicationResult     delivery.PublicationResult
 	publicationErr        error
 	quarantineErr         error
@@ -2150,7 +2150,8 @@ func (s *pipelineSideEffectStub) Load(
 	contracts.DeliveryRequest,
 ) (delivery.ValidationBundle, error) {
 	s.calls++
-	return s.bundle, nil
+	s.loadCalls++
+	return s.bundle, s.loadErr
 }
 
 func (s *pipelineSideEffectStub) Publish(

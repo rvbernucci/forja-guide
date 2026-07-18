@@ -107,6 +107,115 @@ func TestMigrationsCleanRollbackAndUpgrade(t *testing.T) {
 	}
 }
 
+func TestProjectionRebuildAcceptsLegacyBlockedRunResume(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runID, err := identity.ParseRunID("run_11111111-1111-4111-8111-111111111111")
+	if err != nil {
+		t.Fatal(err)
+	}
+	run, err := store.CreateRun(
+		t.Context(), runID, "Replay one legacy blocked-run resume",
+		testMetadata("legacy-resume-create"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, state := range []runstate.State{
+		runstate.StateAwaitingApproval,
+		runstate.StateQueued,
+		runstate.StatePreparing,
+		runstate.StateRunning,
+		runstate.StateValidating,
+		runstate.StateAwaitingDecision,
+	} {
+		run, err = store.TransitionRun(
+			t.Context(), runID, run.Version, state,
+			testMetadata(fmt.Sprintf("legacy-resume-%02d", index)),
+		)
+		if err != nil {
+			t.Fatalf("prepare legacy stream at %s: %v", state, err)
+		}
+	}
+	if _, err := store.TransitionRun(
+		t.Context(), runID, run.Version, runstate.StateRunning,
+		testMetadata("legacy-resume-runtime-rejected"),
+	); !fault.IsCode(err, fault.CodeConflict) {
+		t.Fatalf("runtime accepted retired blocked-run resume: %v", err)
+	}
+
+	resumed := run
+	resumed.State = string(runstate.StateRunning)
+	resumed.Version++
+	resumed.UpdatedAt = run.UpdatedAt.Add(time.Microsecond)
+	payload, err := json.Marshal(resumed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(t.Context())
+	if _, err := tx.Exec(t.Context(), `
+		UPDATE forja.runs
+		SET state='running', version=$4, updated_at=$5
+		WHERE tenant_id=$1 AND repository_id=$2 AND run_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, resumed.RunID,
+		resumed.Version, resumed.UpdatedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(t.Context(), `
+		WITH inserted AS (
+			INSERT INTO forja.events (
+				event_id, tenant_id, repository_id, aggregate_type,
+				aggregate_id, aggregate_version, event_type, schema_version,
+				occurred_at, actor_type, actor_id, correlation_id,
+				idempotency_key, payload
+			) VALUES (
+				'event_legacy_blocked_resume', $1, $2, 'run', $3, $4,
+				'run.transitioned', '1.0', $5, 'system', 'legacy-scheduler',
+				'corr-legacy-resume', 'legacy-resume-running', $6::jsonb
+			)
+			RETURNING event_id, tenant_id, repository_id
+		)
+		INSERT INTO forja.outbox (event_id, tenant_id, repository_id)
+		SELECT event_id, tenant_id, repository_id FROM inserted`,
+		DefaultTenantID, DefaultRepositoryID, resumed.RunID,
+		resumed.Version, resumed.UpdatedAt, payload,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RebuildRunProjection(t.Context(), "legacy-blocked-resume"); err != nil {
+		t.Fatalf("rebuild legacy blocked-run stream: %v", err)
+	}
+	var state string
+	var version int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT state, aggregate_version
+		FROM forja.run_projections
+		WHERE tenant_id=$1 AND repository_id=$2
+		  AND projector_name='legacy-blocked-resume' AND run_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, resumed.RunID,
+	).Scan(&state, &version); err != nil {
+		t.Fatal(err)
+	}
+	if state != string(runstate.StateRunning) || version != resumed.Version {
+		t.Fatalf("legacy replay projection = state %q version %d", state, version)
+	}
+}
+
 func TestMigrationsUpgradeDatabaseFromImmutableVersionOne(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)

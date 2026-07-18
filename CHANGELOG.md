@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Preserve valid pre-upgrade blocked-run resume events during projection replay
+  without reopening their retired runtime transition.
+- Recover prepared and published journals from their immutable receipt and a
+  fresh Git ref observation even after external validation files disappear.
+- Give durable Git reconciliation markers precedence over missing-worktree
+  inference so unresolved metadata can never release delivery authority.
 - Keep Runs non-resumable when durable Attempt finalization fails, and record
   the immutable attempt-scoped human delivery authorization boundary in
   ADR-0011.

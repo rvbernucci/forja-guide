@@ -134,8 +134,14 @@ func TestPublicationServiceRecoversCrashAfterGitCAS(t *testing.T) {
 	}
 
 	journal.failComplete = false
+	reportPath, _, _ := strings.Cut(fixture.bundle.ReportRef, "#sha256=")
+	if err := os.Remove(filepath.Join(
+		fixture.bundle.PhysicalRoot, filepath.FromSlash(reportPath),
+	)); err != nil {
+		t.Fatal(err)
+	}
 	outcome, err := service.Recover(
-		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		t.Context(), fixture.request, fixture.result, ValidationBundle{}, fixture.leaseSet,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -182,9 +188,15 @@ func TestPublicationServiceAbandonsNotAppliedIntentAndReleasesLease(t *testing.T
 		Intent: intent, State: "prepared", PreparedAt: preparedAt, UpdatedAt: preparedAt,
 	}
 	journal.found = true
+	reportPath, _, _ := strings.Cut(fixture.bundle.ReportRef, "#sha256=")
+	if err := os.Remove(filepath.Join(
+		fixture.bundle.PhysicalRoot, filepath.FromSlash(reportPath),
+	)); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := service.Recover(
-		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		t.Context(), fixture.request, fixture.result, ValidationBundle{}, fixture.leaseSet,
 	); !errors.Is(err, ErrPublicationNotApplied) {
 		t.Fatalf("not-applied recovery error = %v", err)
 	}
@@ -195,7 +207,7 @@ func TestPublicationServiceAbandonsNotAppliedIntentAndReleasesLease(t *testing.T
 	}
 	leases.releaseErr = nil
 	if _, err := service.Recover(
-		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		t.Context(), fixture.request, fixture.result, ValidationBundle{}, fixture.leaseSet,
 	); !errors.Is(err, ErrPublicationNotApplied) {
 		t.Fatalf("not-applied release replay error = %v", err)
 	}
@@ -203,6 +215,38 @@ func TestPublicationServiceAbandonsNotAppliedIntentAndReleasesLease(t *testing.T
 		!slices.Equal(journal.events, []string{"abandon", "release", "release"}) {
 		t.Fatalf("not-applied release replay events=%q releases=%d released=%v",
 			journal.events, leases.releaseCalls, leases.released)
+	}
+}
+
+func TestPublicationRecoveryRejectsRequestChangedAfterJournalPrepare(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	journal := newMemoryPublicationJournal()
+	leases := &recordingLeaseSets{events: &journal.events}
+	service, err := NewPublicationService(
+		fixture.manager, journal, leases, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
+	intent, _, err := service.publicationIntent(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}, true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	journal.record = persistence.DeliveryPublication{Intent: intent, State: "prepared"}
+	journal.found = true
+	fixture.request.Objective = "changed after durable prepare"
+
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, ValidationBundle{}, fixture.leaseSet,
+	); !errors.Is(err, ErrPublicationConflict) {
+		t.Fatalf("changed journaled recovery authority error = %v", err)
+	}
+	if len(journal.events) != 0 || leases.releaseCalls != 0 {
+		t.Fatalf("changed recovery authority mutated journal=%q releases=%d", journal.events, leases.releaseCalls)
 	}
 }
 
