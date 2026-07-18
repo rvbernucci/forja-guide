@@ -110,8 +110,8 @@ func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	return nil
 }
 
-// lockIncrementalMigrationWriters prevents runtime commands and standalone
-// audit writers from overlapping an upgrade that may create outbox records.
+// lockIncrementalMigrationWriters prevents runtime commands, lease writers,
+// and standalone audit writers from overlapping an incremental upgrade.
 // Updated commands cross the idempotency barrier before locking aggregates.
 // Previous-version writers and projection rebuilds use incompatible lock
 // orders, so a live incremental upgrade cannot safely wait for them. Acquire
@@ -138,7 +138,8 @@ func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
 			forja.sprints,
 			forja.runs,
 			forja.events,
-			forja.outbox
+			forja.outbox,
+			forja.leases
 		IN ACCESS EXCLUSIVE MODE NOWAIT`); err != nil {
 		return fmt.Errorf("lock incremental migration writers: %w", err)
 	}

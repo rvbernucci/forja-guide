@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
@@ -18,6 +19,37 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/mcpserver"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
+
+const governedControlMigrationVersion int64 = 3
+
+func migrateToGovernedControlVersion(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	for {
+		var version int64
+		if err := pool.QueryRow(
+			t.Context(),
+			"SELECT COALESCE(max(version), 0) FROM forja.schema_migrations",
+		).Scan(&version); err != nil {
+			t.Fatal(err)
+		}
+		switch {
+		case version == governedControlMigrationVersion:
+			return
+		case version < governedControlMigrationVersion:
+			t.Fatalf(
+				"latest migration version = %d, want at least %d",
+				version,
+				governedControlMigrationVersion,
+			)
+		}
+		if err := RollbackLast(t.Context(), pool); err != nil {
+			t.Fatalf("rollback migration newer than governed control: %v", err)
+		}
+	}
+}
 
 func TestConcurrentDecisionResolutionHasOneWinner(t *testing.T) {
 	pool := integrationPool(t)
@@ -587,9 +619,7 @@ func TestMutationRollsBackWhenSuccessAuditCannotPersist(t *testing.T) {
 func TestGovernedMigrationRollsBackAfterFeatureUse(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
-	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateToGovernedControlVersion(t, pool)
 	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
 	if err != nil {
 		t.Fatal(err)
@@ -842,9 +872,7 @@ func TestGovernedMigrationRollsBackAfterFeatureUse(t *testing.T) {
 func TestGovernedRollbackSupportsScopedIdempotencyKeyReuse(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
-	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateToGovernedControlVersion(t, pool)
 	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
 	if err != nil {
 		t.Fatal(err)
@@ -971,9 +999,7 @@ func TestGovernedRollbackSupportsScopedIdempotencyKeyReuse(t *testing.T) {
 func TestGovernedMigrationRollbackRefusesPendingDecision(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
-	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateToGovernedControlVersion(t, pool)
 	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
 	if err != nil {
 		t.Fatal(err)
@@ -1002,6 +1028,9 @@ func TestGovernedMigrationRollbackRefusesPendingDecision(t *testing.T) {
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("rollback discarded a pending decision")
 	}
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("restore migrations after refused governed rollback: %v", err)
+	}
 	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
 		t.Fatalf("failed rollback changed the current schema: %v", err)
 	}
@@ -1017,9 +1046,7 @@ func TestGovernedMigrationRollbackRefusesPendingDecision(t *testing.T) {
 func TestGovernedRollbackWaitsAtCommandBarrierBeforeParentLocks(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
-	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateToGovernedControlVersion(t, pool)
 	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
 	if err != nil {
 		t.Fatal(err)
@@ -1121,9 +1148,7 @@ func TestGovernedRollbackWaitsAtCommandBarrierBeforeParentLocks(t *testing.T) {
 func TestGovernedRollbackLocksCommandWritersBeforeSafetyCheck(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
-	if err := Migrate(t.Context(), pool); err != nil {
-		t.Fatal(err)
-	}
+	migrateToGovernedControlVersion(t, pool)
 	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
 	if err != nil {
 		t.Fatal(err)

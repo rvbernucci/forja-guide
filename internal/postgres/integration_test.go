@@ -316,6 +316,77 @@ func prepareVersionTwoIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) *Stor
 	return store
 }
 
+func prepareVersionThreeIncrementalUpgrade(t *testing.T, pool *pgxpool.Pool) {
+	t.Helper()
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("migrate through version four: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback to version three: %v", err)
+	}
+	var version int64
+	if err := pool.QueryRow(
+		t.Context(),
+		"SELECT COALESCE(max(version), 0) FROM forja.schema_migrations",
+	).Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 3 {
+		t.Fatalf("prepared migration version = %d, want 3", version)
+	}
+}
+
+func TestIncrementalMigrationFailsFastUntilPreviousVersionLeaseWriterDrains(t *testing.T) {
+	pool := integrationPool(t)
+	prepareVersionThreeIncrementalUpgrade(t, pool)
+
+	writer, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	writerOpen := true
+	defer func() {
+		if writerOpen {
+			_ = writer.Rollback(t.Context())
+		}
+	}()
+	if _, err := writer.Exec(t.Context(), `
+		INSERT INTO forja.leases (
+			tenant_id, repository_id, resource_type, resource_id, owner_id,
+			fencing_token, acquired_at, expires_at, updated_at
+		) VALUES (
+			$1, $2, 'scheduler', 'migration-004-writer', 'legacy-worker',
+			1, clock_timestamp(), clock_timestamp() + interval '1 minute',
+			clock_timestamp()
+		)`, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	migrationErr := Migrate(t.Context(), pool)
+	if migrationErr == nil {
+		t.Fatal("migration 004 accepted an active previous-version lease writer")
+	}
+	var databaseErr *pgconn.PgError
+	if !errors.As(migrationErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("active lease writer migration error = %v, want lock_not_available", migrationErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("active lease writer migration failed after %s, want fail-fast", elapsed)
+	}
+	if err := writer.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	writerOpen = false
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("retry migration 004 after lease writer drained: %v", err)
+	}
+	if err := VerifySchema(t.Context(), pool, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIncrementalMigrationSerializesOutboxWriters(t *testing.T) {
 	pool := integrationPool(t)
 	store := prepareVersionTwoIncrementalUpgrade(t, pool)
