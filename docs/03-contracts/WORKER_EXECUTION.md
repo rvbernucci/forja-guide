@@ -39,8 +39,11 @@ Sprint 04 accepts only `read_scopes: ["."]`: the current Codex sandbox cannot
 enforce narrower confidentiality boundaries. A narrower scope is rejected
 rather than represented as security. Write scopes are mechanically enforced.
 Each write scope names a directory root. Missing directories are created and
-physically resolved before launch; non-directories and paths that traverse
-symlinks away from their declared repository location are rejected.
+physically resolved before launch. On Linux and macOS, descriptor-relative
+`openat`/`mkdirat` operations with no-follow semantics prevent symlink swaps
+from redirecting creation; unsupported platforms fail closed. Non-directories
+and paths that traverse symlinks away from their declared repository location
+are rejected.
 
 `max_retries` counts retries after the first attempt. Therefore an
 `attempt_ordinal` greater than `max_retries + 1` is rejected before process

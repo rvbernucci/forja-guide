@@ -616,8 +616,32 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "escapes the worktree") {
+		!strings.Contains(err.Error(), "write scope") {
 		t.Fatalf("write scope symlink escape error=%v", err)
+	}
+}
+
+func TestSupervisorDoesNotMaterializeScopeThroughExternalSymlink(t *testing.T) {
+	repository := t.TempDir()
+	outside := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Symlink(outside, filepath.Join(repository, "link")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	task.WriteScopes = []string{filepath.Join("link", "new")}
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil {
+		t.Fatal("write scope through an external symlink was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("scope validation mutated external destination: %v", err)
 	}
 }
 
@@ -639,7 +663,7 @@ func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "must not traverse symlinks") {
+		!strings.Contains(err.Error(), "write scope") {
 		t.Fatalf("write scope symlink alias error=%v", err)
 	}
 }

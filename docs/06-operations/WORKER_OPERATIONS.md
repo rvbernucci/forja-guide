@@ -48,8 +48,9 @@ Use a dedicated disposable worker host with no unrelated secrets until Sprint
 12 provides external identity isolation and credential brokerage.
 
 Declared write scopes are directories. The supervisor creates and physically
-validates them, uses the evidence directory as Codex's primary writable root,
-and passes only declared scopes as additional writable roots. Start only from a
+validates them with descriptor-relative no-follow operations, uses the evidence
+directory as Codex's primary writable root, and passes only declared scopes as
+additional writable roots. Start only from a
 clean worktree; a dirty baseline is rejected, and post-run Git paths must be
 reported and remain
 inside the task's write or evidence scope. Ignored files are not exempt: a

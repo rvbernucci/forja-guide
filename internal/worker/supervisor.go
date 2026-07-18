@@ -635,7 +635,7 @@ func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
 		path := task.WorktreePath
 		if scope != "." {
 			path = filepath.Join(task.WorktreePath, filepath.FromSlash(scope))
-			if err := os.MkdirAll(path, 0o700); err != nil {
+			if err := materializeScopeDirectory(task.WorktreePath, scope); err != nil {
 				return fmt.Errorf("create worker write scope %q: %w", scope, err)
 			}
 		}
@@ -643,17 +643,33 @@ func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
 		if err != nil || !info.IsDir() {
 			return fmt.Errorf("worker write scope %q must be a directory", scope)
 		}
-		resolved, err := filepath.EvalSymlinks(path)
-		if err != nil {
-			return fmt.Errorf("resolve worker write scope %q: %w", scope, err)
+		if err := validateScopeDirectoryPosition(
+			path, task.WorktreePath, resolvedRoot, scope,
+		); err != nil {
+			return err
 		}
-		if !pathWithin(resolved, resolvedRoot) {
-			return fmt.Errorf("worker write scope %q escapes the worktree", scope)
-		}
-		resolvedScope, err := filepath.Rel(resolvedRoot, resolved)
-		if err != nil || filepath.Clean(resolvedScope) != filepath.Clean(scope) {
-			return fmt.Errorf("worker write scope %q must not traverse symlinks", scope)
-		}
+	}
+	return nil
+}
+
+func validateScopeDirectoryPosition(
+	path string,
+	worktree string,
+	resolvedRoot string,
+	scope string,
+) error {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return fmt.Errorf("resolve worker write scope %q: %w", scope, err)
+	}
+	if !pathWithin(resolved, resolvedRoot) {
+		return fmt.Errorf("worker write scope %q escapes the worktree", scope)
+	}
+	logicalPosition, logicalErr := filepath.Rel(worktree, path)
+	resolvedPosition, resolvedErr := filepath.Rel(resolvedRoot, resolved)
+	if logicalErr != nil || resolvedErr != nil ||
+		filepath.Clean(logicalPosition) != filepath.Clean(resolvedPosition) {
+		return fmt.Errorf("worker write scope %q must not traverse symlinks", scope)
 	}
 	return nil
 }
