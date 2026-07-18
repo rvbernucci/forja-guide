@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "04",
   "name": "Bounded Worker Supervisor",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -33,8 +33,18 @@
   ],
   "supporting_artifacts": [
     "reviews/merged-implementation-review.md",
-    "security/govulncheck-v1.6.0.txt"
+    "security/govulncheck-v1.6.0.txt",
+    "docs/evidence/sprint-04/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-18T02:58:05Z"
+  "next_sprint_authorized": "05",
+  "candidate_recorded_at": "2026-07-18T02:58:05Z",
+  "reviewed_candidate_commit": "ebc2ecea0f8ba03308363cff3308acdc455e7c88",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "ebc2ecea0f8ba03308363cff3308acdc455e7c88",
+    "model": "gpt-5.6-sol",
+    "artifact_path": "docs/evidence/sprint-04/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "176bbdd89788d0f67fad697f684af66cb9fb44c31d258857a21f106532997b0b"
+  },
+  "closed_at": "2026-07-18T03:19:09Z"
 }

@@ -121,10 +121,9 @@ control runs through stable tools.
 **Outcome:** execute Codex CLI workers as bounded, cancellable, and observable
 processes.
 
-**Status:** Implementation and non-authoritative closure candidate complete.
-Immutable review of the exact public candidate remains pending under the
-[Sprint 04 execution plan](SPRINT_04_WORKER_SUPERVISOR_PLAN.md). Sprint 05 is
-not authorized.
+**Status:** Closed. See the
+[Sprint 04 evidence package](../evidence/sprint-04/close-receipt.json). Sprint
+05 is authorized.
 
 ### Scope
 
