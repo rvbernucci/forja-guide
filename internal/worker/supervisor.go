@@ -1045,7 +1045,10 @@ func pathWithin(path string, root string) bool {
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
-func validateResolvedChild(path string, root string) error {
+func validateEvidenceDirectory(path string, root string) error {
+	if err := validateAbsoluteDirectory(path, "evidence output"); err != nil {
+		return err
+	}
 	resolvedPath, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return fmt.Errorf("resolve evidence output directory: %w", err)
@@ -1057,6 +1060,12 @@ func validateResolvedChild(path string, root string) error {
 	if !pathStrictlyWithin(resolvedPath, resolvedRoot) {
 		return fmt.Errorf("resolved evidence output directory must be a proper worktree descendant")
 	}
+	logicalPosition, logicalErr := filepath.Rel(root, path)
+	resolvedPosition, resolvedErr := filepath.Rel(resolvedRoot, resolvedPath)
+	if logicalErr != nil || resolvedErr != nil ||
+		filepath.Clean(logicalPosition) != filepath.Clean(resolvedPosition) {
+		return fmt.Errorf("evidence output directory must not traverse symlinks")
+	}
 	return nil
 }
 
@@ -1066,13 +1075,6 @@ func pathStrictlyWithin(path string, root string) bool {
 	relative, err := filepath.Rel(root, path)
 	return err == nil && relative != "." && relative != ".." &&
 		!strings.HasPrefix(relative, ".."+string(filepath.Separator))
-}
-
-func validateEvidenceDirectory(path string, root string) error {
-	if err := validateAbsoluteDirectory(path, "evidence output"); err != nil {
-		return err
-	}
-	return validateResolvedChild(path, root)
 }
 
 func processExitCode(err error) *int {
