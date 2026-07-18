@@ -53,6 +53,22 @@ and prove that its effective operating-system writable roots equal the roots
 derived by the delivery service. Adapters without equivalent enforcement fail
 registration.
 
+Delivery Git commands disable repository hooks and reject effective local or
+worktree-scoped clean, smudge, and process filters before checkout. Attempt
+paths are derived from delivery and attempt identities beneath a rooted
+operator directory. Each attempt also stores a supervisor-owned digest of its
+canonical request, preventing an existing path from being replayed with altered
+authority.
+Logical and resolved namespace and writable-scope positions must match, so a
+symlink cannot redirect checkout preparation. Contaminated, clean-retired, or
+unverifiable bytes move to a non-reusable quarantine namespace. Physical
+deletion after worker exposure requires a joint live-lease and process-
+quiescence proof; until that proof is implemented, the runtime preserves the
+bytes rather than trusting a check-then-delete sequence.
+Quarantine verifies the same immutable request digest and invokes Git move only
+when the attempt's common directory matches the authorized repository; foreign
+or unverifiable Git metadata is never mutated.
+
 ## Consequences
 
 Positive:

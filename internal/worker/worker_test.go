@@ -26,7 +26,26 @@ type processAdapter struct {
 	executable string
 }
 
+type missingIsolationAdapter struct{ processAdapter }
+
+func (missingIsolationAdapter) IsolationCapability() IsolationCapability {
+	return IsolationCapability{}
+}
+
 func (a processAdapter) Name() string { return "test-process" }
+
+func (processAdapter) IsolationCapability() IsolationCapability {
+	return IsolationCapability{
+		Version:         "1.0",
+		ReadBoundary:    "full-worktree",
+		WriteBoundary:   "declared-roots",
+		NetworkBoundary: "denied",
+	}
+}
+
+func (processAdapter) VerifyIsolation(contracts.WorkerTask, ExecutionPaths, Invocation) error {
+	return nil
+}
 
 func (a processAdapter) Build(
 	task contracts.WorkerTask,
@@ -267,11 +286,13 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 	task.Objective = "fix docs; touch /tmp/escaped"
 	model := "gpt-test"
 	task.Model = &model
-	invocation, err := (CodexAdapter{Executable: "/usr/bin/codex"}).Build(task, ExecutionPaths{
+	paths := ExecutionPaths{
 		HomeDir:          "/tmp/home",
 		ReportPath:       "/tmp/report.json",
 		ReportSchemaPath: "/tmp/schema.json",
-	})
+	}
+	adapter := CodexAdapter{Executable: "/usr/bin/codex"}
+	invocation, err := adapter.Build(task, paths)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -303,6 +324,64 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 	}
 	if !strings.Contains(invocation.Stdin, "Repository path: "+task.WorktreePath) {
 		t.Fatal("repository path missing from stdin prompt")
+	}
+	if err := adapter.VerifyIsolation(task, paths, invocation); err != nil {
+		t.Fatalf("valid Codex isolation rejected: %v", err)
+	}
+	for index, argument := range invocation.Args {
+		if argument == "sandbox_workspace_write.network_access=false" {
+			invocation.Args[index] = "sandbox_workspace_write.network_access=true"
+			break
+		}
+	}
+	if err := adapter.VerifyIsolation(task, paths, invocation); err == nil {
+		t.Fatal("network-enabled Codex invocation passed isolation verification")
+	}
+	secureInvocation, err := adapter.Build(task, paths)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secureInvocation.Args = append(
+		secureInvocation.Args[:len(secureInvocation.Args)-1],
+		"--config", "sandbox_workspace_write.network_access=true", "-",
+	)
+	if err := adapter.VerifyIsolation(task, paths, secureInvocation); err == nil {
+		t.Fatal("later network override passed isolation verification")
+	}
+	for name, override := range map[string][]string{
+		"short config":          {"-c", "sandbox_workspace_write.network_access=true"},
+		"compact config":        {"-csandbox_workspace_write.network_access=true"},
+		"short sandbox":         {"-s", "danger-full-access"},
+		"compact sandbox":       {"-sdanger-full-access"},
+		"short directory":       {"-C", "/tmp"},
+		"compact directory":     {"-C/tmp"},
+		"alternate approval":    {"-a", "on-request"},
+		"long inline sandbox":   {"--sandbox=danger-full-access"},
+		"long inline directory": {"--cd=/tmp"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			mutated, err := adapter.Build(task, paths)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mutated.Args = append(mutated.Args[:len(mutated.Args)-1], override...)
+			mutated.Args = append(mutated.Args, "-")
+			if err := adapter.VerifyIsolation(task, paths, mutated); err == nil {
+				t.Fatal("non-canonical Codex override passed isolation verification")
+			}
+		})
+	}
+}
+
+func TestSupervisorRejectsAdapterWithoutIsolationCapability(t *testing.T) {
+	_, err := NewSupervisor(
+		mustRegistry(t),
+		missingIsolationAdapter{processAdapter{mode: "success"}},
+		nil,
+		nil,
+	)
+	if err == nil || !strings.Contains(err.Error(), "required isolation capability") {
+		t.Fatalf("missing isolation capability error = %v", err)
 	}
 }
 
@@ -675,6 +754,103 @@ func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
 		!strings.Contains(err.Error(), "write scope") {
 		t.Fatalf("write scope symlink escape error=%v", err)
+	}
+}
+
+func TestSupervisorRejectsExternalFSMonitorBeforeGitStatus(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("executable fsmonitor fixture requires a Unix host")
+	}
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	marker := filepath.Join(t.TempDir(), "fsmonitor-ran")
+	script := filepath.Join(t.TempDir(), "fsmonitor.sh")
+	content := "#!/bin/sh\nprintf monitor > " + shellQuote(marker) + "\nexit 0\n"
+	if err := os.WriteFile(script, []byte(content), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repository, "config", "core.fsmonitor", script)
+	task := workerTaskAt(repository)
+	if err := os.Mkdir(task.EvidenceOutputDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "core.fsmonitor command is not permitted") {
+		t.Fatalf("fsmonitor rejection error = %v", err)
+	}
+	if _, err := os.Stat(marker); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("external fsmonitor command executed")
+	}
+}
+
+func TestGitInspectionEnvironmentUsesMinimalAllowlist(t *testing.T) {
+	environment := gitInspectionEnvironment([]string{
+		"PATH=/usr/bin",
+		"HOME=/safe/home",
+		"TMPDIR=/safe/tmp",
+		"LD_PRELOAD=/tmp/inject.so",
+		"DYLD_INSERT_LIBRARIES=/tmp/inject.dylib",
+		"SSH_ASKPASS=/tmp/askpass",
+		"DATABASE_URL=postgresql://secret",
+	})
+	joined := strings.Join(environment, "\n")
+	for _, required := range []string{
+		"PATH=/usr/bin", "HOME=/safe/home", "TMPDIR=/safe/tmp",
+		"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_NOSYSTEM=1",
+		"GIT_TERMINAL_PROMPT=0", "GIT_NO_REPLACE_OBJECTS=1", "LC_ALL=C",
+	} {
+		if !strings.Contains(joined, required) {
+			t.Fatalf("Git inspection environment lacks %q: %s", required, joined)
+		}
+	}
+	for _, forbidden := range []string{"LD_PRELOAD", "DYLD_", "SSH_ASKPASS", "DATABASE_URL", "secret"} {
+		if strings.Contains(joined, forbidden) {
+			t.Fatalf("Git inspection environment contains %q: %s", forbidden, joined)
+		}
+	}
+}
+
+func TestGitExecutionConfigInspectionIsBounded(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	included := filepath.Join(t.TempDir(), "oversized.gitconfig")
+	content := "[forja]\n\tfixture = " + strings.Repeat("x", (1<<20)+128) + "\n"
+	if err := os.WriteFile(included, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGit(t, repository, "config", "include.path", included)
+	if err := validateGitExecutionConfig(t.Context(), repository); err == nil ||
+		!strings.Contains(err.Error(), "configuration exceeds") {
+		t.Fatalf("oversized Git configuration error = %v", err)
+	}
+}
+
+func TestGitExecutionConfigInspectionHonorsCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("FIFO fixture requires a Unix host")
+	}
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	fifo := filepath.Join(t.TempDir(), "blocked.gitconfig")
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Skipf("FIFO unavailable: %v", err)
+	}
+	runGit(t, repository, "config", "include.path", fifo)
+	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
+	defer cancel()
+	started := time.Now()
+	if err := validateGitExecutionConfig(ctx, repository); err == nil {
+		t.Fatal("blocking Git include ignored cancellation")
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("blocking Git include exceeded cancellation boundary: %v", elapsed)
 	}
 }
 
@@ -1094,6 +1270,10 @@ func runGit(t *testing.T, path string, arguments ...string) {
 	if output, err := command.CombinedOutput(); err != nil {
 		t.Fatalf("git %s: %v: %s", strings.Join(arguments, " "), err, output)
 	}
+}
+
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
 
 func workerTask(t *testing.T) contracts.WorkerTask {

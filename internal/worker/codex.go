@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,6 +18,17 @@ type CodexAdapter struct {
 }
 
 func (a CodexAdapter) Name() string { return "codex-cli" }
+
+// IsolationCapability declares the Codex CLI sandbox contract verified from
+// each generated invocation before execution.
+func (CodexAdapter) IsolationCapability() IsolationCapability {
+	return IsolationCapability{
+		Version:         "1.0",
+		ReadBoundary:    "full-worktree",
+		WriteBoundary:   "declared-roots",
+		NetworkBoundary: "denied",
+	}
+}
 
 func (a CodexAdapter) Build(
 	task contracts.WorkerTask,
@@ -56,6 +68,24 @@ func (a CodexAdapter) Build(
 		Dir:   task.WorktreePath,
 		Stdin: codexPrompt(task),
 	}, nil
+}
+
+// VerifyIsolation derives the effective writable roots from the actual argv
+// rather than trusting an adapter-authored capability claim alone.
+func (a CodexAdapter) VerifyIsolation(
+	task contracts.WorkerTask,
+	paths ExecutionPaths,
+	invocation Invocation,
+) error {
+	expected, err := a.Build(task, paths)
+	if err != nil {
+		return err
+	}
+	if invocation.Path != expected.Path || invocation.Dir != expected.Dir ||
+		invocation.Stdin != expected.Stdin || !slices.Equal(invocation.Args, expected.Args) {
+		return fmt.Errorf("Codex invocation differs from the canonical isolated invocation")
+	}
+	return nil
 }
 
 func codexPrompt(task contracts.WorkerTask) string {

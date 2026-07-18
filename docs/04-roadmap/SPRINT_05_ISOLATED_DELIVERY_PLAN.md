@@ -52,25 +52,27 @@ contaminated worktree is quarantined and never reused.
 - [x] Record the delivery trust boundary in ADR-0011.
 - [x] Require distinct author and independent-validator identities.
 - [x] Define canonical patch, changed-path, tree, and evidence hashes.
-- [ ] Add strict Go contract mappings and valid/invalid fixtures.
+- [x] Add strict Go contract mappings and valid/invalid fixtures.
 
 ### 2. Atomic lease authority
 
-- [ ] Add `artifact` as a canonical lease resource type.
-- [ ] Acquire the worktree plus hierarchical file and artifact lease set in one
+- [x] Add `artifact` as a canonical lease resource type.
+- [x] Acquire the worktree plus hierarchical file and artifact lease set in one
   transaction and deterministic order.
-- [ ] Renew and release only the exact owner and fencing-token set.
-- [ ] Reject overlapping writers, stale fences, partial grants, and lease
+- [x] Renew and release only the exact owner and fencing-token set.
+- [x] Reject overlapping writers, stale fences, partial grants, and lease
   expansion after work starts.
 
 ### 3. Worktree lifecycle
 
-- [ ] Resolve and verify the repository root and exact base commit.
-- [ ] Derive an attempt path beneath a non-symlink operator root.
-- [ ] Create a detached isolated worktree and pre-create writable directories.
-- [ ] Verify Git common-directory identity, clean state, and exact `HEAD`.
+- [x] Resolve and verify the repository root and exact base commit.
+- [x] Derive an attempt path beneath a non-symlink operator root.
+- [x] Create a detached isolated worktree and pre-create writable directories.
+- [x] Verify Git common-directory identity, clean state, and exact `HEAD`.
 - [ ] Remove clean worktrees and quarantine dirty or unverifiable worktrees.
-- [ ] Retry only from a newly created worktree at the original base commit.
+  Quarantine is implemented; post-worker deletion awaits live-lease and
+  process-quiescence proof.
+- [x] Retry only from a newly created worktree at the original base commit.
 
 ### 4. Validation and evidence
 

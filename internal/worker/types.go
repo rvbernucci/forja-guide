@@ -16,6 +16,16 @@ type Invocation struct {
 	Stdin string
 }
 
+// IsolationCapability is the static containment contract implemented by an
+// adapter. Version 1.0 requires full-worktree reads, declared-root writes, and
+// denied command-network access.
+type IsolationCapability struct {
+	Version         string
+	ReadBoundary    string
+	WriteBoundary   string
+	NetworkBoundary string
+}
+
 // ExecutionPaths are supervisor-owned files exposed to an adapter.
 type ExecutionPaths struct {
 	HomeDir          string
@@ -26,7 +36,9 @@ type ExecutionPaths struct {
 // Adapter translates a canonical task into one process invocation.
 type Adapter interface {
 	Name() string
+	IsolationCapability() IsolationCapability
 	Build(contracts.WorkerTask, ExecutionPaths) (Invocation, error)
+	VerifyIsolation(contracts.WorkerTask, ExecutionPaths, Invocation) error
 	ParseUsage([]byte) contracts.WorkerUsage
 	RetryableFailure(exitCode int, stderr string) bool
 }

@@ -52,6 +52,13 @@ func NewSupervisor(
 	if adapter == nil {
 		return nil, fmt.Errorf("worker supervisor requires an adapter")
 	}
+	capability := adapter.IsolationCapability()
+	if capability.Version != "1.0" ||
+		capability.ReadBoundary != "full-worktree" ||
+		capability.WriteBoundary != "declared-roots" ||
+		capability.NetworkBoundary != "denied" {
+		return nil, fmt.Errorf("worker adapter lacks the required isolation capability")
+	}
 	if events == nil {
 		events = discardEvents{}
 	}
@@ -72,7 +79,7 @@ func (s *Supervisor) Execute(
 	ctx context.Context,
 	task contracts.WorkerTask,
 ) (contracts.WorkerResult, error) {
-	if err := s.validateTask(task); err != nil {
+	if err := s.validateTask(ctx, task); err != nil {
 		return contracts.WorkerResult{}, err
 	}
 	started := s.now().UTC()
@@ -95,15 +102,15 @@ func (s *Supervisor) Execute(
 	if err := validateWriteScopeDirectories(task); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	if changed, err := gitWorktreeChanges(task.WorktreePath); err != nil {
+	if changed, err := gitWorktreeChanges(ctx, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	} else if len(changed) != 0 {
 		return contracts.WorkerResult{}, fmt.Errorf("worker worktree must be clean before launch")
 	}
-	if err := validateGitIndexFlags(task.WorktreePath); err != nil {
+	if err := validateGitIndexFlags(ctx, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	}
-	ignoredBefore, err := ignoredWorktreeSnapshot(task.WorktreePath)
+	ignoredBefore, err := ignoredWorktreeSnapshot(ctx, task.WorktreePath)
 	if err != nil {
 		return contracts.WorkerResult{}, err
 	}
@@ -119,16 +126,20 @@ func (s *Supervisor) Execute(
 		return contracts.WorkerResult{}, fmt.Errorf("write worker report schema: %w", err)
 	}
 
-	invocation, err := s.adapter.Build(task, ExecutionPaths{
+	paths := ExecutionPaths{
 		HomeDir:          home,
 		ReportPath:       reportPath,
 		ReportSchemaPath: schemaPath,
-	})
+	}
+	invocation, err := s.adapter.Build(task, paths)
 	if err != nil {
 		return contracts.WorkerResult{}, fmt.Errorf("build %s invocation: %w", s.adapter.Name(), err)
 	}
 	if err := validateInvocation(invocation, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
+	}
+	if err := s.adapter.VerifyIsolation(task, paths, invocation); err != nil {
+		return contracts.WorkerResult{}, fmt.Errorf("verify %s isolation: %w", s.adapter.Name(), err)
 	}
 	environment, err := SanitizedEnvironment(s.environ, home)
 	if err != nil {
@@ -178,7 +189,7 @@ func (s *Supervisor) Execute(
 			task, started, "wall_timeout", waitErr, stdout.Bytes(), stderr.Bytes(),
 		)
 		s.applyUsageBudgets(task, &result)
-		contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
+		contaminationErr := s.classifyWorktreeContamination(ctx, task, ignoredBefore, &result)
 		return result, errors.Join(
 			fmt.Errorf("worker wall budget elapsed before start telemetry"),
 			contaminationErr,
@@ -192,7 +203,7 @@ func (s *Supervisor) Execute(
 			task, started, "telemetry_failure", waitErr, stdout.Bytes(), stderr.Bytes(),
 		)
 		s.applyUsageBudgets(task, &result)
-		contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
+		contaminationErr := s.classifyWorktreeContamination(ctx, task, ignoredBefore, &result)
 		return result, errors.Join(
 			fmt.Errorf("emit worker.started: %w", err),
 			contaminationErr,
@@ -218,10 +229,10 @@ func (s *Supervisor) Execute(
 	stderrData := stderr.Bytes()
 	result := s.resultFromExecution(task, started, reason, waitErr, stdoutData, stderrData)
 	if reason == "completed" {
-		s.applyReport(task, reportPath, ignoredBefore, &result)
+		s.applyReport(ctx, task, reportPath, ignoredBefore, &result)
 	}
 	s.applyUsageBudgets(task, &result)
-	contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
+	contaminationErr := s.classifyWorktreeContamination(ctx, task, ignoredBefore, &result)
 	validationErr := s.validateResult(result)
 	finishErr := s.emitFinished(context.WithoutCancel(ctx), task, result)
 	return result, errors.Join(eventErr, contaminationErr, validationErr, finishErr)
@@ -391,6 +402,7 @@ func (s *Supervisor) resultFromExecution(
 }
 
 func (s *Supervisor) applyReport(
+	ctx context.Context,
 	task contracts.WorkerTask,
 	path string,
 	ignoredBefore map[string]string,
@@ -411,8 +423,8 @@ func (s *Supervisor) applyReport(
 		"worker-report.schema.json",
 		data,
 	)
-	actualPaths, actualErr := gitWorktreeChanges(task.WorktreePath)
-	ignoredAfter, ignoredErr := ignoredWorktreeSnapshot(task.WorktreePath)
+	actualPaths, actualErr := gitWorktreeChanges(ctx, task.WorktreePath)
+	ignoredAfter, ignoredErr := ignoredWorktreeSnapshot(ctx, task.WorktreePath)
 	if ignoredErr == nil {
 		actualPaths = mergeChangedPaths(
 			actualPaths,
@@ -466,6 +478,7 @@ func samePaths(actual []string, reported []string) bool {
 }
 
 func (s *Supervisor) classifyWorktreeContamination(
+	ctx context.Context,
 	task contracts.WorkerTask,
 	ignoredBefore map[string]string,
 	result *contracts.WorkerResult,
@@ -473,8 +486,11 @@ func (s *Supervisor) classifyWorktreeContamination(
 	if result.Status == "succeeded" || result.Status == "blocked" {
 		return nil
 	}
-	actualPaths, actualErr := gitWorktreeChanges(task.WorktreePath)
-	ignoredAfter, ignoredErr := ignoredWorktreeSnapshot(task.WorktreePath)
+	// Cleanup inspection must survive caller cancellation, but every Git command
+	// still has its own hard deadline.
+	safetyContext := context.WithoutCancel(ctx)
+	actualPaths, actualErr := gitWorktreeChanges(safetyContext, task.WorktreePath)
+	ignoredAfter, ignoredErr := ignoredWorktreeSnapshot(safetyContext, task.WorktreePath)
 	if actualErr == nil && ignoredErr == nil {
 		actualPaths = mergeChangedPaths(
 			actualPaths,
@@ -589,7 +605,7 @@ func (s *Supervisor) emitEventWithin(ctx context.Context, event Event, limit tim
 	}
 }
 
-func (s *Supervisor) validateTask(task contracts.WorkerTask) error {
+func (s *Supervisor) validateTask(ctx context.Context, task contracts.WorkerTask) error {
 	data, err := json.Marshal(task)
 	if err != nil {
 		return fmt.Errorf("encode worker task: %w", err)
@@ -606,7 +622,7 @@ func (s *Supervisor) validateTask(task contracts.WorkerTask) error {
 	if err := validateAbsoluteDirectory(task.WorktreePath, "worktree"); err != nil {
 		return err
 	}
-	if err := validateGitWorktreeBinding(task.RepositoryPath, task.WorktreePath); err != nil {
+	if err := validateGitWorktreeBinding(ctx, task.RepositoryPath, task.WorktreePath); err != nil {
 		return err
 	}
 	if !pathWithin(task.EvidenceOutputDir, task.WorktreePath) {
@@ -711,12 +727,12 @@ func validateScopeDirectoryPosition(
 	return nil
 }
 
-func validateGitWorktreeBinding(repository string, worktree string) error {
-	repositoryTop, repositoryCommon, err := gitWorktreeIdentity(repository)
+func validateGitWorktreeBinding(ctx context.Context, repository string, worktree string) error {
+	repositoryTop, repositoryCommon, err := gitWorktreeIdentity(ctx, repository)
 	if err != nil {
 		return fmt.Errorf("inspect repository Git identity: %w", err)
 	}
-	worktreeTop, worktreeCommon, err := gitWorktreeIdentity(worktree)
+	worktreeTop, worktreeCommon, err := gitWorktreeIdentity(ctx, worktree)
 	if err != nil {
 		return fmt.Errorf("inspect worktree Git identity: %w", err)
 	}
@@ -737,16 +753,18 @@ func validateGitWorktreeBinding(repository string, worktree string) error {
 	if repositoryCommon != worktreeCommon {
 		return fmt.Errorf("worktree does not belong to the declared repository")
 	}
+	if err := validateGitExecutionConfig(ctx, worktree); err != nil {
+		return err
+	}
 	return nil
 }
 
-func gitWorktreeIdentity(path string) (string, string, error) {
-	command := exec.Command(
-		"git",
-		"-C", path,
-		"rev-parse", "--show-toplevel", "--git-common-dir",
+func gitWorktreeIdentity(ctx context.Context, path string) (string, string, error) {
+	inspectionContext, cancel := boundedGitInspectionContext(ctx)
+	defer cancel()
+	command := hardenedGitCommand(
+		inspectionContext, path, "rev-parse", "--show-toplevel", "--git-common-dir",
 	)
-	command.Env = gitInspectionEnvironment(os.Environ())
 	output, err := command.Output()
 	if err != nil {
 		return "", "", fmt.Errorf("git rev-parse failed: %w", err)
@@ -779,27 +797,101 @@ func canonicalGitPath(base string, value string) (string, error) {
 }
 
 func gitInspectionEnvironment(source []string) []string {
-	result := make([]string, 0, len(source)+4)
+	allowed := map[string]struct{}{
+		"HOME":   {},
+		"PATH":   {},
+		"TEMP":   {},
+		"TMP":    {},
+		"TMPDIR": {},
+	}
+	values := make(map[string]string, len(allowed))
 	for _, entry := range source {
-		key, _, ok := strings.Cut(entry, "=")
-		if ok && (strings.HasPrefix(key, "GIT_") || key == "LC_ALL") {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
 			continue
 		}
-		result = append(result, entry)
+		if _, accepted := allowed[key]; accepted {
+			values[key] = value
+		}
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]string, 0, len(keys)+5)
+	for _, key := range keys {
+		result = append(result, key+"="+values[key])
 	}
 	return append(
 		result,
 		"GIT_CONFIG_GLOBAL=/dev/null",
 		"GIT_CONFIG_NOSYSTEM=1",
 		"GIT_TERMINAL_PROMPT=0",
+		"GIT_NO_REPLACE_OBJECTS=1",
 		"LC_ALL=C",
 	)
 }
 
-func validateGitIndexFlags(path string) error {
-	const maximumIndexBytes = 16 << 20
-	command := exec.Command("git", "-C", path, "ls-files", "-v", "-z")
+func boundedGitInspectionContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, 2*time.Second)
+}
+
+func hardenedGitCommand(ctx context.Context, path string, arguments ...string) *exec.Cmd {
+	args := []string{
+		"-c", "core.hooksPath=/dev/null",
+		"-c", "core.fsmonitor=false",
+		"-c", "core.untrackedCache=false",
+		"-c", "diff.external=",
+		"-C", path,
+	}
+	args = append(args, arguments...)
+	command := exec.CommandContext(ctx, "git", args...)
 	command.Env = gitInspectionEnvironment(os.Environ())
+	return command
+}
+
+func validateGitExecutionConfig(ctx context.Context, path string) error {
+	const maximumConfigBytes = 1 << 20
+	inspectionContext, cancel := boundedGitInspectionContext(ctx)
+	defer cancel()
+	command := hardenedGitCommand(inspectionContext, path, "config", "--includes", "--null", "--list")
+	budget := newOutputBudget(maximumConfigBytes, nil)
+	stdout := &boundedStream{budget: budget, name: "stdout"}
+	stderr := &boundedStream{budget: budget, name: "stderr"}
+	command.Stdout = stdout
+	command.Stderr = stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("inspect effective Git configuration: %w", err)
+	}
+	if budget.total.Load() > maximumConfigBytes {
+		return fmt.Errorf("effective Git configuration exceeds %d bytes", maximumConfigBytes)
+	}
+	output := stdout.Bytes()
+	for _, entry := range bytes.Split(output, []byte{0}) {
+		key, value, _ := bytes.Cut(entry, []byte{'\n'})
+		name := strings.ToLower(string(key))
+		switch {
+		case strings.HasPrefix(name, "filter.") &&
+			(strings.HasSuffix(name, ".clean") ||
+				strings.HasSuffix(name, ".smudge") ||
+				strings.HasSuffix(name, ".process")):
+			return fmt.Errorf("repository Git content filters are not permitted")
+		case name == "core.fsmonitor" && strings.ToLower(string(value)) != "false":
+			return fmt.Errorf("repository core.fsmonitor command is not permitted")
+		}
+	}
+	return nil
+}
+
+func validateGitIndexFlags(ctx context.Context, path string) error {
+	const maximumIndexBytes = 16 << 20
+	if err := validateGitExecutionConfig(ctx, path); err != nil {
+		return err
+	}
+	inspectionContext, cancel := boundedGitInspectionContext(ctx)
+	defer cancel()
+	command := hardenedGitCommand(inspectionContext, path, "ls-files", "-v", "-z")
 	budget := newOutputBudget(maximumIndexBytes, nil)
 	stdout := &boundedStream{budget: budget, name: "stdout"}
 	stderr := &boundedStream{budget: budget, name: "stderr"}
@@ -825,12 +917,16 @@ func validateGitIndexFlags(path string) error {
 	return nil
 }
 
-func gitWorktreeChanges(path string) ([]string, error) {
+func gitWorktreeChanges(ctx context.Context, path string) ([]string, error) {
 	const maximumStatusBytes = 16 << 20
-	command := exec.Command(
-		"git", "-C", path, "status", "--porcelain=v1", "-z", "--untracked-files=all",
+	if err := validateGitExecutionConfig(ctx, path); err != nil {
+		return nil, err
+	}
+	inspectionContext, cancel := boundedGitInspectionContext(ctx)
+	defer cancel()
+	command := hardenedGitCommand(
+		inspectionContext, path, "status", "--porcelain=v1", "-z", "--untracked-files=all",
 	)
-	command.Env = gitInspectionEnvironment(os.Environ())
 	budget := newOutputBudget(maximumStatusBytes, nil)
 	stdout := &boundedStream{budget: budget, name: "stdout"}
 	stderr := &boundedStream{budget: budget, name: "stderr"}
@@ -876,16 +972,20 @@ func gitWorktreeChanges(path string) ([]string, error) {
 	return result, nil
 }
 
-func ignoredWorktreeSnapshot(path string) (map[string]string, error) {
+func ignoredWorktreeSnapshot(ctx context.Context, path string) (map[string]string, error) {
 	const (
 		maximumPathBytes   = 16 << 20
 		maximumContentRead = 64 << 20
 		maximumPaths       = 2048
 	)
-	command := exec.Command(
-		"git", "-C", path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
+	if err := validateGitExecutionConfig(ctx, path); err != nil {
+		return nil, err
+	}
+	inspectionContext, cancel := boundedGitInspectionContext(ctx)
+	defer cancel()
+	command := hardenedGitCommand(
+		inspectionContext, path, "ls-files", "--others", "--ignored", "--exclude-standard", "-z",
 	)
-	command.Env = gitInspectionEnvironment(os.Environ())
 	budget := newOutputBudget(maximumPathBytes, nil)
 	stdout := &boundedStream{budget: budget, name: "stdout"}
 	stderr := &boundedStream{budget: budget, name: "stderr"}
