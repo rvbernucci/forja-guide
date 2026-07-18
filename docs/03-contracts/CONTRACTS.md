@@ -37,6 +37,10 @@ contracts.
 | [`worker-task.schema.json`](../../schemas/worker-task.schema.json) | Authorized worker objective, scope, and budgets |
 | [`worker-report.schema.json`](../../schemas/worker-report.schema.json) | Schema-constrained model completion report |
 | [`worker-result.schema.json`](../../schemas/worker-result.schema.json) | Supervisor-authored execution classification and evidence |
+| [`delivery-request.schema.json`](../../schemas/delivery-request.schema.json) | Approved Git delivery authority, scopes, identities, and budgets |
+| [`validation-report.schema.json`](../../schemas/validation-report.schema.json) | Bounded clean-checkout validation evidence |
+| [`evidence-manifest.schema.json`](../../schemas/evidence-manifest.schema.json) | Canonical scoped inventory of immutable delivery evidence |
+| [`delivery-receipt.schema.json`](../../schemas/delivery-receipt.schema.json) | Hash-bound publication receipt for a namespaced Git ref |
 
 The Go kernel embeds these schemas, compiles cross-schema references offline at
 startup, and validates run
@@ -45,6 +49,8 @@ schemas and compatibility fixtures. See the [kernel API](KERNEL_API.md) and
 [MCP control API](MCP_CONTROL_API.md).
 The [worker execution contract](WORKER_EXECUTION.md) defines process authority,
 budgets, result coupling, and durable recovery.
+The [isolated delivery contract](ISOLATED_DELIVERY.md) defines fenced worktree
+ownership, independent validation, and controlled Git publication.
 
 The Sprint schema encodes the approval coupling directly: only
 `awaiting_approval` requires and permits `pending_decision_id`. Proposed,
@@ -61,6 +67,8 @@ sprint_
 task_
 run_
 attempt_
+delivery_
+validation_
 worker_
 artifact_
 event_

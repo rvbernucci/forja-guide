@@ -5,6 +5,9 @@
 **Outcome:** produce bounded repository changes with mechanical and independent
 validation.
 
+**Status:** In progress. See the
+[Sprint 05 execution plan](SPRINT_05_ISOLATED_DELIVERY_PLAN.md).
+
 ### Scope
 
 - [ ] Create and remove isolated Git worktrees per attempt.

@@ -3,7 +3,13 @@ package contracts
 
 import "time"
 
-const WorkerReportSchemaRef = "https://forja.dev/schemas/worker-report.schema.json"
+const (
+	WorkerReportSchemaRef     = "https://forja.dev/schemas/worker-report.schema.json"
+	DeliveryRequestSchemaRef  = "https://forja.dev/schemas/delivery-request.schema.json"
+	ValidationReportSchemaRef = "https://forja.dev/schemas/validation-report.schema.json"
+	EvidenceManifestSchemaRef = "https://forja.dev/schemas/evidence-manifest.schema.json"
+	DeliveryReceiptSchemaRef  = "https://forja.dev/schemas/delivery-receipt.schema.json"
+)
 
 // Run is the canonical run aggregate contract.
 type Run struct {
@@ -252,4 +258,107 @@ type WorkerResult struct {
 	Usage             WorkerUsage   `json:"usage"`
 	Report            *WorkerReport `json:"report"`
 	EvidenceRefs      []string      `json:"evidence_refs"`
+}
+
+// DeliveryRequest is the complete approved authority envelope for one Git delivery.
+type DeliveryRequest struct {
+	DeliveryID                string        `json:"delivery_id"`
+	TaskID                    string        `json:"task_id"`
+	AttemptID                 string        `json:"attempt_id"`
+	RunID                     string        `json:"run_id"`
+	SchemaVersion             string        `json:"schema_version"`
+	RepositoryPath            string        `json:"repository_path"`
+	WorktreeRoot              string        `json:"worktree_root"`
+	BaseCommit                string        `json:"base_commit"`
+	PublicationRef            string        `json:"publication_ref"`
+	PublicationPreviousCommit *string       `json:"publication_previous_commit"`
+	AuthorID                  string        `json:"author_id"`
+	ValidatorID               string        `json:"validator_id"`
+	Role                      string        `json:"role"`
+	Objective                 string        `json:"objective"`
+	ReadScopes                []string      `json:"read_scopes"`
+	WriteScopes               []string      `json:"write_scopes"`
+	ArtifactScopes            []string      `json:"artifact_scopes"`
+	EvidenceScope             string        `json:"evidence_scope"`
+	ContextPackRef            *string       `json:"context_pack_ref,omitempty"`
+	AttemptOrdinal            int           `json:"attempt_ordinal"`
+	Model                     *string       `json:"model,omitempty"`
+	WorkerBudgets             WorkerBudgets `json:"worker_budgets"`
+	MechanicalValidatorIDs    []string      `json:"mechanical_validator_ids"`
+	LeaseTTLMS                int           `json:"lease_ttl_ms"`
+}
+
+// ValidationCheck is one bounded mechanical or independent check receipt.
+type ValidationCheck struct {
+	CheckID       string    `json:"check_id"`
+	Kind          string    `json:"kind"`
+	Status        string    `json:"status"`
+	StartedAt     time.Time `json:"started_at"`
+	FinishedAt    time.Time `json:"finished_at"`
+	DurationMS    int64     `json:"duration_ms"`
+	ExitCode      *int      `json:"exit_code,omitempty"`
+	CommandDigest *string   `json:"command_digest,omitempty"`
+	StdoutSHA256  string    `json:"stdout_sha256"`
+	StderrSHA256  string    `json:"stderr_sha256"`
+	Detail        *string   `json:"detail,omitempty"`
+}
+
+// ValidationReport binds an independent identity to a clean result checkout.
+type ValidationReport struct {
+	ValidationID  string            `json:"validation_id"`
+	DeliveryID    string            `json:"delivery_id"`
+	SchemaVersion string            `json:"schema_version"`
+	Status        string            `json:"status"`
+	BaseCommit    string            `json:"base_commit"`
+	ResultCommit  string            `json:"result_commit"`
+	PatchSHA256   string            `json:"patch_sha256"`
+	AuthorID      string            `json:"author_id"`
+	ValidatorID   string            `json:"validator_id"`
+	CleanCheckout bool              `json:"clean_checkout"`
+	Checks        []ValidationCheck `json:"checks"`
+	CreatedAt     time.Time         `json:"created_at"`
+}
+
+// EvidenceEntry identifies one immutable file inside the approved evidence scope.
+type EvidenceEntry struct {
+	Path      string `json:"path"`
+	SHA256    string `json:"sha256"`
+	SizeBytes int64  `json:"size_bytes"`
+	MediaType string `json:"media_type"`
+}
+
+// EvidenceManifest is the canonical content inventory bound into a receipt.
+type EvidenceManifest struct {
+	DeliveryID    string          `json:"delivery_id"`
+	SchemaVersion string          `json:"schema_version"`
+	Entries       []EvidenceEntry `json:"entries"`
+}
+
+// DeliveryLeaseFence records the exact ownership grant used for publication.
+type DeliveryLeaseFence struct {
+	ResourceType string `json:"resource_type"`
+	ResourceID   string `json:"resource_id"`
+	OwnerID      string `json:"owner_id"`
+	FencingToken int64  `json:"fencing_token"`
+}
+
+// DeliveryReceipt proves a validated compare-and-swap publication.
+type DeliveryReceipt struct {
+	DeliveryID                string               `json:"delivery_id"`
+	SchemaVersion             string               `json:"schema_version"`
+	Status                    string               `json:"status"`
+	BaseCommit                string               `json:"base_commit"`
+	ResultCommit              string               `json:"result_commit"`
+	ResultTree                string               `json:"result_tree"`
+	PatchSHA256               string               `json:"patch_sha256"`
+	ChangedPaths              []string             `json:"changed_paths"`
+	PublicationRef            string               `json:"publication_ref"`
+	PublicationPreviousCommit *string              `json:"publication_previous_commit"`
+	AuthorID                  string               `json:"author_id"`
+	ValidatorID               string               `json:"validator_id"`
+	LeaseFences               []DeliveryLeaseFence `json:"lease_fences"`
+	ValidationReportRef       string               `json:"validation_report_ref"`
+	EvidenceManifestRef       string               `json:"evidence_manifest_ref"`
+	CreatedAt                 time.Time            `json:"created_at"`
+	PublishedAt               time.Time            `json:"published_at"`
 }
