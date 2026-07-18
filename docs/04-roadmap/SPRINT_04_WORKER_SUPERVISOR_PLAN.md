@@ -44,6 +44,10 @@ giving model output scheduler or approval authority.
 - Worker cancellation leaves no process in the launched process group.
 - Wall and inactivity timeouts produce stable retryable classifications.
 - A restarted supervisor reconciles abandoned attempts before scheduling.
-- A worker receives no Forja control, database, Git, or unrelated host secret.
+- The worker process environment receives no Forja control, database, Git,
+  proxy, or unrelated caller secret; production filesystem confidentiality is
+  an explicit Sprint 12 gate.
+- Codex model commands can write only to the declared scope directories and
+  evidence root; final Git inspection independently verifies the result.
 - Raw output never appears in structured lifecycle events.
 - Invalid or blocked final reports cannot be represented as successful work.

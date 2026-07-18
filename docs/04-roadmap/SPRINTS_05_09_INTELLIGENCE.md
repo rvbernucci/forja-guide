@@ -10,6 +10,8 @@ validation.
 - [ ] Create and remove isolated Git worktrees per attempt.
 - [ ] Implement file and artifact write leases with fencing tokens.
 - [ ] Reject writes outside the declared write set.
+- [ ] Require every untrusted adapter to prove equivalent OS-enforced writable
+  roots before registration.
 - [ ] Capture base commit, resulting commit, diff hash, and changed paths.
 - [ ] Implement mechanical validators for tests, formatting, schemas, secrets,
   generated files, and path scope.
@@ -132,4 +134,3 @@ preserving authority and access boundaries.
 - Conceptual queries benefit from dense retrieval.
 - Cross-tenant and stale-authority test cases return zero unauthorized results.
 - Deleting Qdrant and replaying the outbox rebuilds the expected projection.
-

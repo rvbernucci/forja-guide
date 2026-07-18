@@ -92,6 +92,9 @@ func (s *Supervisor) Execute(
 	if err := prepareEvidenceDirectory(task.EvidenceOutputDir, task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	}
+	if err := prepareWriteScopeDirectories(task); err != nil {
+		return contracts.WorkerResult{}, err
+	}
 	if changed, err := gitWorktreeChanges(task.WorktreePath); err != nil {
 		return contracts.WorkerResult{}, err
 	} else if len(changed) != 0 {
@@ -170,12 +173,28 @@ func (s *Supervisor) Execute(
 		startEventBudget = eventEmitTimeout
 	}
 	if startEventBudget <= 0 {
-		_ = terminateAndWait(command, waited, task.Budgets.CancellationGraceMS)
-		return contracts.WorkerResult{}, fmt.Errorf("worker wall budget elapsed before start telemetry")
+		waitErr := terminateAndWait(command, waited, task.Budgets.CancellationGraceMS)
+		result := s.resultFromExecution(
+			task, started, "wall_timeout", waitErr, stdout.Bytes(), stderr.Bytes(),
+		)
+		s.applyUsageBudgets(task, &result)
+		return result, errors.Join(
+			fmt.Errorf("worker wall budget elapsed before start telemetry"),
+			s.validateResult(result),
+			s.emitFinished(context.WithoutCancel(ctx), task, result),
+		)
 	}
 	if err := s.emitEventWithin(ctx, s.event(task, "worker.started"), startEventBudget); err != nil {
-		_ = terminateAndWait(command, waited, task.Budgets.CancellationGraceMS)
-		return contracts.WorkerResult{}, fmt.Errorf("emit worker.started: %w", err)
+		waitErr := terminateAndWait(command, waited, task.Budgets.CancellationGraceMS)
+		result := s.resultFromExecution(
+			task, started, "telemetry_failure", waitErr, stdout.Bytes(), stderr.Bytes(),
+		)
+		s.applyUsageBudgets(task, &result)
+		return result, errors.Join(
+			fmt.Errorf("emit worker.started: %w", err),
+			s.validateResult(result),
+			s.emitFinished(context.WithoutCancel(ctx), task, result),
+		)
 	}
 	reason, waitErr, eventErr := s.monitor(
 		ctx, task, command, budget, activity, waited, processStarted,
@@ -605,6 +624,38 @@ func validEvidenceReferences(
 		}
 	}
 	return true
+}
+
+func prepareWriteScopeDirectories(task contracts.WorkerTask) error {
+	resolvedRoot, err := filepath.EvalSymlinks(task.WorktreePath)
+	if err != nil {
+		return fmt.Errorf("resolve worktree path: %w", err)
+	}
+	for _, scope := range task.WriteScopes {
+		path := task.WorktreePath
+		if scope != "." {
+			path = filepath.Join(task.WorktreePath, filepath.FromSlash(scope))
+			if err := os.MkdirAll(path, 0o700); err != nil {
+				return fmt.Errorf("create worker write scope %q: %w", scope, err)
+			}
+		}
+		info, err := os.Stat(path)
+		if err != nil || !info.IsDir() {
+			return fmt.Errorf("worker write scope %q must be a directory", scope)
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			return fmt.Errorf("resolve worker write scope %q: %w", scope, err)
+		}
+		if !pathWithin(resolved, resolvedRoot) {
+			return fmt.Errorf("worker write scope %q escapes the worktree", scope)
+		}
+		resolvedScope, err := filepath.Rel(resolvedRoot, resolved)
+		if err != nil || filepath.Clean(resolvedScope) != filepath.Clean(scope) {
+			return fmt.Errorf("worker write scope %q must not traverse symlinks", scope)
+		}
+	}
+	return nil
 }
 
 func validateGitWorktreeBinding(repository string, worktree string) error {

@@ -100,14 +100,17 @@ The initial isolation hierarchy is:
 1. separate Git worktree;
 2. dedicated process group;
 3. sanitized environment;
-4. observed write-scope verification and full-worktree read scope;
+4. Codex sandbox roots plus observed write-scope verification and
+   full-worktree read scope;
 5. command allowlist and timeout;
 6. optional container or sandbox adapter for higher-risk tasks.
 
 Process groups provide bounded lifecycle control, not complete containment of
 a hostile descendant that creates a new session. Production workers require a
 cgroup, container, or equivalent job boundary; narrower read scopes are
-rejected until they can be enforced mechanically.
+rejected until they can be enforced mechanically. Same-user host files are not
+made confidential by environment filtering; production also requires a
+separate worker identity or container and brokered credentials.
 
 ## Validation
 

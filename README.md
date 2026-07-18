@@ -25,10 +25,14 @@ and derives audit identity only from server configuration. The official Go MCP
 SDK powers an authenticated stdio server with eight
 typed, audited tools for Sprint planning, submission, decisions, inspection,
 cancellation, and resumption. The Go worker runner now executes Codex CLI in an
-independent process group with sanitized environment, bounded runtime and
-output, schema-constrained reports, deterministic result classification, and
-fenced PostgreSQL attempt recovery. Sprint 05 still must validate and deliver
-worktree diffs before the end-to-end factory is complete.
+independent process group with sanitized environment, sandbox write roots
+derived from declared task scopes, bounded runtime and output,
+schema-constrained reports, deterministic result classification, and fenced
+PostgreSQL attempt recovery. Sprint 05 still must validate and deliver worktree
+diffs before the end-to-end factory is complete. Sprint 04 is not a production
+confidentiality boundary: workers require a dedicated disposable host until
+separate-identity containment and credential brokerage close the documented
+Sprint 12 gate.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 

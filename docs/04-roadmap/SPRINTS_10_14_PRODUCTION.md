@@ -63,6 +63,8 @@ adversarial inputs safely.
 - [ ] Implement capability and role policy evaluation.
 - [ ] Implement expiring, scoped, and revocable approvals.
 - [ ] Add secret manager adapter and credential rotation procedures.
+- [ ] Run workers under a separate OS identity or container filesystem and
+  broker model credentials without exposing a same-user readable auth root.
 - [ ] Add tenant isolation to PostgreSQL, Qdrant, Neo4j, object storage, logs,
   and context packs.
 - [ ] Add leader election or scheduler ownership rules.
@@ -78,6 +80,8 @@ adversarial inputs safely.
 ### Acceptance
 
 - A compromised worker cannot expand its authority.
+- A compromised worker cannot read deployment credentials or unrelated host
+  files through its execution identity.
 - Cross-tenant test suites pass at every store boundary.
 - Restart and partial-outage drills preserve canonical state.
 - Privileged actions are traceable to a valid approval.
@@ -136,4 +140,3 @@ release readiness.
 - Evidence independently proves the published result.
 - A clean environment reproduces the release.
 - Documentation distinguishes validated capabilities from future work.
-

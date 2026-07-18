@@ -69,6 +69,16 @@ func TestAttemptLifecycleIsFencedIdempotentAndSecretSafe(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(replayedFinish, finished) {
 		t.Fatalf("finish replay=%#v err=%v", replayedFinish, err)
 	}
+	changedReport := result
+	changedReport.Report = &contracts.WorkerReport{
+		Status: "completed", Summary: "different completion report",
+		ChangedPaths: []string{}, EvidenceRefs: []string{}, Risks: []string{},
+	}
+	if _, err := store.FinishAttempt(
+		t.Context(), created.AttemptID, 2, changedReport, finishMetadata, proof,
+	); !fault.IsCode(err, fault.CodeConflict) {
+		t.Fatalf("changed report replay error=%v, want conflict", err)
+	}
 	var eventCount, outboxCount int
 	var finishedPayload string
 	if err := pool.QueryRow(t.Context(), `
@@ -88,10 +98,17 @@ func TestAttemptLifecycleIsFencedIdempotentAndSecretSafe(t *testing.T) {
 	if strings.Contains(finishedPayload, "SECRET_STDOUT") || strings.Contains(finishedPayload, "SECRET_STDERR") {
 		t.Fatalf("canonical event leaked raw process output: %s", finishedPayload)
 	}
-	for _, required := range []string{result.StdoutSHA256, result.StderrSHA256, "termination_reason"} {
+	for _, required := range []string{
+		result.StdoutSHA256, result.StderrSHA256,
+		workerReportSHA256(result.Report), "termination_reason",
+	} {
 		if !strings.Contains(finishedPayload, required) {
 			t.Fatalf("finished event lacks %q: %s", required, finishedPayload)
 		}
+	}
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
+	if output, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("verify report-bound completion receipt: %v\n%s", err, output)
 	}
 }
 

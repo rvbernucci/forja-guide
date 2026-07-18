@@ -38,6 +38,9 @@ directory. An unrelated directory cannot acquire worker sandbox authority.
 Sprint 04 accepts only `read_scopes: ["."]`: the current Codex sandbox cannot
 enforce narrower confidentiality boundaries. A narrower scope is rejected
 rather than represented as security. Write scopes are mechanically enforced.
+Each write scope names a directory root. Missing directories are created and
+physically resolved before launch; non-directories and paths that traverse
+symlinks away from their declared repository location are rejected.
 
 `max_retries` counts retries after the first attempt. Therefore an
 `attempt_ordinal` greater than `max_retries + 1` is rejected before process
@@ -67,13 +70,21 @@ objective is supplied only over stdin. The invocation forces ephemeral mode,
 ignores user configuration, sets `approval_policy=never`, uses the
 `workspace-write` sandbox, disables sandbox command network access, and asks
 Codex CLI to validate its final message against the embedded report schema.
+The evidence directory is the primary writable workspace and each declared
+write scope is an explicit additional writable root. The model reads the
+repository by its absolute path. This blocks an out-of-scope edit-and-restore
+sequence that would otherwise disappear from the final diff.
 
 The report and schema files live in a supervisor-private temporary home, not in
 the model-writable worktree. A deployment-owned `CODEX_HOME` may provide model
 authentication to the Codex process, but an explicit shell environment policy
 removes that path and every credential variable from model-launched commands.
 Forja, database, Git, SSH-agent, API-token, and arbitrary caller environment
-entries are not inherited.
+entries are not inherited. Proxy variables are also dropped because proxy URLs
+may contain credentials. Environment filtering is not filesystem
+confidentiality: Sprint 04 workers require a dedicated disposable host without
+unrelated same-user secrets until external isolation and credential brokerage
+are implemented.
 
 The supervisor requires a clean worktree, inspects the real post-run Git status,
 and rejects omitted or out-of-scope changes. Because Git status omits ignored
@@ -123,6 +134,9 @@ the current rows.
 
 Raw stdout and stderr are deliberately excluded from canonical events. The
 finish event records only classification, timestamps, exit code, usage,
-evidence references, and output hashes. Completion persistence rejects future
-finish times and duration values that do not match the reported interval, then
-recomputes both output hashes before committing them.
+evidence references, output hashes, and the canonical SHA-256 of the complete
+worker report. Completion persistence rejects future finish times and duration
+values that do not match the reported interval, then recomputes both output
+hashes before committing them. The report hash also participates in the
+idempotency request hash, so one completion key cannot replay altered report
+content.

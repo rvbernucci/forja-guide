@@ -32,10 +32,20 @@ configuration, forces `approval_policy=never`, selects the `workspace-write`
 sandbox, disables sandbox command network access, supplies the objective over
 stdin, and constrains the final response with the canonical worker-report
 schema. Authentication may be read by the Codex process from a deployment-owned
-`CODEX_HOME`; an explicit child-command environment allowlist prevents tools
-from inheriting that location or credential variables. Forja control
-credentials, database URLs, Git credentials, and caller-provided environment
-entries are never forwarded.
+`CODEX_HOME`. The evidence directory is the primary writable root and each
+declared write-scope directory is exposed separately with `--add-dir`; the
+repository remains readable by absolute path. Final Git and ignored-file
+inspection is a second scope check rather than the only write boundary.
+
+An explicit child-command environment allowlist prevents tools from inheriting
+the authentication location, credential variables, or proxy settings. Forja
+control credentials, database URLs, Git credentials, and caller-provided
+environment entries are never forwarded. This environment rule does not make
+unrelated same-user host files confidential because `workspace-write` permits
+broad reads. Production therefore requires credentials unavailable to the
+worker OS identity, delivered through a broker or equivalent external
+containment. Until then, workers run only on a dedicated disposable host with
+no unrelated readable secrets.
 The schema and report targets live in a supervisor-private temporary directory,
 outside the model-writable worktree, preventing report-path symlink replacement.
 
@@ -59,12 +69,15 @@ retryable failure before new work is scheduled.
 - Model output cannot approve work or directly update scheduler state.
 - A process can edit only the provided worktree sandbox; actual Git status and
   a bounded before/after content snapshot of ignored files are checked against
-  declared write scopes before success. Sprint 05 adds worktree creation,
-  validation pipelines, and delivery leases.
+  declared write scopes before success. Codex write roots enforce these scopes
+  during execution. A future untrusted adapter must provide an equivalent OS
+  boundary before registration. Sprint 05 adds worktree creation, validation
+  pipelines, and delivery leases.
 - Network and filesystem isolation remain process-sandbox guarantees, not
   prompt instructions.
-- Sprint 04 accepts only full-worktree read scope. Narrower read isolation and
-  hostile-descendant containment remain fail-closed production gates.
+- Sprint 04 accepts only full-worktree read scope. Narrower read isolation,
+  hostile-descendant containment, same-user host confidentiality, and
+  credential brokerage remain fail-closed production gates.
 - Raw process output is bounded, canonicalized to valid UTF-8, and hashed from
   that exact persisted representation. It remains sensitive evidence and must
   not be copied into logs.
