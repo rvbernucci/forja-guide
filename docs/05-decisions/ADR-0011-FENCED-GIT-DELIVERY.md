@@ -48,6 +48,10 @@ only when that ref equals the intent's result commit, reports not-applied when
 the approved previous state remains, and records a terminal conflict for every
 other state. Exact release is replay-safe after expiry or an earlier release,
 but a changed fence is still rejected while authority remains live.
+Migration rollback is available only before this journal contains history.
+After the first prepared or terminal publication row, downgrade fails closed;
+operators preserve receipt authority and use forward repair rather than delete
+audit state to start an older binary.
 
 Canonical patch identity is the SHA-256 of Git's binary, full-index diff from
 the exact base commit to the result commit. Changed paths are normalized,

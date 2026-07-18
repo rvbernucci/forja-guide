@@ -155,6 +155,12 @@ migration identity, and deterministic legacy Sprint-to-Run relationship all
 recompute exactly; an ordinary caller named `migration-003` receives no
 exemption.
 
+Migration 005 is reversible only while `forja.delivery_publications` is empty.
+Its down migration first crosses the lease writer barrier and then refuses any
+prepared, published, conflicted, or abandoned publication history. If history
+exists, stop delivery intake and use forward repair; never delete canonical
+receipts merely to run an older schema or binary.
+
 ## Automated Drill
 
 The integration suite uses a disposable database:

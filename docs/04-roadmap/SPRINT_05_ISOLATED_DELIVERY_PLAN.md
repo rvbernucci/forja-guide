@@ -104,7 +104,7 @@ contaminated worktree is quarantined and never reused.
 - [x] Prove stale fencing tokens cannot commit or publish.
 - [x] Prove out-of-scope, ignored, symlink, and hidden-index mutations fail.
 - [x] Reproduce validation from a clean clone using only receipt references.
-- [ ] Run race, integration, rollback, and independent security reviews.
+- [x] Run race, integration, rollback, and independent security reviews.
 - [ ] Publish a fail-closed Sprint 05 evidence candidate and close it through
   the two-phase protocol.
 
@@ -123,6 +123,9 @@ contaminated worktree is quarantined and never reused.
 
 Stop new delivery intake, let live leases expire or release their exact fence,
 retain quarantined worktrees and receipts, remove only verified-clean temporary
-worktrees, reverse Sprint 05 migrations under the existing migration barrier,
-and deploy the authoritative Sprint 04 commit. Never reset an operator branch
-or delete unverified work to roll back the service.
+worktrees, and inspect the publication journal. When that journal is empty,
+reverse Sprint 05 migrations under the existing migration barrier and deploy
+the authoritative Sprint 04 commit. After any publication history exists,
+schema downgrade is deliberately refused: preserve the journal, keep delivery
+intake disabled, and use forward repair. Never delete receipts, reset an
+operator branch, or delete unverified work to force a rollback.
