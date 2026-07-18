@@ -162,6 +162,10 @@ func TestWorkerProcess(t *testing.T) {
 	case "retryable":
 		fmt.Fprint(os.Stderr, "temporarily unavailable: status 503")
 		os.Exit(1)
+	case "retryable-dirty":
+		_ = os.WriteFile("docs/partial.md", []byte("partial result\n"), 0o600)
+		fmt.Fprint(os.Stderr, "temporarily unavailable: status 503")
+		os.Exit(1)
 	case "silent":
 		time.Sleep(5 * time.Second)
 	case "busy":
@@ -349,11 +353,12 @@ func TestSupervisorClassifications(t *testing.T) {
 		{"blocked", "blocked", "blocked", "worker_blocked", false, func(*contracts.WorkerTask) {}},
 		{"invalid report", "invalid-report", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"scope escape", "scope-escape", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
-		{"extra reported path", "extra-reported-path", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
-		{"hidden scope escape", "hidden-scope-escape", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
-		{"evidence root poisoning", "poison-evidence-root", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
+		{"extra reported path", "extra-reported-path", "failed_terminal", "worktree_contaminated", false, func(*contracts.WorkerTask) {}},
+		{"hidden scope escape", "hidden-scope-escape", "failed_terminal", "worktree_contaminated", false, func(*contracts.WorkerTask) {}},
+		{"evidence root poisoning", "poison-evidence-root", "failed_terminal", "worktree_contaminated", false, func(*contracts.WorkerTask) {}},
 		{"invalid evidence", "invalid-evidence", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"retryable process", "retryable", "failed_retryable", "process_failure", true, func(*contracts.WorkerTask) {}},
+		{"dirty retryable process", "retryable-dirty", "failed_terminal", "worktree_contaminated", false, func(*contracts.WorkerTask) {}},
 		{"residual process", "residual-child", "failed_terminal", "process_failure", false, func(*contracts.WorkerTask) {}},
 		{"inactivity", "silent", "failed_retryable", "inactivity_timeout", true, func(task *contracts.WorkerTask) {
 			task.Budgets.InactivityMS = 120
@@ -376,6 +381,27 @@ func TestSupervisorClassifications(t *testing.T) {
 				t.Fatalf("result = %#v", result)
 			}
 		})
+	}
+}
+
+func TestSupervisorDirtyFailureRequiresWorktreeReplacement(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	task := workerTaskAt(repository)
+	result, err := executePreparedTask(t, task, processAdapter{mode: "retryable-dirty"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "failed_terminal" || result.Retryable ||
+		result.TerminationReason != "worktree_contaminated" {
+		t.Fatalf("contaminated result=%#v", result)
+	}
+	if _, err := os.Stat(filepath.Join(repository, "docs", "partial.md")); err != nil {
+		t.Fatalf("contaminating write was not preserved for quarantine evidence: %v", err)
+	}
+	if _, err := executePreparedTask(t, task, processAdapter{mode: "success"}); err == nil ||
+		!strings.Contains(err.Error(), "must be clean") {
+		t.Fatalf("contaminated worktree was reusable: %v", err)
 	}
 }
 
@@ -528,7 +554,8 @@ func TestSupervisorRejectsRetryAndTokenBudgets(t *testing.T) {
 			limit := 10
 			task.Budgets.MaxTokens = &limit
 		})
-		if err != nil || result.TerminationReason != "budget_rejected" || result.Report != nil {
+		if err != nil || result.Status != "failed_terminal" || result.Retryable ||
+			result.TerminationReason != "worktree_contaminated" || result.Report != nil {
 			t.Fatalf("result=%#v err=%v", result, err)
 		}
 	})
@@ -914,7 +941,8 @@ func TestSupervisorRejectsIgnoredOutOfScopeMutation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if result.Status != "failed_retryable" || result.TerminationReason != "invalid_report" {
+			if result.Status != "failed_terminal" || result.Retryable ||
+				result.TerminationReason != "worktree_contaminated" {
 				t.Fatalf("ignored scope escape result=%#v", result)
 			}
 		})

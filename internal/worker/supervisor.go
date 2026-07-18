@@ -178,8 +178,10 @@ func (s *Supervisor) Execute(
 			task, started, "wall_timeout", waitErr, stdout.Bytes(), stderr.Bytes(),
 		)
 		s.applyUsageBudgets(task, &result)
+		contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
 		return result, errors.Join(
 			fmt.Errorf("worker wall budget elapsed before start telemetry"),
+			contaminationErr,
 			s.validateResult(result),
 			s.emitFinished(context.WithoutCancel(ctx), task, result),
 		)
@@ -190,8 +192,10 @@ func (s *Supervisor) Execute(
 			task, started, "telemetry_failure", waitErr, stdout.Bytes(), stderr.Bytes(),
 		)
 		s.applyUsageBudgets(task, &result)
+		contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
 		return result, errors.Join(
 			fmt.Errorf("emit worker.started: %w", err),
+			contaminationErr,
 			s.validateResult(result),
 			s.emitFinished(context.WithoutCancel(ctx), task, result),
 		)
@@ -217,9 +221,10 @@ func (s *Supervisor) Execute(
 		s.applyReport(task, reportPath, ignoredBefore, &result)
 	}
 	s.applyUsageBudgets(task, &result)
+	contaminationErr := s.classifyWorktreeContamination(task, ignoredBefore, &result)
 	validationErr := s.validateResult(result)
 	finishErr := s.emitFinished(context.WithoutCancel(ctx), task, result)
-	return result, errors.Join(eventErr, validationErr, finishErr)
+	return result, errors.Join(eventErr, contaminationErr, validationErr, finishErr)
 }
 
 func (s *Supervisor) monitor(
@@ -458,6 +463,39 @@ func samePaths(actual []string, reported []string) bool {
 		}
 	}
 	return true
+}
+
+func (s *Supervisor) classifyWorktreeContamination(
+	task contracts.WorkerTask,
+	ignoredBefore map[string]string,
+	result *contracts.WorkerResult,
+) error {
+	if result.Status == "succeeded" {
+		return nil
+	}
+	actualPaths, actualErr := gitWorktreeChanges(task.WorktreePath)
+	ignoredAfter, ignoredErr := ignoredWorktreeSnapshot(task.WorktreePath)
+	if actualErr == nil && ignoredErr == nil {
+		actualPaths = mergeChangedPaths(
+			actualPaths,
+			changedSnapshotPaths(ignoredBefore, ignoredAfter),
+		)
+		if len(actualPaths) == 0 {
+			return nil
+		}
+	}
+	result.Status = "failed_terminal"
+	result.Retryable = false
+	result.TerminationReason = "worktree_contaminated"
+	result.Report = nil
+	result.EvidenceRefs = []string{}
+	if actualErr != nil || ignoredErr != nil {
+		return fmt.Errorf(
+			"verify failed worker worktree cleanliness: %w",
+			errors.Join(actualErr, ignoredErr),
+		)
+	}
+	return nil
 }
 
 func (s *Supervisor) applyUsageBudgets(

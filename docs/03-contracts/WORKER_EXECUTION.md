@@ -121,6 +121,13 @@ enforced in the JSON Schema:
 | `failed_terminal` | no | output, process, report, or budget rejection; no report |
 | `cancelled` | no | explicit cancellation; no report |
 
+Any non-successful attempt that changed the worktree, changed an ignored file,
+or prevented post-run cleanliness inspection is reclassified as terminal
+`worktree_contaminated`. Its report and evidence references are discarded. The
+caller must quarantine and replace that worktree; Sprint 04 never performs a
+destructive cleanup, and Sprint 05 owns automated disposal under an exclusive
+lease.
+
 Captured stdout and stderr are size-bounded sensitive evidence. Invalid byte
 sequences are replaced with U+FFFD, and each SHA-256 digest is computed over
 the exact canonical valid-UTF-8 string persisted in the result. Structured
