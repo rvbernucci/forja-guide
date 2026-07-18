@@ -164,7 +164,9 @@ func (s *ValidationService) Validate(
 	report := contracts.ValidationReport{
 		ValidationID:  deterministicValidationID(request, result),
 		DeliveryID:    request.DeliveryID,
-		SchemaVersion: "1.0",
+		TenantID:      request.TenantID,
+		RepositoryID:  request.RepositoryID,
+		SchemaVersion: contracts.DeliverySchemaVersion,
 		Status:        status,
 		BaseCommit:    result.BaseCommit,
 		ResultCommit:  result.ResultCommit,

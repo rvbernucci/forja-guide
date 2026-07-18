@@ -24,19 +24,28 @@ The canonical schemas are:
 - [`evidence-manifest.schema.json`](../../schemas/evidence-manifest.schema.json);
 - [`delivery-receipt.schema.json`](../../schemas/delivery-receipt.schema.json).
 
-All four use schema version `1.0`, reject unknown fields, and require semantic
-validation in addition to JSON Schema. Publication validation is joint: the
-approved request, canonical validation report bytes, evidence manifest bytes,
-and receipt are checked as one authority proof rather than independently.
+All four use schema version `1.1`, reject unknown fields, and require semantic
+validation in addition to JSON Schema. Version `1.1` intentionally supersedes
+the unclosed `1.0` draft by making tenant and repository identity mandatory;
+there is no accepted Sprint 05 `1.0` publication history to migrate. Publication
+validation is joint: the approved request, canonical validation report bytes,
+evidence manifest bytes, and receipt are checked as one authority proof rather
+than independently.
 
 ## Request Semantics
 
-The control plane provides an exact base commit and a publication ref beneath
+The control plane provides canonical `tenant_<uuidv4>` and `repo_<uuidv4>`
+public identities, an exact base commit, and a publication ref beneath
 `refs/forja/deliveries/`, plus the nullable expected previous commit for
 compare-and-swap publication. It supplies repository and worktree-root paths, but
 the delivery service derives the attempt worktree path. Repository-relative
 read, write, artifact, and evidence scopes must be canonical non-overlapping
 paths without empty, absolute, dot, or parent-traversal components.
+
+The public prefixes remain present in requests, reports, manifests, and
+receipts. One validated boundary strips only those prefixes to obtain the UUID
+keys used by PostgreSQL journals and leases; no caller may provide storage keys
+directly.
 
 Repository and worktree roots must be clean, non-root absolute paths and must
 not contain one another. The attempt worktree is derived beneath the approved
@@ -53,6 +62,16 @@ the canonical request before creating or inspecting a worktree. A replay must
 present byte-equivalent canonical authority; changing the repository, base
 commit, scopes, identities, or any other request field fails closed instead of
 reusing the existing attempt path.
+
+Each publication service instance is operator-bound to one immutable tenant,
+repository, and canonical physical Git root. The request, validation report,
+evidence manifest, receipt, publication-intent hash, journal scope, and every
+lease member must identify that same tenant and repository. Valid authority for
+repository A therefore cannot redirect a publication to another accessible
+checkout B. The service also pins the directory identity at construction and
+rechecks it around Git operations, so replacing the configured path with a
+different checkout fails before publication can become durable. Host-level
+filesystem administration remains part of the trusted operator boundary.
 
 ## Lease Set
 
@@ -133,7 +152,8 @@ approved previous object ID.
 Publication follows a durable cross-system protocol:
 
 1. PostgreSQL records a canonical `prepared` intent containing the exact
-   delivery attempt, lease set, authority digest, receipt bytes and digest,
+   tenant and repository, delivery attempt, lease set, authority digest,
+   receipt bytes and digest,
    previous object ID, result object ID, and namespaced ref.
 2. PostgreSQL reacquires and verifies the exact lease-set fences with enough
    time remaining for the bounded Git operation. One transaction holds every
@@ -163,6 +183,9 @@ the callback prevents a compliant concurrent acquirer from replacing authority
 between fence verification and compare-and-swap. A process failure after Git
 mutation but before the SQL commit leaves `prepared` authority for exact-ref
 recovery rather than manufacturing a receipt.
+The integration suite injects this exact fault after the real Git CAS and
+before SQL publication commit, constructs fresh Store and Service instances,
+and proves exact-ref recovery, immutable receipt bytes, and lease release.
 
 ## Validation
 
@@ -177,9 +200,7 @@ Built-in checks always run before configured validators:
 Their stable receipt IDs are `scope-boundary`, `filesystem-safety`,
 `secret-scan`, `schema-validation`, and `generated-file-policy`. All five must
 be present as passing `built_in` checks; another check kind cannot impersonate
-them.
-
-Configured format and test validators are trusted argv arrays stored in the
+them. Configured format and test validators are trusted argv arrays stored in the
 runtime registry. They have wall-clock and output budgets and receive a
 sanitized environment. Registration resolves the executable to a physical
 path, copies its bytes into an operator-private executable registry, and binds
@@ -248,7 +269,8 @@ the recorded lease fences, and the exact hashes in the receipt. Branch merge
 and release policy remain separate governed decisions.
 
 The receipt is authoritative only when its request and passing independent
-report agree on delivery, commits, patch, identities, and publication ref; its
+report agree on tenant, repository, delivery, commits, patch, identities, and
+publication ref; its
 content digests match the canonical report and manifest bytes; every changed
 path is within the approved write scopes; every evidence reference is within
 the evidence scope; and its sorted lease fences exactly equal the hierarchical

@@ -99,7 +99,8 @@ func (s *ValidationService) persistEvidence(
 		})
 	}
 	manifest := contracts.EvidenceManifest{
-		DeliveryID: request.DeliveryID, SchemaVersion: "1.0", Entries: entries,
+		DeliveryID: request.DeliveryID, TenantID: request.TenantID,
+		RepositoryID: request.RepositoryID, SchemaVersion: contracts.DeliverySchemaVersion, Entries: entries,
 	}
 	manifestJSON, err := json.Marshal(manifest)
 	if err != nil {

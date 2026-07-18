@@ -263,6 +263,8 @@ type WorkerResult struct {
 // DeliveryRequest is the complete approved authority envelope for one Git delivery.
 type DeliveryRequest struct {
 	DeliveryID                string        `json:"delivery_id"`
+	TenantID                  string        `json:"tenant_id"`
+	RepositoryID              string        `json:"repository_id"`
 	TaskID                    string        `json:"task_id"`
 	AttemptID                 string        `json:"attempt_id"`
 	RunID                     string        `json:"run_id"`
@@ -307,6 +309,8 @@ type ValidationCheck struct {
 type ValidationReport struct {
 	ValidationID  string            `json:"validation_id"`
 	DeliveryID    string            `json:"delivery_id"`
+	TenantID      string            `json:"tenant_id"`
+	RepositoryID  string            `json:"repository_id"`
 	SchemaVersion string            `json:"schema_version"`
 	Status        string            `json:"status"`
 	BaseCommit    string            `json:"base_commit"`
@@ -330,6 +334,8 @@ type EvidenceEntry struct {
 // EvidenceManifest is the canonical content inventory bound into a receipt.
 type EvidenceManifest struct {
 	DeliveryID    string          `json:"delivery_id"`
+	TenantID      string          `json:"tenant_id"`
+	RepositoryID  string          `json:"repository_id"`
 	SchemaVersion string          `json:"schema_version"`
 	Entries       []EvidenceEntry `json:"entries"`
 }
@@ -345,6 +351,8 @@ type DeliveryLeaseFence struct {
 // DeliveryReceipt proves a validated compare-and-swap publication.
 type DeliveryReceipt struct {
 	DeliveryID                string               `json:"delivery_id"`
+	TenantID                  string               `json:"tenant_id"`
+	RepositoryID              string               `json:"repository_id"`
 	SchemaVersion             string               `json:"schema_version"`
 	Status                    string               `json:"status"`
 	BaseCommit                string               `json:"base_commit"`

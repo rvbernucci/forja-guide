@@ -26,6 +26,10 @@ validation, persists hash-bound evidence, and publishes only
 `refs/forja/deliveries/<delivery-id>`. PostgreSQL stores the publication intent
 before Git CAS and the canonical receipt before lease release. Exact replay and
 crash recovery re-read the direct Git ref and never infer success.
+The publication service is configured for one canonical tenant, repository,
+and physical Git root; contracts, leases, journal records, and receipt identity
+must all match that authority before Git is accessed. The four delivery
+artifacts use schema version `1.1` and pin tenant/repository identity.
 
 The acceptance path intentionally runs serially with the PostgreSQL suite:
 
@@ -35,11 +39,12 @@ make test-integration
 ```
 
 This executes Git and PostgreSQL end to end, verifies durable replay after
-lease release, then runs the restart smoke test. The boundary is currently a Go
-library rather than a public MCP or CLI command. Post-worker worktree deletion
-also remains disabled until the supervisor can issue a non-forgeable
-process-quiescence proof; preserving verified or quarantined bytes is the
-fail-closed behavior.
+lease release, injects a crash after Git CAS but before SQL commit, recovers it
+through fresh runtime instances, then runs the restart smoke test. The boundary
+is currently a Go library rather than a public MCP or CLI command. Post-worker
+worktree deletion also remains disabled until the supervisor can issue a
+non-forgeable process-quiescence proof; preserving verified or quarantined
+bytes is the fail-closed behavior.
 
 ## Worker Supervisor
 

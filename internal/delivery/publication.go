@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"slices"
 	"strings"
 
@@ -31,12 +32,22 @@ type PublicationResult struct {
 	LeaseReleased bool
 }
 
+// RepositoryAuthority binds one publication service instance to one logical
+// repository and its operator-configured canonical Git checkout.
+type RepositoryAuthority struct {
+	TenantID       string
+	RepositoryID   string
+	RepositoryPath string
+}
+
 // PublicationService owns the journal-before-CAS-before-receipt protocol.
 type PublicationService struct {
-	manager  *WorktreeManager
-	journal  persistence.DeliveryPublicationRepository
-	leaseSet persistence.LeaseSetRepository
-	schemas  *contracts.Registry
+	manager            *WorktreeManager
+	journal            persistence.DeliveryPublicationRepository
+	leaseSet           persistence.LeaseSetRepository
+	schemas            *contracts.Registry
+	authority          RepositoryAuthority
+	repositoryIdentity os.FileInfo
 }
 
 // NewPublicationService constructs a publication boundary over trusted Git
@@ -45,17 +56,47 @@ func NewPublicationService(
 	manager *WorktreeManager,
 	journal persistence.DeliveryPublicationRepository,
 	leaseSet persistence.LeaseSetRepository,
+	authority RepositoryAuthority,
 ) (*PublicationService, error) {
 	if manager == nil || journal == nil || leaseSet == nil {
 		return nil, fmt.Errorf("worktree manager, publication journal, and lease repository are required")
 	}
+	if err := contracts.ValidateRepositoryIdentity(authority.TenantID, authority.RepositoryID); err != nil {
+		return nil, fmt.Errorf("repository authority: %w", err)
+	}
+	physicalRepository, err := canonicalDirectory(authority.RepositoryPath, "repository authority")
+	if err != nil {
+		return nil, err
+	}
+	repositoryIdentity, err := os.Stat(physicalRepository)
+	if err != nil {
+		return nil, fmt.Errorf("stat repository authority: %w", err)
+	}
+	authority.RepositoryPath = physicalRepository
 	schemas, err := contracts.NewRegistry()
 	if err != nil {
 		return nil, fmt.Errorf("compile canonical schemas: %w", err)
 	}
 	return &PublicationService{
 		manager: manager, journal: journal, leaseSet: leaseSet, schemas: schemas,
+		authority: authority, repositoryIdentity: repositoryIdentity,
 	}, nil
+}
+
+func (s *PublicationService) verifyRepositoryAuthority() error {
+	physicalRepository, err := canonicalDirectory(s.authority.RepositoryPath, "repository authority")
+	if err != nil {
+		return err
+	}
+	currentIdentity, err := os.Stat(physicalRepository)
+	if err != nil {
+		return fmt.Errorf("stat repository authority: %w", err)
+	}
+	if physicalRepository != s.authority.RepositoryPath ||
+		!os.SameFile(s.repositoryIdentity, currentIdentity) {
+		return fmt.Errorf("publication service repository authority changed on disk")
+	}
+	return nil
 }
 
 // Publish persists an immutable intent, updates only the approved namespaced
@@ -87,7 +128,7 @@ func (s *PublicationService) Publish(
 		}
 		switch recorded.State {
 		case "published":
-			observed, err := s.observePublicationRef(ctx, request.RepositoryPath, request.PublicationRef)
+			observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 			if err != nil {
 				return PublicationResult{}, err
 			}
@@ -113,7 +154,7 @@ func (s *PublicationService) Publish(
 		return PublicationResult{}, fmt.Errorf("%w: prepared publication is already conflicted", ErrPublicationConflict)
 	}
 	if record.State == "published" {
-		observed, err := s.observePublicationRef(ctx, request.RepositoryPath, request.PublicationRef)
+		observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 		if err != nil {
 			return PublicationResult{}, err
 		}
@@ -173,7 +214,7 @@ func (s *PublicationService) Recover(
 	if err := requireExactPublicationRecord(record, intent); err != nil {
 		return PublicationResult{}, err
 	}
-	observed, err := s.observePublicationRef(ctx, request.RepositoryPath, request.PublicationRef)
+	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 	if err != nil {
 		return PublicationResult{}, err
 	}
@@ -229,29 +270,59 @@ func (s *PublicationService) publicationIntent(
 	bundle ValidationBundle,
 	leaseSet persistence.LeaseSet,
 ) (persistence.DeliveryPublicationIntent, contracts.DeliveryReceipt, error) {
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
 	if err := contracts.ValidateDeliveryRequest(request); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	physicalRepository, err := canonicalDirectory(request.RepositoryPath, "delivery repository")
+	if err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if request.TenantID != s.authority.TenantID || request.RepositoryID != s.authority.RepositoryID ||
+		physicalRepository != s.authority.RepositoryPath {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"delivery request does not match the publication service repository authority",
+		)
+	}
+	storageTenantID, storageRepositoryID, err := contracts.RepositoryStorageIdentity(
+		request.TenantID, request.RepositoryID,
+	)
+	if err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
 	}
 	if leaseSet.LeaseSetID != request.AttemptID {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf("lease set ID must equal the approved attempt ID")
 	}
-	resolved, err := s.manager.resolveRequest(ctx, request)
+	authorizedRequest := request
+	authorizedRequest.RepositoryPath = s.authority.RepositoryPath
+	resolved, err := s.manager.resolveRequest(ctx, authorizedRequest)
 	if err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if resolved.repositoryPhysical != s.authority.RepositoryPath {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"resolved delivery repository changed after authority validation",
+		)
 	}
 	recomputed, err := s.manager.inspectCommitResult(ctx, resolved, result.ResultCommit)
 	if err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
 	}
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
 	if !sameCommitResult(result, recomputed) {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf("supplied result identity disagrees with Git")
 	}
-	fences, err := receiptFences(request, leaseSet)
+	fences, err := receiptFences(request, leaseSet, storageTenantID, storageRepositoryID)
 	if err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
 	}
 	receipt := contracts.DeliveryReceipt{
-		DeliveryID: request.DeliveryID, SchemaVersion: "1.0", Status: "published",
+		DeliveryID: request.DeliveryID, TenantID: request.TenantID,
+		RepositoryID: request.RepositoryID, SchemaVersion: contracts.DeliverySchemaVersion, Status: "published",
 		BaseCommit: result.BaseCommit, ResultCommit: result.ResultCommit,
 		ResultTree: result.ResultTree, PatchSHA256: result.PatchSHA256,
 		ChangedPaths:              append([]string(nil), result.ChangedPaths...),
@@ -282,12 +353,15 @@ func (s *PublicationService) publicationIntent(
 	receiptDigest := sha256.Sum256(receiptJSON)
 	identityDocument := struct {
 		DeliveryID      string `json:"delivery_id"`
+		TenantID        string `json:"tenant_id"`
+		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
-		request.DeliveryID, request.AttemptID, leaseSet.LeaseSetID,
+		request.DeliveryID, storageTenantID, storageRepositoryID,
+		request.AttemptID, leaseSet.LeaseSetID,
 		fmt.Sprintf("%x", authorityDigest), fmt.Sprintf("%x", receiptDigest),
 	}
 	identityJSON, err := json.Marshal(identityDocument)
@@ -296,7 +370,8 @@ func (s *PublicationService) publicationIntent(
 	}
 	intentDigest := sha256.Sum256(identityJSON)
 	return persistence.DeliveryPublicationIntent{
-		DeliveryID: request.DeliveryID, AttemptID: request.AttemptID,
+		DeliveryID: request.DeliveryID, TenantID: storageTenantID,
+		RepositoryID: storageRepositoryID, AttemptID: request.AttemptID,
 		LeaseSetID: leaseSet.LeaseSetID, PublicationRef: request.PublicationRef,
 		PublicationPreviousCommit: cloneOptionalString(request.PublicationPreviousCommit),
 		ResultCommit:              result.ResultCommit,
@@ -309,13 +384,16 @@ func (s *PublicationService) publicationIntent(
 func receiptFences(
 	request contracts.DeliveryRequest,
 	leaseSet persistence.LeaseSet,
+	storageTenantID string,
+	storageRepositoryID string,
 ) ([]contracts.DeliveryLeaseFence, error) {
 	if leaseSet.OwnerID == "" || len(leaseSet.Leases) == 0 {
 		return nil, fmt.Errorf("lease set has no ownership proof")
 	}
 	fences := make([]contracts.DeliveryLeaseFence, 0, len(leaseSet.Leases))
 	for _, lease := range leaseSet.Leases {
-		if lease.OwnerID != leaseSet.OwnerID || lease.FencingToken < 1 {
+		if lease.OwnerID != leaseSet.OwnerID || lease.FencingToken < 1 ||
+			lease.TenantID != storageTenantID || lease.RepositoryID != storageRepositoryID {
 			return nil, fmt.Errorf("lease set contains inconsistent ownership proof")
 		}
 		fences = append(fences, contracts.DeliveryLeaseFence{
@@ -344,7 +422,7 @@ func (s *PublicationService) applyPublicationCAS(
 	request contracts.DeliveryRequest,
 	intent persistence.DeliveryPublicationIntent,
 ) error {
-	observed, err := s.observePublicationRef(ctx, request.RepositoryPath, request.PublicationRef)
+	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 	if err != nil {
 		return err
 	}
@@ -364,14 +442,17 @@ func (s *PublicationService) applyPublicationCAS(
 	if request.PublicationPreviousCommit != nil {
 		oldCommit = *request.PublicationPreviousCommit
 	}
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return err
+	}
 	_, updateErr := s.manager.gitMutation(
-		ctx, request.RepositoryPath,
+		ctx, s.authority.RepositoryPath,
 		"update-ref", "--no-deref", request.PublicationRef, intent.ResultCommit, oldCommit,
 	)
 	if updateErr == nil {
-		return nil
+		return s.verifyRepositoryAuthority()
 	}
-	observed, observeErr := s.observePublicationRef(ctx, request.RepositoryPath, request.PublicationRef)
+	observed, observeErr := s.observePublicationRef(ctx, request.PublicationRef)
 	if observeErr == nil && observed != nil && *observed == intent.ResultCommit {
 		return nil
 	}
@@ -405,16 +486,21 @@ func (e *publicationRefConflict) Unwrap() error {
 
 func (s *PublicationService) observePublicationRef(
 	ctx context.Context,
-	repository string,
 	publicationRef string,
 ) (*string, error) {
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return nil, err
+	}
 	output, err := s.manager.git(
-		ctx, repository,
+		ctx, s.authority.RepositoryPath,
 		"for-each-ref", "--format=%(refname)%00%(objecttype)%00%(objectname)%00%(symref)",
 		"--count=2", publicationRef,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("inspect publication ref: %w", err)
+	}
+	if err := s.verifyRepositoryAuthority(); err != nil {
+		return nil, err
 	}
 	output = bytes.TrimSpace(output)
 	if len(output) == 0 {
@@ -439,7 +525,8 @@ func requireExactPublicationRecord(
 	intent persistence.DeliveryPublicationIntent,
 ) error {
 	stored := record.Intent
-	if stored.DeliveryID != intent.DeliveryID || stored.AttemptID != intent.AttemptID ||
+	if stored.DeliveryID != intent.DeliveryID || stored.TenantID != intent.TenantID ||
+		stored.RepositoryID != intent.RepositoryID || stored.AttemptID != intent.AttemptID ||
 		stored.LeaseSetID != intent.LeaseSetID || stored.PublicationRef != intent.PublicationRef ||
 		!optionalCommitEqual(stored.PublicationPreviousCommit, intent.PublicationPreviousCommit) ||
 		stored.ResultCommit != intent.ResultCommit || stored.AuthoritySHA256 != intent.AuthoritySHA256 ||

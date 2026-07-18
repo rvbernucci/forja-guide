@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"path"
+	"regexp"
 	"slices"
 	"strings"
 	"time"
@@ -21,9 +22,55 @@ var mandatoryBuiltInCheckIDs = []string{
 	"secret-scan",
 }
 
+// DeliverySchemaVersion identifies the repository-scoped delivery contract.
+// Version 1.1 adds mandatory tenant and repository identities to every artifact.
+const DeliverySchemaVersion = "1.1"
+
+var repositoryStorageIdentityPattern = regexp.MustCompile(
+	`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+)
+
+// ValidateRepositoryIdentity enforces canonical prefixed public authority IDs.
+func ValidateRepositoryIdentity(tenantID string, repositoryID string) error {
+	if !strings.HasPrefix(tenantID, "tenant_") ||
+		!repositoryStorageIdentityPattern.MatchString(strings.TrimPrefix(tenantID, "tenant_")) {
+		return fmt.Errorf("tenant ID is not a canonical tenant-prefixed UUIDv4")
+	}
+	if !strings.HasPrefix(repositoryID, "repo_") ||
+		!repositoryStorageIdentityPattern.MatchString(strings.TrimPrefix(repositoryID, "repo_")) {
+		return fmt.Errorf("repository ID is not a canonical repo-prefixed UUIDv4")
+	}
+	return nil
+}
+
+// RepositoryStorageIdentity maps validated public IDs to PostgreSQL UUID keys.
+func RepositoryStorageIdentity(tenantID string, repositoryID string) (string, string, error) {
+	if err := ValidateRepositoryIdentity(tenantID, repositoryID); err != nil {
+		return "", "", err
+	}
+	return strings.TrimPrefix(tenantID, "tenant_"), strings.TrimPrefix(repositoryID, "repo_"), nil
+}
+
+// ValidateRepositoryStorageIdentity validates internal PostgreSQL UUID keys.
+func ValidateRepositoryStorageIdentity(tenantID string, repositoryID string) error {
+	if !repositoryStorageIdentityPattern.MatchString(tenantID) {
+		return fmt.Errorf("storage tenant ID is not a canonical UUIDv4")
+	}
+	if !repositoryStorageIdentityPattern.MatchString(repositoryID) {
+		return fmt.Errorf("storage repository ID is not a canonical UUIDv4")
+	}
+	return nil
+}
+
 // ValidateDeliveryRequest enforces cross-field authority rules that JSON Schema
 // cannot express.
 func ValidateDeliveryRequest(request DeliveryRequest) error {
+	if request.SchemaVersion != DeliverySchemaVersion {
+		return fmt.Errorf("delivery request has unsupported schema version %q", request.SchemaVersion)
+	}
+	if err := ValidateRepositoryIdentity(request.TenantID, request.RepositoryID); err != nil {
+		return err
+	}
 	if request.AuthorID == request.ValidatorID {
 		return fmt.Errorf("delivery author and independent validator must differ")
 	}
@@ -75,6 +122,12 @@ func ValidateDeliveryRequest(request DeliveryRequest) error {
 
 // ValidateValidationReport proves internal timing, identity, and result coupling.
 func ValidateValidationReport(report ValidationReport) error {
+	if report.SchemaVersion != DeliverySchemaVersion {
+		return fmt.Errorf("validation report has unsupported schema version %q", report.SchemaVersion)
+	}
+	if err := ValidateRepositoryIdentity(report.TenantID, report.RepositoryID); err != nil {
+		return err
+	}
 	if report.AuthorID == report.ValidatorID {
 		return fmt.Errorf("validation author and validator must differ")
 	}
@@ -171,6 +224,8 @@ func ValidateDeliveryPublication(
 		}
 	}
 	if report.DeliveryID != request.DeliveryID || receipt.DeliveryID != request.DeliveryID ||
+		report.TenantID != request.TenantID || receipt.TenantID != request.TenantID ||
+		report.RepositoryID != request.RepositoryID || receipt.RepositoryID != request.RepositoryID ||
 		report.BaseCommit != request.BaseCommit || receipt.BaseCommit != request.BaseCommit ||
 		receipt.ResultCommit != report.ResultCommit || receipt.PatchSHA256 != report.PatchSHA256 ||
 		receipt.AuthorID != request.AuthorID || report.AuthorID != request.AuthorID ||
@@ -209,8 +264,9 @@ func ValidateDeliveryPublication(
 	if err != nil {
 		return err
 	}
-	if manifest.DeliveryID != request.DeliveryID {
-		return fmt.Errorf("evidence manifest identifies another delivery")
+	if manifest.DeliveryID != request.DeliveryID || manifest.TenantID != request.TenantID ||
+		manifest.RepositoryID != request.RepositoryID {
+		return fmt.Errorf("evidence manifest identifies another repository delivery")
 	}
 	entryPaths := make([]string, 0, len(manifest.Entries))
 	reportEntryFound := false
@@ -253,6 +309,12 @@ func ValidateDeliveryPublication(
 }
 
 func validateDeliveryReceiptStructure(receipt DeliveryReceipt) error {
+	if receipt.SchemaVersion != DeliverySchemaVersion {
+		return fmt.Errorf("delivery receipt has unsupported schema version %q", receipt.SchemaVersion)
+	}
+	if err := ValidateRepositoryIdentity(receipt.TenantID, receipt.RepositoryID); err != nil {
+		return err
+	}
 	if receipt.Status != "published" {
 		return fmt.Errorf("delivery receipt must represent a published result")
 	}
@@ -431,8 +493,11 @@ func decodeCanonicalEvidenceManifest(content []byte) (EvidenceManifest, error) {
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		return EvidenceManifest{}, fmt.Errorf("evidence manifest contains trailing JSON")
 	}
-	if manifest.SchemaVersion != "1.0" || len(manifest.Entries) == 0 {
+	if manifest.SchemaVersion != DeliverySchemaVersion || len(manifest.Entries) == 0 {
 		return EvidenceManifest{}, fmt.Errorf("evidence manifest has an unsupported version or no entries")
+	}
+	if err := ValidateRepositoryIdentity(manifest.TenantID, manifest.RepositoryID); err != nil {
+		return EvidenceManifest{}, fmt.Errorf("evidence manifest: %w", err)
 	}
 	canonical, err := json.Marshal(manifest)
 	if err != nil {

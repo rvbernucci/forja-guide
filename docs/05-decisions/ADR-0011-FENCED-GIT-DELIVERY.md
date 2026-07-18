@@ -53,6 +53,22 @@ After the first prepared or terminal publication row, downgrade fails closed;
 operators preserve receipt authority and use forward repair rather than delete
 audit state to start an older binary.
 
+Delivery request, validation, evidence, and receipt contracts use version
+`1.1`. They carry the canonical public `tenant_<uuidv4>` and `repo_<uuidv4>`
+identities. A single validated persistence boundary removes those prefixes for
+PostgreSQL UUID keys and fenced lease records; public callers never provide raw
+storage authority.
+
+Each publication service instance is constructed for exactly one public tenant,
+one public repository, and one operator-configured canonical Git checkout. The
+service pins the checkout's filesystem identity and rechecks it around Git reads
+and compare-and-swap mutation. Requests, leases, journal records, reports,
+manifests, and receipts must resolve to that same authority. Replacing the path
+with another checkout or redirecting a request to an accessible repository
+fails before publication can become durable. Administrative replacement of
+filesystem objects remains inside the trusted host-operator boundary rather
+than an untrusted worker capability.
+
 Canonical patch identity is the SHA-256 of Git's binary, full-index diff from
 the exact base commit to the result commit. Changed paths are normalized,
 deduplicated, byte-sorted repository-relative paths. Validator definitions are
@@ -137,6 +153,8 @@ Negative:
   service;
 - publication deliberately holds one bounded database transaction across the
   local Git compare-and-swap to remove the stale-fence interval;
+- each publication service requires operator configuration for one canonical
+  repository checkout, whose host administration remains trusted;
 - the default branch still requires an external governed merge process.
 
 ## Guardrail
@@ -148,4 +166,5 @@ publication compare-and-swap failures, worktree reuse after contamination, and
 receipt replay with different content. They must also prove journal-before-CAS,
 live-fence locks across CAS, no callback on stale or short-horizon authority,
 receipt-before-release, exact-ref observation, recovery after the Git/SQL crash
-window, and rollback refusal while publication history exists.
+window, repository-path replacement rejection, cross-repository isolation, and
+rollback refusal while publication history exists.

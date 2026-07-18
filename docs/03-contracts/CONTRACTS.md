@@ -79,6 +79,11 @@ decision_
 IDs must not encode credentials, local paths, customer names, or mutable
 display labels.
 
+Operational tenant and repository authorities use `tenant_<uuidv4>` and
+`repo_<uuidv4>` publicly. Persistence adapters validate those values and map
+only their UUID bodies to PostgreSQL `uuid` keys; storage UUIDs are not public
+contract identifiers.
+
 ## Event Envelope
 
 Events form the durable coordination backbone:

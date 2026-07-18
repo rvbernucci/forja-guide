@@ -4,10 +4,12 @@
   "title": "Forja Delivery Evidence Manifest",
   "type": "object",
   "additionalProperties": false,
-  "required": ["delivery_id", "schema_version", "entries"],
+  "required": ["delivery_id", "tenant_id", "repository_id", "schema_version", "entries"],
   "properties": {
     "delivery_id": {"type": "string", "pattern": "^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
-    "schema_version": {"const": "1.0"},
+    "tenant_id": {"type": "string", "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "schema_version": {"const": "1.1"},
     "entries": {
       "type": "array",
       "minItems": 1,

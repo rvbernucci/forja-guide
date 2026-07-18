@@ -226,6 +226,9 @@ func (s *Store) RecoverDeliveryPublication(
 	if err := validatePublicationIntent(intent); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
+	if err := s.validatePublicationScope(intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
 	if observedCommit != intent.ResultCommit {
 		return persistence.DeliveryPublication{}, fault.New(
 			fault.CodeConflict, "postgres.RecoverDeliveryPublication",
@@ -243,6 +246,9 @@ func (s *Store) ConflictDeliveryPublication(
 	observedCommit *string,
 ) (persistence.DeliveryPublication, error) {
 	if err := validatePublicationIntent(intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if err := s.validatePublicationScope(intent); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
 	if observedCommit != nil && !publicationCommitPattern.MatchString(*observedCommit) {
@@ -340,6 +346,9 @@ func (s *Store) validatePublicationAuthority(
 	if err := validatePublicationIntent(intent); err != nil {
 		return nil, nil, nil, err
 	}
+	if err := s.validatePublicationScope(intent); err != nil {
+		return nil, nil, nil, err
+	}
 	if leaseSet.LeaseSetID != intent.LeaseSetID {
 		return nil, nil, nil, invalidPublicationError("lease set ID disagrees with publication intent")
 	}
@@ -365,6 +374,9 @@ func (s *Store) validatePublicationAuthority(
 }
 
 func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) error {
+	if err := contracts.ValidateRepositoryStorageIdentity(intent.TenantID, intent.RepositoryID); err != nil {
+		return invalidPublicationError("publication intent has an invalid repository identity")
+	}
 	if intent.LeaseSetID != intent.AttemptID || intent.DeliveryID == "" || intent.AttemptID == "" ||
 		intent.PublicationRef != "refs/forja/deliveries/"+intent.DeliveryID ||
 		!publicationCommitPattern.MatchString(intent.ResultCommit) ||
@@ -383,23 +395,36 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 	if err := json.Unmarshal(intent.ReceiptJSON, &receipt); err != nil {
 		return invalidPublicationError("receipt bytes are not valid JSON")
 	}
+	if receipt.SchemaVersion != contracts.DeliverySchemaVersion || receipt.Status != "published" {
+		return invalidPublicationError("receipt contract version or state is unsupported")
+	}
+	receiptTenantID, receiptRepositoryID, err := contracts.RepositoryStorageIdentity(
+		receipt.TenantID, receipt.RepositoryID,
+	)
+	if err != nil {
+		return invalidPublicationError("receipt repository identity is not canonical")
+	}
 	canonical, err := json.Marshal(receipt)
 	if err != nil || !bytes.Equal(canonical, intent.ReceiptJSON) {
 		return invalidPublicationError("receipt bytes are not canonical")
 	}
-	if receipt.DeliveryID != intent.DeliveryID || receipt.PublicationRef != intent.PublicationRef ||
+	if receipt.DeliveryID != intent.DeliveryID || receiptTenantID != intent.TenantID ||
+		receiptRepositoryID != intent.RepositoryID || receipt.PublicationRef != intent.PublicationRef ||
 		receipt.ResultCommit != intent.ResultCommit ||
 		!optionalStringEqual(receipt.PublicationPreviousCommit, intent.PublicationPreviousCommit) {
 		return invalidPublicationError("receipt identity disagrees with publication intent")
 	}
 	identityDocument := struct {
 		DeliveryID      string `json:"delivery_id"`
+		TenantID        string `json:"tenant_id"`
+		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
-		intent.DeliveryID, intent.AttemptID, intent.LeaseSetID,
+		intent.DeliveryID, intent.TenantID, intent.RepositoryID,
+		intent.AttemptID, intent.LeaseSetID,
 		intent.AuthoritySHA256, intent.ReceiptSHA256,
 	}
 	identityJSON, err := json.Marshal(identityDocument)
@@ -409,6 +434,13 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 	identityDigest := sha256.Sum256(identityJSON)
 	if intent.IntentSHA256 != fmt.Sprintf("%x", identityDigest) {
 		return invalidPublicationError("intent digest disagrees with publication identity")
+	}
+	return nil
+}
+
+func (s *Store) validatePublicationScope(intent persistence.DeliveryPublicationIntent) error {
+	if intent.TenantID != s.tenantID || intent.RepositoryID != s.repositoryID {
+		return invalidPublicationError("publication intent is outside the store repository scope")
 	}
 	return nil
 }
@@ -495,6 +527,8 @@ func loadDeliveryPublication(
 		return persistence.DeliveryPublication{}, false, databaseError("postgres.loadDeliveryPublication", err)
 	}
 	record.Intent.DeliveryID = deliveryID
+	record.Intent.TenantID = tenantID
+	record.Intent.RepositoryID = repositoryID
 	record.Intent.AttemptID = attemptID
 	record.Intent.ReceiptJSON = bytes.Clone(record.Intent.ReceiptJSON)
 	record.PreparedAt = record.PreparedAt.UTC()
@@ -510,7 +544,8 @@ func exactPublicationIntent(
 	stored persistence.DeliveryPublicationIntent,
 	supplied persistence.DeliveryPublicationIntent,
 ) error {
-	if stored.DeliveryID != supplied.DeliveryID || stored.AttemptID != supplied.AttemptID ||
+	if stored.DeliveryID != supplied.DeliveryID || stored.TenantID != supplied.TenantID ||
+		stored.RepositoryID != supplied.RepositoryID || stored.AttemptID != supplied.AttemptID ||
 		stored.LeaseSetID != supplied.LeaseSetID || stored.PublicationRef != supplied.PublicationRef ||
 		!optionalStringEqual(stored.PublicationPreviousCommit, supplied.PublicationPreviousCommit) ||
 		stored.ResultCommit != supplied.ResultCommit || stored.AuthoritySHA256 != supplied.AuthoritySHA256 ||

@@ -53,6 +53,10 @@ contaminated worktree is quarantined and never reused.
 - [x] Require distinct author and independent-validator identities.
 - [x] Define canonical patch, changed-path, tree, and evidence hashes.
 - [x] Add strict Go contract mappings and valid/invalid fixtures.
+- [x] Bind request, report, manifest, receipt, journal, and leases to one
+  tenant/repository identity and operator-authorized canonical Git root.
+- [x] Publish the repository-scoped delivery artifacts as schema version `1.1`;
+  reject the unclosed `1.0` draft rather than changing it silently.
 
 ### 2. Atomic lease authority
 
@@ -96,6 +100,11 @@ contaminated worktree is quarantined and never reused.
 - [x] Make receipt creation and publication replay-safe.
 - [x] Reconcile exact prepared attempts after lease expiry without deleting
   quarantined evidence or inferring publication from timing.
+- [x] Reject cross-repository path redirection before journal or Git mutation.
+- [x] Detect replacement of the operator-authorized physical repository path
+  before durable publication.
+- [x] Recover through fresh PostgreSQL Store and publication-service instances
+  after an injected crash between real Git CAS and SQL publication commit.
 
 ### 6. Acceptance and closure
 

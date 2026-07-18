@@ -699,10 +699,12 @@ func deliveryRequest(repository string, root string, base string) contracts.Deli
 	previous := base
 	return contracts.DeliveryRequest{
 		DeliveryID:                "delivery_11111111-1111-4111-8111-111111111111",
+		TenantID:                  "tenant_00000000-0000-4000-8000-000000000001",
+		RepositoryID:              "repo_00000000-0000-4000-8000-000000000002",
 		TaskID:                    "task_11111111-1111-4111-8111-111111111111",
 		AttemptID:                 "attempt_11111111-1111-4111-8111-111111111111",
 		RunID:                     "run_11111111-1111-4111-8111-111111111111",
-		SchemaVersion:             "1.0",
+		SchemaVersion:             contracts.DeliverySchemaVersion,
 		RepositoryPath:            repository,
 		WorktreeRoot:              root,
 		BaseCommit:                base,

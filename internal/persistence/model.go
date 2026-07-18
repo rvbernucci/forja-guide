@@ -135,6 +135,8 @@ type LeaseSetRepository interface {
 // before a namespaced Git ref may change.
 type DeliveryPublicationIntent struct {
 	DeliveryID                string
+	TenantID                  string
+	RepositoryID              string
 	AttemptID                 string
 	LeaseSetID                string
 	PublicationRef            string

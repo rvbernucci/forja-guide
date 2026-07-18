@@ -5,7 +5,7 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "delivery_id", "task_id", "attempt_id", "run_id", "schema_version",
+    "delivery_id", "tenant_id", "repository_id", "task_id", "attempt_id", "run_id", "schema_version",
     "repository_path", "worktree_root", "base_commit", "publication_ref", "publication_previous_commit",
     "author_id", "validator_id", "role", "objective", "read_scopes",
     "write_scopes", "artifact_scopes", "evidence_scope", "attempt_ordinal",
@@ -13,10 +13,12 @@
   ],
   "properties": {
     "delivery_id": {"type": "string", "pattern": "^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "tenant_id": {"type": "string", "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
     "task_id": {"type": "string", "pattern": "^task_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
     "attempt_id": {"type": "string", "pattern": "^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
     "run_id": {"type": "string", "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
-    "schema_version": {"const": "1.0"},
+    "schema_version": {"const": "1.1"},
     "repository_path": {"type": "string", "pattern": "^/", "maxLength": 4096},
     "worktree_root": {"type": "string", "pattern": "^/", "maxLength": 4096},
     "base_commit": {"type": "string", "pattern": "^[0-9a-f]{40}$"},

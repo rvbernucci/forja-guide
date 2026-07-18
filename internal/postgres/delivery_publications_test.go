@@ -317,7 +317,8 @@ func publicationIntentFixture(
 		})
 	}
 	receipt := contracts.DeliveryReceipt{
-		DeliveryID: deliveryID, SchemaVersion: "1.0", Status: "published",
+		DeliveryID: deliveryID, SchemaVersion: contracts.DeliverySchemaVersion, Status: "published",
+		TenantID: "tenant_" + DefaultTenantID, RepositoryID: "repo_" + DefaultRepositoryID,
 		BaseCommit: strings.Repeat("d", 40), ResultCommit: resultCommit,
 		ResultTree: strings.Repeat("e", 40), PatchSHA256: strings.Repeat("f", 64),
 		ChangedPaths:              []string{"internal/generated/value.go"},
@@ -336,19 +337,23 @@ func publicationIntentFixture(
 	authorityDigest := sha256.Sum256([]byte(authority))
 	receiptDigest := sha256.Sum256(receiptJSON)
 	intent := persistence.DeliveryPublicationIntent{
-		DeliveryID: deliveryID, AttemptID: attemptID, LeaseSetID: leaseSet.LeaseSetID,
+		DeliveryID: deliveryID, TenantID: DefaultTenantID,
+		RepositoryID: DefaultRepositoryID, AttemptID: attemptID, LeaseSetID: leaseSet.LeaseSetID,
 		PublicationRef: receipt.PublicationRef, PublicationPreviousCommit: &previousCommit,
 		ResultCommit: resultCommit, AuthoritySHA256: fmt.Sprintf("%x", authorityDigest),
 		ReceiptSHA256: fmt.Sprintf("%x", receiptDigest), ReceiptJSON: receiptJSON,
 	}
 	identityJSON, err := json.Marshal(struct {
 		DeliveryID      string `json:"delivery_id"`
+		TenantID        string `json:"tenant_id"`
+		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
-		intent.DeliveryID, intent.AttemptID, intent.LeaseSetID,
+		intent.DeliveryID, intent.TenantID, intent.RepositoryID,
+		intent.AttemptID, intent.LeaseSetID,
 		intent.AuthoritySHA256, intent.ReceiptSHA256,
 	})
 	if err != nil {

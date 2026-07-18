@@ -20,7 +20,7 @@ func TestPublicationServicePersistsBeforeCASAndReleasesAfterReceipt(t *testing.T
 	fixture := newPublicationFixture(t)
 	journal := newMemoryPublicationJournal()
 	leases := &recordingLeaseSets{events: &journal.events}
-	service, err := NewPublicationService(fixture.manager, journal, leases)
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func TestPublicationServiceRecoversCrashAfterGitCAS(t *testing.T) {
 	journal := newMemoryPublicationJournal()
 	journal.failComplete = true
 	leases := &recordingLeaseSets{events: &journal.events}
-	service, err := NewPublicationService(fixture.manager, journal, leases)
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +108,7 @@ func TestPublicationServiceRejectsChangedRefAndRecordsConflict(t *testing.T) {
 	fixture := newPublicationFixture(t)
 	journal := newMemoryPublicationJournal()
 	leases := &recordingLeaseSets{events: &journal.events}
-	service, err := NewPublicationService(fixture.manager, journal, leases)
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +133,7 @@ func TestPublicationServiceRejectsDescendantInsteadOfExactRef(t *testing.T) {
 	fixture := newPublicationFixture(t)
 	journal := newMemoryPublicationJournal()
 	service, err := NewPublicationService(
-		fixture.manager, journal, &recordingLeaseSets{events: &journal.events},
+		fixture.manager, journal, &recordingLeaseSets{events: &journal.events}, fixture.authority(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -158,7 +158,7 @@ func TestPublicationServiceDoesNotReleaseBeforeDurableReceipt(t *testing.T) {
 	journal := newMemoryPublicationJournal()
 	journal.failComplete = true
 	leases := &recordingLeaseSets{events: &journal.events}
-	service, err := NewPublicationService(fixture.manager, journal, leases)
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -184,7 +184,7 @@ func TestPublicationServiceReleasesWhenPrepareObservesConcurrentPublish(t *testi
 		)
 	}
 	leases := &recordingLeaseSets{events: &journal.events}
-	service, err := NewPublicationService(fixture.manager, journal, leases)
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +207,7 @@ func TestPublicationServiceRejectsIncompleteLeaseAuthority(t *testing.T) {
 	fixture.leaseSet.Leases = fixture.leaseSet.Leases[1:]
 	journal := newMemoryPublicationJournal()
 	service, err := NewPublicationService(
-		fixture.manager, journal, &recordingLeaseSets{events: &journal.events},
+		fixture.manager, journal, &recordingLeaseSets{events: &journal.events}, fixture.authority(),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -222,6 +222,90 @@ func TestPublicationServiceRejectsIncompleteLeaseAuthority(t *testing.T) {
 	}
 }
 
+func TestPublicationServiceCannotRedirectRepositoryAuthority(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	otherRepository, _, otherBase := deliveryRepository(t)
+	runGitTest(t, otherRepository, "update-ref", fixture.request.PublicationRef, otherBase)
+
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal, &recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	redirected := fixture.request
+	redirected.RepositoryPath = otherRepository
+	if _, err := service.Publish(
+		t.Context(), redirected, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil || !strings.Contains(err.Error(), "repository authority") {
+		t.Fatalf("redirected repository publication error = %v", err)
+	}
+	if len(journal.events) != 0 {
+		t.Fatalf("redirected repository reached publication journal: %q", journal.events)
+	}
+	if ref := strings.TrimSpace(runGitTest(
+		t, otherRepository, "rev-parse", fixture.request.PublicationRef,
+	)); ref != otherBase {
+		t.Fatalf("redirected publication mutated repository B: %s", ref)
+	}
+}
+
+func TestPublicationServiceRejectsRepositoryPathReplacement(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	replacementRepository, _, replacementBase := deliveryRepository(t)
+	runGitTest(t, replacementRepository, "update-ref", fixture.request.PublicationRef, replacementBase)
+
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal, &recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	originalRepository := fixture.repository + "-authorized"
+	if err := os.Rename(fixture.repository, originalRepository); err != nil {
+		t.Fatalf("move authorized repository: %v", err)
+	}
+	if err := os.Rename(replacementRepository, fixture.repository); err != nil {
+		t.Fatalf("replace authorized repository path: %v", err)
+	}
+
+	if _, err := service.Publish(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil || !strings.Contains(err.Error(), "authority changed on disk") {
+		t.Fatalf("replaced repository authority error = %v", err)
+	}
+	if len(journal.events) != 0 {
+		t.Fatalf("replaced repository reached publication journal: %q", journal.events)
+	}
+	if ref := strings.TrimSpace(runGitTest(
+		t, fixture.repository, "rev-parse", fixture.request.PublicationRef,
+	)); ref != replacementBase {
+		t.Fatalf("replacement repository was mutated: %s", ref)
+	}
+}
+
+func TestPublicationServiceRejectsLeaseFromAnotherRepository(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	fixture.leaseSet.Leases[0].RepositoryID = "00000000-0000-4000-8000-000000000099"
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal, &recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil || !strings.Contains(err.Error(), "inconsistent ownership proof") {
+		t.Fatalf("cross-repository lease publication error = %v", err)
+	}
+	if len(journal.events) != 0 {
+		t.Fatalf("cross-repository lease reached publication journal: %q", journal.events)
+	}
+}
+
 type publicationFixture struct {
 	repository string
 	manager    *WorktreeManager
@@ -229,6 +313,13 @@ type publicationFixture struct {
 	result     CommitResult
 	bundle     ValidationBundle
 	leaseSet   persistence.LeaseSet
+}
+
+func (f publicationFixture) authority() RepositoryAuthority {
+	return RepositoryAuthority{
+		TenantID: f.request.TenantID, RepositoryID: f.request.RepositoryID,
+		RepositoryPath: f.request.RepositoryPath,
+	}
 }
 
 func newPublicationFixture(t *testing.T) publicationFixture {
@@ -265,10 +356,10 @@ func newPublicationFixture(t *testing.T) publicationFixture {
 		LeaseSetID: request.AttemptID, OwnerID: owner,
 		AcquiredAt: now, ExpiresAt: now.Add(time.Minute),
 		Leases: []persistence.Lease{
-			publicationLease(owner, "worktree", request.DeliveryID, 4, now),
-			publicationLease(owner, "file", "internal/generated", 3, now),
-			publicationLease(owner, "artifact", "evidence", 1, now),
-			publicationLease(owner, "file", "internal", 2, now),
+			publicationLease(t, request, owner, "worktree", request.DeliveryID, 4, now),
+			publicationLease(t, request, owner, "file", "internal/generated", 3, now),
+			publicationLease(t, request, owner, "artifact", "evidence", 1, now),
+			publicationLease(t, request, owner, "file", "internal", 2, now),
 		},
 	}
 	return publicationFixture{
@@ -278,15 +369,24 @@ func newPublicationFixture(t *testing.T) publicationFixture {
 }
 
 func publicationLease(
+	t *testing.T,
+	request contracts.DeliveryRequest,
 	owner string,
 	resourceType string,
 	resourceID string,
 	token int64,
 	now time.Time,
 ) persistence.Lease {
+	t.Helper()
+	storageTenantID, storageRepositoryID, err := contracts.RepositoryStorageIdentity(
+		request.TenantID, request.RepositoryID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 	return persistence.Lease{
 		LeaseKey: persistence.LeaseKey{
-			TenantID: "tenant", RepositoryID: "repository",
+			TenantID: storageTenantID, RepositoryID: storageRepositoryID,
 			ResourceType: resourceType, ResourceID: resourceID,
 		},
 		OwnerID: owner, FencingToken: token,
