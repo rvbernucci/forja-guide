@@ -42,9 +42,11 @@ trusted registry entries addressed by stable IDs; requests cannot inject shell
 commands.
 
 Repository and worktree roots are canonical, non-root, absolute, and disjoint.
-The delivery ID identifies the worktree lease; file and artifact lease IDs are
-canonical repository-relative scopes. These identities are revalidated from
-the receipt rather than trusted as opaque strings.
+The attempt ID identifies the immutable lease set, while the delivery ID
+identifies its worktree lease. A clean retry uses a new attempt ID and advances
+the delivery fence. File and artifact lease IDs are canonical
+repository-relative scopes. These identities are revalidated from the receipt
+rather than trusted as opaque strings.
 
 Every untrusted worker adapter must declare a versioned isolation capability
 and prove that its effective operating-system writable roots equal the roots

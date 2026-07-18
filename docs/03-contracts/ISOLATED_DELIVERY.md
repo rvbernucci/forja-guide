@@ -56,7 +56,11 @@ Before creating a worktree, the service atomically acquires:
 - one `file` lease for each normalized write scope and its non-root ancestors;
 - one `artifact` lease for each artifact scope and its non-root ancestors.
 
-The sorted set is immutable for the attempt. Partial acquisition is invalid.
+The lease-set ID identifies the attempt and is deliberately independent from
+the worktree resource ID, which identifies the delivery. A retry therefore
+uses a fresh attempt lease-set ID while reacquiring the same delivery worktree
+fence with a higher token. The sorted set is immutable for the attempt. Partial
+acquisition is invalid.
 Each protected commit, validation, receipt, and publication operation checks
 the exact live owner and fencing token. Expiry or replacement fails closed.
 Receipt worktree fences use the delivery ID as their resource ID. File and
@@ -64,7 +68,10 @@ artifact fence IDs are canonical repository-relative scopes.
 
 Hierarchical ancestor leasing is intentionally conservative. It prevents
 `internal/worker` and `internal/worker/file.go` from being written by different
-authors, even though PostgreSQL rows are keyed by exact resource ID.
+authors, even though PostgreSQL rows are keyed by exact resource ID. File and
+artifact scopes may be siblings beneath a shared ancestor within one atomic
+set; scopes that are equal or ancestor/descendant across those kinds remain
+invalid.
 
 ## Git Identity
 

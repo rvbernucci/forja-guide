@@ -89,6 +89,16 @@ type Lease struct {
 	ExpiresAt    time.Time
 }
 
+// LeaseSet is one immutable, atomically managed collection of fenced grants.
+// Its ID identifies an attempt and is independent from member resource IDs.
+type LeaseSet struct {
+	LeaseSetID string
+	OwnerID    string
+	Leases     []Lease
+	AcquiredAt time.Time
+	ExpiresAt  time.Time
+}
+
 // LeaseRepository coordinates ownership without exposing database locking.
 type LeaseRepository interface {
 	AcquireLease(
@@ -105,6 +115,20 @@ type LeaseRepository interface {
 		time.Duration,
 	) (Lease, error)
 	ReleaseLease(context.Context, LeaseKey, string, int64) error
+}
+
+// LeaseSetRepository prevents partial grants and authority expansion after a
+// bounded delivery starts.
+type LeaseSetRepository interface {
+	AcquireLeaseSet(
+		context.Context,
+		string,
+		[]LeaseKey,
+		string,
+		time.Duration,
+	) (LeaseSet, error)
+	RenewLeaseSet(context.Context, LeaseSet, time.Duration) (LeaseSet, error)
+	ReleaseLeaseSet(context.Context, LeaseSet) error
 }
 
 // OutboxMessage is a claimed canonical event awaiting projection.

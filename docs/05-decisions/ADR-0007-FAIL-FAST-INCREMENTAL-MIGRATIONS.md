@@ -28,13 +28,15 @@ advisory lock, the migrator:
    PostgreSQL lock timeout;
 2. resets the timeout after acquiring the watermark; and
 3. acquires `ACCESS EXCLUSIVE` locks on `idempotency_keys`, `sprints`, `runs`,
-   `events`, and `outbox` in one `NOWAIT` statement.
+   `events`, `outbox`, and `leases` in one `NOWAIT` statement.
 
 Updated command transactions acquire an `ACCESS SHARE` lock on
 `idempotency_keys` before their command advisory lock and before any aggregate
-lock. Canonical event writers and projection rebuilds acquire the shared
-watermark before touching event or outbox state. These compatible paths wait
-outside aggregate critical sections once a migration owns the barrier.
+lock. Lease writers similarly cross the `leases` relation barrier before
+resource advisory locks. Canonical event writers and projection rebuilds
+acquire the shared watermark before touching event or outbox state. These
+compatible paths wait outside aggregate critical sections once a migration
+owns the barrier.
 
 Any active previous-version writer, current command, audit writer, event
 writer, or projection rebuild causes migration to fail closed with PostgreSQL
@@ -66,4 +68,3 @@ Negative:
 Integration tests must prove fail-fast behavior for previous-version writers
 and projection watermark holders, ordering for current command and audit
 writers, safe retry after drain, and semantic schema validity after migration.
-

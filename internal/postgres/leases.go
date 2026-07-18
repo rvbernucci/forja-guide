@@ -18,6 +18,7 @@ var leaseTypes = map[string]struct{}{
 	"scheduler": {},
 	"file":      {},
 	"worktree":  {},
+	"artifact":  {},
 }
 
 // AcquireLease grants one active owner and increments the fencing token on
@@ -29,6 +30,9 @@ func (s *Store) AcquireLease(
 	ttl time.Duration,
 ) (persistence.Lease, error) {
 	key = s.bindLeaseKey(key)
+	if err := validateStandaloneLeaseType(key.ResourceType); err != nil {
+		return persistence.Lease{}, err
+	}
 	if err := validateLeaseInput(
 		key,
 		ownerID,
@@ -43,15 +47,8 @@ func (s *Store) AcquireLease(
 		return persistence.Lease{}, databaseError("postgres.AcquireLease.begin", err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	if _, err := tx.Exec(
-		ctx,
-		"SELECT pg_advisory_xact_lock($1)",
-		advisoryLockKey(
-			key.TenantID+"\x00"+s.repositoryID+"\x00"+
-				key.ResourceType+"\x00"+key.ResourceID,
-		),
-	); err != nil {
-		return persistence.Lease{}, databaseError("postgres.AcquireLease.lock", err)
+	if err := lockLeaseResource(ctx, tx, key, s.repositoryID); err != nil {
+		return persistence.Lease{}, err
 	}
 
 	current, active, found, err := getLeaseForUpdate(
@@ -154,8 +151,19 @@ func (s *Store) RenewLease(
 			"fencing token must be positive",
 		)
 	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return persistence.Lease{}, databaseError("postgres.RenewLease.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockLeaseResource(ctx, tx, key, s.repositoryID); err != nil {
+		return persistence.Lease{}, err
+	}
+	if err := rejectActiveLeaseSetMember(ctx, tx, key, fencingToken); err != nil {
+		return persistence.Lease{}, err
+	}
 	lease := persistence.Lease{LeaseKey: key}
-	err := s.pool.QueryRow(ctx, `
+	err = tx.QueryRow(ctx, `
 		UPDATE forja.leases
 		SET expires_at=clock_timestamp() + $1::interval,
 		    updated_at=clock_timestamp()
@@ -189,6 +197,9 @@ func (s *Store) RenewLease(
 	}
 	lease.AcquiredAt = lease.AcquiredAt.UTC()
 	lease.ExpiresAt = lease.ExpiresAt.UTC()
+	if err := tx.Commit(ctx); err != nil {
+		return persistence.Lease{}, databaseError("postgres.RenewLease.commit", err)
+	}
 	return lease, nil
 }
 
@@ -210,7 +221,18 @@ func (s *Store) ReleaseLease(
 			"owner ID and positive fencing token are required",
 		)
 	}
-	tag, err := s.pool.Exec(ctx, `
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return databaseError("postgres.ReleaseLease.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := lockLeaseResource(ctx, tx, key, s.repositoryID); err != nil {
+		return err
+	}
+	if err := rejectActiveLeaseSetMember(ctx, tx, key, fencingToken); err != nil {
+		return err
+	}
+	tag, err := tx.Exec(ctx, `
 		UPDATE forja.leases
 		SET expires_at=GREATEST(clock_timestamp(), acquired_at),
 		    updated_at=clock_timestamp()
@@ -233,6 +255,66 @@ func (s *Store) ReleaseLease(
 			fault.CodeConflict,
 			"postgres.ReleaseLease",
 			"lease is expired, replaced, or owned by another worker",
+		)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return databaseError("postgres.ReleaseLease.commit", err)
+	}
+	return nil
+}
+
+func lockLeaseResource(
+	ctx context.Context,
+	tx pgx.Tx,
+	key persistence.LeaseKey,
+	repositoryID string,
+) error {
+	if _, err := tx.Exec(ctx, "LOCK TABLE forja.leases IN ACCESS SHARE MODE"); err != nil {
+		return databaseError("postgres.lockLeaseResource.migration_barrier", err)
+	}
+	if _, err := tx.Exec(
+		ctx,
+		"SELECT pg_advisory_xact_lock($1)",
+		advisoryLockKey(
+			key.TenantID+"\x00"+repositoryID+"\x00"+
+				key.ResourceType+"\x00"+key.ResourceID,
+		),
+	); err != nil {
+		return databaseError("postgres.lockLeaseResource", err)
+	}
+	return nil
+}
+
+func rejectActiveLeaseSetMember(
+	ctx context.Context,
+	tx pgx.Tx,
+	key persistence.LeaseKey,
+	fencingToken int64,
+) error {
+	var protected bool
+	if err := tx.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1
+			FROM forja.lease_set_members AS member
+			JOIN forja.lease_sets AS lease_set
+			  ON lease_set.tenant_id=member.tenant_id
+			 AND lease_set.repository_id=member.repository_id
+			 AND lease_set.lease_set_id=member.lease_set_id
+			WHERE member.tenant_id=$1 AND member.repository_id=$2
+			  AND member.resource_type=$3 AND member.resource_id=$4
+			  AND member.fencing_token=$5
+			  AND lease_set.state='active'
+			  AND lease_set.expires_at > clock_timestamp()
+		)`,
+		key.TenantID, key.RepositoryID, key.ResourceType, key.ResourceID, fencingToken,
+	).Scan(&protected); err != nil {
+		return databaseError("postgres.rejectActiveLeaseSetMember", err)
+	}
+	if protected {
+		return fault.New(
+			fault.CodeConflict,
+			"postgres.rejectActiveLeaseSetMember",
+			"active lease-set members must be mutated through the set authority",
 		)
 	}
 	return nil
@@ -300,6 +382,17 @@ func validateLeaseInput(
 	return nil
 }
 
+func validateStandaloneLeaseType(resourceType string) error {
+	if _, deliveryType := deliveryLeaseTypes[resourceType]; deliveryType {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.validateStandaloneLeaseType",
+			"file, worktree, and artifact resources require atomic lease-set authority",
+		)
+	}
+	return nil
+}
+
 func validateLeaseKey(
 	key persistence.LeaseKey,
 	tenantID string,
@@ -321,7 +414,7 @@ func validateLeaseKey(
 		return fault.New(
 			fault.CodeInvalidArgument,
 			"postgres.validateLeaseKey",
-			"resource type must be worker, scheduler, file, or worktree",
+			"resource type must be worker, scheduler, file, worktree, or artifact",
 		)
 	}
 	return nil
