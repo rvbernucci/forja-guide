@@ -78,15 +78,14 @@ func ValidateValidationReport(report ValidationReport) error {
 	if report.AuthorID == report.ValidatorID {
 		return fmt.Errorf("validation author and validator must differ")
 	}
-	if !report.CleanCheckout {
-		return fmt.Errorf("independent validation requires a clean checkout")
-	}
 	if len(report.Checks) == 0 {
 		return fmt.Errorf("independent validation requires at least one check")
 	}
 	checkIDs := make([]string, 0, len(report.Checks))
 	allPassed := true
 	hasIndependent := false
+	cleanCheckFound := false
+	cleanCheckPassed := false
 	latest := time.Time{}
 	for _, check := range report.Checks {
 		if check.FinishedAt.Before(check.StartedAt) {
@@ -100,10 +99,20 @@ func ValidateValidationReport(report ValidationReport) error {
 		}
 		allPassed = allPassed && check.Status == "passed"
 		hasIndependent = hasIndependent || check.Kind == "independent"
+		if check.CheckID == "clean-checkout" {
+			if check.Kind != "independent" {
+				return fmt.Errorf("clean checkout check must be independent")
+			}
+			cleanCheckFound = true
+			cleanCheckPassed = check.Status == "passed"
+		}
 		checkIDs = append(checkIDs, check.CheckID)
 	}
 	if !hasIndependent {
 		return fmt.Errorf("validation report requires an independent check")
+	}
+	if !cleanCheckFound || report.CleanCheckout != cleanCheckPassed {
+		return fmt.Errorf("clean checkout field disagrees with its independent check")
 	}
 	if !sortedUnique(checkIDs) {
 		return fmt.Errorf("validation checks must be unique and byte-sorted")
@@ -113,6 +122,9 @@ func ValidateValidationReport(report ValidationReport) error {
 	}
 	if (report.Status == "passed") != allPassed {
 		return fmt.Errorf("validation status disagrees with check results")
+	}
+	if report.Status == "passed" && !report.CleanCheckout {
+		return fmt.Errorf("passing independent validation requires a clean checkout")
 	}
 	return nil
 }

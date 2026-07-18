@@ -827,6 +827,19 @@ func (m *WorktreeManager) gitWithTimeout(
 	directory string,
 	arguments ...string,
 ) ([]byte, error) {
+	return m.gitWithInputAndEnvironment(
+		ctx, timeout, directory, nil, nil, arguments...,
+	)
+}
+
+func (m *WorktreeManager) gitWithInputAndEnvironment(
+	ctx context.Context,
+	timeout time.Duration,
+	directory string,
+	input []byte,
+	overrides map[string]string,
+	arguments ...string,
+) ([]byte, error) {
 	args := []string{
 		"-c", "core.hooksPath=/dev/null",
 		"-c", "core.fsmonitor=false",
@@ -838,7 +851,10 @@ func (m *WorktreeManager) gitWithTimeout(
 	gitContext, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	command := exec.CommandContext(gitContext, m.gitPath, args...)
-	command.Env = m.environ
+	command.Env = mergeEnvironment(m.environ, overrides)
+	if input != nil {
+		command.Stdin = bytes.NewReader(input)
+	}
 	stdout := &boundedBuffer{limit: maximumGitOutputBytes}
 	stderr := &boundedBuffer{limit: maximumGitOutputBytes}
 	command.Stdout = stdout
@@ -855,6 +871,29 @@ func (m *WorktreeManager) gitWithTimeout(
 		return nil, fmt.Errorf("git %s: %s", strings.Join(arguments, " "), detail)
 	}
 	return stdout.Bytes(), nil
+}
+
+func mergeEnvironment(base []string, overrides map[string]string) []string {
+	values := make(map[string]string, len(base)+len(overrides))
+	for _, entry := range base {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok && key != "" {
+			values[key] = value
+		}
+	}
+	for key, value := range overrides {
+		values[key] = value
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, key+"="+values[key])
+	}
+	return result
 }
 
 type boundedBuffer struct {

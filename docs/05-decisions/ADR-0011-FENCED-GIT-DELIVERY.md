@@ -78,6 +78,27 @@ Quarantine verifies the same immutable request digest and invokes Git move only
 when the attempt's common directory matches the authorized repository; foreign
 or unverifiable Git metadata is never mutated.
 
+Result commits are built with a temporary index, deterministic supervisor
+identity, deterministic parent-relative timestamp, and a fixed delivery
+message. This does not stage the author checkout or move its detached `HEAD`.
+Only approved write scopes enter that tree. A separate rooted filesystem
+inventory covers write and artifact scopes without writing artifact blobs to
+Git; both snapshots are repeated, so out-of-authority or concurrently changing
+code and artifact bytes fail before validation.
+The patch identity is the SHA-256 of exactly
+`git -c core.quotePath=true diff --binary --full-index --no-ext-diff --no-textconv --no-color --no-renames --unified=3 --inter-hunk-context=0 --diff-algorithm=myers --no-indent-heuristic --src-prefix=a/ --dst-prefix=b/ --submodule=short -O/dev/null <base> <result> --`.
+Mechanical and independent validation use separate fresh worktrees. Trusted
+validators are direct argv invocations whose executable bytes are copied into
+an operator-private registry and whose content, environment, timeout, and output
+budget are bound into their command digest; process groups are terminated on
+cancellation, timeout, or overflow. Required registry validators run only after
+all mandatory built-ins pass in their lane. This fail-fast boundary prevents
+trusted external code from running against an already-invalid result while the
+declared validator set remains an architectural acceptance requirement. The
+independent lane must reproduce every required executed check after mechanical
+preflight. Both lanes' bounded outputs and reports are atomically persisted in
+a content-addressed manifest beneath a disjoint operator evidence root.
+
 ## Consequences
 
 Positive:

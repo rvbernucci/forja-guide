@@ -312,6 +312,21 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	if err := ValidateValidationReport(report); err != nil {
 		t.Fatalf("valid validation report rejected: %v", err)
 	}
+	failedReport := report
+	failedReport.Status = "failed"
+	failedReport.CleanCheckout = false
+	failedReport.Checks = append([]ValidationCheck(nil), report.Checks...)
+	failedReport.Checks[0].Status = "failed"
+	if err := ValidateValidationReport(failedReport); err != nil {
+		t.Fatalf("truthful failed validation report rejected: %v", err)
+	}
+	failedJSON, err := json.Marshal(failedReport)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.ValidateJSON("validation-report.schema.json", failedJSON); err != nil {
+		t.Fatalf("truthful failed validation report rejected by schema: %v", err)
+	}
 	if err := ValidateDeliveryPublication(request, report, evidenceManifest, receipt); err != nil {
 		t.Fatalf("valid delivery receipt rejected: %v", err)
 	}
