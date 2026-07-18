@@ -158,6 +158,9 @@ def parse_scope(scope):
         "create_run": 2,
         "transition_run": 3,
         "create_attempt": 3,
+        "start_attempt": 3,
+        "finish_attempt": 3,
+        "reconcile_attempts": 3,
         "plan_sprint": 2,
         "submit_sprint": 3,
         "resolve_decision": 3,
@@ -185,6 +188,45 @@ def find_event(events, aggregate_type, event_type, payload, aggregate_id=None):
             f"expected one {aggregate_type}/{event_type} event, found {len(matches)}"
         )
     return matches[0]
+
+
+def find_nested_attempt_event(events, event_type, attempt):
+    wanted = canonical_json(attempt)
+    matches = [
+        event
+        for event in events
+        if event["aggregate_type"] == "attempt"
+        and event["event_type"] == event_type
+        and isinstance(event["payload"], dict)
+        and canonical_json(event["payload"].get("attempt")) == wanted
+        and event["aggregate_id"] == attempt.get("attempt_id")
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"expected one attempt/{event_type} event, found {len(matches)}")
+    return matches[0]
+
+
+def worker_result_hash_parts(result):
+    usage = result["usage"]
+    exit_code = "null" if result["exit_code"] is None else str(result["exit_code"])
+    return [
+        result["task_id"],
+        result["adapter"],
+        result["status"],
+        str(result["retryable"]).lower(),
+        result["termination_reason"],
+        result["started_at"],
+        result["finished_at"],
+        str(result["duration_ms"]),
+        exit_code,
+        result["stdout_sha256"],
+        result["stderr_sha256"],
+        str(usage["input_tokens"]),
+        str(usage["cached_input_tokens"]),
+        str(usage["output_tokens"]),
+        str(usage["tool_calls"]),
+        canonical_json(result["evidence_refs"]),
+    ]
 
 
 def require_sibling(events, primary, aggregate_type, event_type, payload):
@@ -331,6 +373,7 @@ def verify_receipt(receipt, events):
     scope_parts = parse_scope(receipt["scope"])
     command = scope_parts[0]
     repository_id = scope_parts[1]
+    response = receipt["response"]
     candidates = [
         event
         for event in events
@@ -338,10 +381,14 @@ def verify_receipt(receipt, events):
         and event["repository_id"] == repository_id
         and event["idempotency_key"] == receipt["idempotency_key"]
     ]
-    if not candidates:
+    empty_reconciliation = (
+        command == "reconcile_attempts"
+        and isinstance(response, dict)
+        and response.get("attempts") == []
+    )
+    if not candidates and not empty_reconciliation:
         raise ValueError(f"receipt {receipt['scope']} has no canonical command events")
 
-    response = receipt["response"]
     tool_name = ""
     domain_events = []
     if command == "create_run":
@@ -409,6 +456,127 @@ def verify_receipt(receipt, events):
             response["lease_resource_id"],
             response["worker_id"],
             str(response["fencing_token"]),
+        ]
+        expected_response = response
+    elif command == "start_attempt":
+        attempt_id = scope_parts[2]
+        primary = find_nested_attempt_event(candidates, "attempt.started", response)
+        domain_events.append(primary)
+        if response.get("attempt_id") != attempt_id or response.get("status") != "running":
+            raise ValueError("start_attempt receipt disagrees with its attempt")
+        status = 201
+        hash_parts = [
+            receipt["scope"],
+            str(response["version"] - 1),
+            response["worker_id"],
+            str(response["fencing_token"]),
+        ]
+        expected_response = response
+    elif command == "finish_attempt":
+        attempt_id = scope_parts[2]
+        primary = find_nested_attempt_event(candidates, "attempt.finished", response)
+        domain_events.append(primary)
+        result = primary["payload"].get("result")
+        if not isinstance(result, dict) or response.get("attempt_id") != attempt_id:
+            raise ValueError("finish_attempt receipt lacks its safe worker result")
+        status = 201
+        hash_parts = [receipt["scope"], str(response["version"] - 1)]
+        hash_parts.extend(worker_result_hash_parts(result))
+        hash_parts.extend([response["worker_id"], str(response["fencing_token"])])
+        expected_response = response
+    elif command == "reconcile_attempts":
+        require_object(
+            response,
+            {"attempts", "authority", "command"},
+            "reconcile_attempts response",
+        )
+        attempts = response["attempts"]
+        authority = response["authority"]
+        command_snapshot = response["command"]
+        if not isinstance(attempts, list):
+            raise ValueError("reconcile_attempts attempts must be a list")
+        require_object(
+            authority,
+            {
+                "tenant_id",
+                "repository_id",
+                "resource_type",
+                "resource_id",
+                "owner_id",
+                "fencing_token",
+            },
+            "reconcile_attempts authority",
+        )
+        require_object(
+            command_snapshot,
+            {
+                "tenant_id",
+                "repository_id",
+                "idempotency_key",
+                "actor_type",
+                "actor_id",
+                "correlation_id",
+                "causation_id",
+            },
+            "reconcile_attempts command",
+        )
+        repository_id = scope_parts[1]
+        resource_id = scope_parts[2]
+        if (
+            authority["tenant_id"] != receipt["tenant_id"]
+            or authority["repository_id"] != repository_id
+            or authority["resource_type"] != "scheduler"
+            or authority["resource_id"] != resource_id
+            or not isinstance(authority["owner_id"], str)
+            or not authority["owner_id"]
+            or type(authority["fencing_token"]) is not int
+            or authority["fencing_token"] < 1
+        ):
+            raise ValueError("reconcile_attempts authority disagrees with its scope")
+        if (
+            command_snapshot["tenant_id"] != receipt["tenant_id"]
+            or command_snapshot["repository_id"] != repository_id
+            or command_snapshot["idempotency_key"] != receipt["idempotency_key"]
+            or command_snapshot["actor_type"] not in {"human", "agent", "worker", "system"}
+            or any(
+                not isinstance(command_snapshot[field], str)
+                or not command_snapshot[field]
+                for field in ("actor_id", "correlation_id")
+            )
+            or not isinstance(command_snapshot["causation_id"], str)
+        ):
+            raise ValueError("reconcile_attempts command provenance is invalid")
+        synthetic_primary = {
+            "tenant_id": command_snapshot["tenant_id"],
+            "repository_id": command_snapshot["repository_id"],
+            "idempotency_key": command_snapshot["idempotency_key"],
+            "actor_type": command_snapshot["actor_type"],
+            "actor_id": command_snapshot["actor_id"],
+            "correlation_id": command_snapshot["correlation_id"],
+            "causation_id": command_snapshot["causation_id"],
+        }
+        recovered = []
+        for attempt in attempts:
+            event = find_nested_attempt_event(candidates, "attempt.reconciled", attempt)
+            recovered.append(event)
+        primary = recovered[0] if recovered else synthetic_primary
+        if any(
+            event_identity(event) != event_identity(synthetic_primary)
+            for event in recovered
+        ):
+            raise ValueError("reconcile_attempts events disagree with command provenance")
+        if any(
+            canonical_json(event["payload"].get("reconciled_by"))
+            != canonical_json(authority)
+            for event in recovered
+        ):
+            raise ValueError("reconcile_attempts events disagree with recovery authority")
+        domain_events.extend(recovered)
+        status = 200
+        hash_parts = [
+            receipt["scope"],
+            authority["owner_id"],
+            str(authority["fencing_token"]),
         ]
         expected_response = response
     elif command == "plan_sprint":

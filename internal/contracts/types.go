@@ -3,6 +3,8 @@ package contracts
 
 import "time"
 
+const WorkerReportSchemaRef = "https://forja.dev/schemas/worker-report.schema.json"
+
 // Run is the canonical run aggregate contract.
 type Run struct {
 	RunID         string    `json:"run_id"`
@@ -179,4 +181,75 @@ type ContextPack struct {
 	Gaps          []ContextGap    `json:"gaps"`
 	TokenEstimate int             `json:"token_estimate"`
 	Receipt       ContextReceipt  `json:"receipt"`
+}
+
+// WorkerBudgets bounds one process attempt independently of model behavior.
+type WorkerBudgets struct {
+	WallClockMS         int  `json:"wall_clock_ms"`
+	InactivityMS        int  `json:"inactivity_ms"`
+	MaxOutputBytes      int  `json:"max_output_bytes"`
+	CancellationGraceMS int  `json:"cancellation_grace_ms"`
+	MaxRetries          int  `json:"max_retries"`
+	MaxTokens           *int `json:"max_tokens,omitempty"`
+	MaxCommands         *int `json:"max_commands,omitempty"`
+}
+
+// WorkerTask is the complete authority and budget envelope for one attempt.
+type WorkerTask struct {
+	TaskID            string        `json:"task_id"`
+	AttemptID         string        `json:"attempt_id"`
+	RunID             string        `json:"run_id"`
+	SchemaVersion     string        `json:"schema_version"`
+	Role              string        `json:"role"`
+	Objective         string        `json:"objective"`
+	RepositoryPath    string        `json:"repository_path"`
+	WorktreePath      string        `json:"worktree_path"`
+	ReadScopes        []string      `json:"read_scopes"`
+	WriteScopes       []string      `json:"write_scopes"`
+	ContextPackRef    *string       `json:"context_pack_ref,omitempty"`
+	ResultSchemaRef   string        `json:"result_schema_ref"`
+	EvidenceOutputDir string        `json:"evidence_output_dir"`
+	AttemptOrdinal    int           `json:"attempt_ordinal"`
+	Model             *string       `json:"model,omitempty"`
+	Budgets           WorkerBudgets `json:"budgets"`
+}
+
+// WorkerReport is the model-authored, schema-constrained completion report.
+type WorkerReport struct {
+	Status       string   `json:"status"`
+	Summary      string   `json:"summary"`
+	ChangedPaths []string `json:"changed_paths"`
+	EvidenceRefs []string `json:"evidence_refs"`
+	Risks        []string `json:"risks"`
+}
+
+// WorkerUsage contains non-negative accounting observed from an adapter.
+type WorkerUsage struct {
+	InputTokens       int `json:"input_tokens"`
+	CachedInputTokens int `json:"cached_input_tokens"`
+	OutputTokens      int `json:"output_tokens"`
+	ToolCalls         int `json:"tool_calls"`
+}
+
+// WorkerResult is the supervisor-authored result for one bounded process.
+type WorkerResult struct {
+	TaskID            string        `json:"task_id"`
+	AttemptID         string        `json:"attempt_id"`
+	RunID             string        `json:"run_id"`
+	SchemaVersion     string        `json:"schema_version"`
+	Adapter           string        `json:"adapter"`
+	Status            string        `json:"status"`
+	Retryable         bool          `json:"retryable"`
+	TerminationReason string        `json:"termination_reason"`
+	StartedAt         time.Time     `json:"started_at"`
+	FinishedAt        time.Time     `json:"finished_at"`
+	DurationMS        int64         `json:"duration_ms"`
+	ExitCode          *int          `json:"exit_code"`
+	Stdout            string        `json:"stdout"`
+	Stderr            string        `json:"stderr"`
+	StdoutSHA256      string        `json:"stdout_sha256"`
+	StderrSHA256      string        `json:"stderr_sha256"`
+	Usage             WorkerUsage   `json:"usage"`
+	Report            *WorkerReport `json:"report"`
+	EvidenceRefs      []string      `json:"evidence_refs"`
 }

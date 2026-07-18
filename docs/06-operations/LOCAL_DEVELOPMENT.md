@@ -1,11 +1,12 @@
 # Local Development
 
-Status: Sprint 03 governed MCP control surface implemented; workers proposed
+Status: Sprint 03 closed; Sprint 04 worker supervisor implementation candidate
 
 ## Current Repository
 
 The repository contains the executable durable Go kernel, governed MCP control
-surface, architecture, planning, canonical schemas, and quality automation.
+surface, bounded one-shot worker supervisor, architecture, planning, canonical
+schemas, and quality automation.
 
 Validate it with:
 
@@ -16,6 +17,19 @@ make validate
 The full gate runs formatting checks, module verification, `go vet`, unit and
 race tests, reproducible cross-builds, process-level kernel and MCP smoke tests,
 and public repository validation.
+
+## Worker Supervisor
+
+Run the offline one-shot smoke test:
+
+```bash
+make smoke-worker
+```
+
+Execute a real canonical task with `forja-worker --task ... --result ...`.
+See [Worker Operations](WORKER_OPERATIONS.md) for task preparation, exit codes,
+cancellation, recovery, security, and rollback. The public contract is in
+[Worker Execution](../03-contracts/WORKER_EXECUTION.md).
 
 ## MCP Control Surface
 
@@ -179,6 +193,7 @@ Implemented daemon variables are:
 | `FORJA_MCP_ACTOR_TYPE` | Capability profile: `agent` (default, no decide/resume), `worker` (read only), or explicitly trusted `human`/`system` (all control capabilities) |
 | `FORJA_ENDPOINT` | CLI daemon endpoint |
 | `FORJA_TIMEOUT` | CLI request deadline |
+| `CODEX_HOME` | Deployment-owned Codex authentication root passed only to the Codex adapter |
 
 Daemon precedence is defaults, JSON file, environment, then flags. Unknown
 configuration fields fail closed.

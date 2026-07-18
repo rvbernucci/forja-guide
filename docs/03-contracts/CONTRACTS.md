@@ -34,11 +34,17 @@ contracts.
 | [`artifact.schema.json`](../../schemas/artifact.schema.json) | Durable artifact metadata and provenance |
 | [`context-request.schema.json`](../../schemas/context-request.schema.json) | Scoped request for contextual evidence |
 | [`context-pack.schema.json`](../../schemas/context-pack.schema.json) | Bounded evidence package returned to an agent |
+| [`worker-task.schema.json`](../../schemas/worker-task.schema.json) | Authorized worker objective, scope, and budgets |
+| [`worker-report.schema.json`](../../schemas/worker-report.schema.json) | Schema-constrained model completion report |
+| [`worker-result.schema.json`](../../schemas/worker-result.schema.json) | Supervisor-authored execution classification and evidence |
 
-The Go kernel embeds these schemas, compiles them at startup, and validates run
+The Go kernel embeds these schemas, compiles cross-schema references offline at
+startup, and validates run
 aggregates at its HTTP and CLI boundaries. The MCP adapter uses typed generated
 schemas and compatibility fixtures. See the [kernel API](KERNEL_API.md) and
 [MCP control API](MCP_CONTROL_API.md).
+The [worker execution contract](WORKER_EXECUTION.md) defines process authority,
+budgets, result coupling, and durable recovery.
 
 The Sprint schema encodes the approval coupling directly: only
 `awaiting_approval` requires and permits `pending_decision_id`. Proposed,

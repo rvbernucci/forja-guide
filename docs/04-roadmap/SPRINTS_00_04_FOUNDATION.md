@@ -121,21 +121,22 @@ control runs through stable tools.
 **Outcome:** execute Codex CLI workers as bounded, cancellable, and observable
 processes.
 
-**Status:** Authorized. Definition-of-Ready prerequisites and implementation
-remain open.
+**Status:** Implementation candidate complete. Closure evidence, protected CI,
+and immutable independent review remain pending under the
+[Sprint 04 execution plan](SPRINT_04_WORKER_SUPERVISOR_PLAN.md).
 
 ### Scope
 
-- [ ] Define the worker task and result contracts.
-- [ ] Implement the Codex CLI adapter behind a generic worker interface.
-- [ ] Create sanitized worker environments.
-- [ ] Start workers in independent process groups.
-- [ ] Enforce wall-clock, inactivity, output-size, and retry budgets.
-- [ ] Stream structured worker events without storing raw secrets.
-- [ ] Propagate cancellation to the complete process tree.
-- [ ] Capture exit status, stdout, stderr, usage, and evidence references.
-- [ ] Implement deterministic fake and fault-injection workers.
-- [ ] Add crash, timeout, cancellation, and orphan-process tests.
+- [x] Define the worker task and result contracts.
+- [x] Implement the Codex CLI adapter behind a generic worker interface.
+- [x] Create sanitized worker environments.
+- [x] Start workers in independent process groups.
+- [x] Enforce wall-clock, inactivity, output-size, and retry budgets.
+- [x] Stream structured worker events without storing raw secrets.
+- [x] Propagate cancellation to the complete process tree.
+- [x] Capture exit status, stdout, stderr, usage, and evidence references.
+- [x] Implement deterministic fake and fault-injection workers.
+- [x] Add crash, timeout, cancellation, and orphan-process tests.
 
 ### Acceptance
 

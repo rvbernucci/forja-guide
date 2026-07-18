@@ -179,6 +179,56 @@ func TestRegistryValidatesContractFixtures(t *testing.T) {
 	}
 }
 
+func TestWorkerContractsEnforceResultStateCoupling(t *testing.T) {
+	t.Parallel()
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 7, 17, 20, 0, 0, 0, time.UTC)
+	exitCode := 0
+	result := WorkerResult{
+		TaskID:        "task_00010203-0405-4607-8809-0a0b0c0d0e0f",
+		AttemptID:     "attempt_11111111-2222-4333-8444-555555555555",
+		RunID:         "run_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+		SchemaVersion: "1.0", Adapter: "fixture", Status: "succeeded",
+		Retryable: false, TerminationReason: "completed",
+		StartedAt: now, FinishedAt: now.Add(time.Second), DurationMS: 1000,
+		ExitCode: &exitCode, Stdout: "", Stderr: "",
+		StdoutSHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		StderrSHA256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+		Usage:        WorkerUsage{},
+		Report:       &WorkerReport{Status: "completed", Summary: "validated", ChangedPaths: []string{}, EvidenceRefs: []string{}, Risks: []string{}},
+		EvidenceRefs: []string{},
+	}
+	data, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.ValidateJSON("worker-result.schema.json", data); err != nil {
+		t.Fatalf("valid worker result rejected: %v", err)
+	}
+	for name, mutate := range map[string]func(*WorkerResult){
+		"retryable success":         func(value *WorkerResult) { value.Retryable = true },
+		"blocked report on success": func(value *WorkerResult) { value.Report.Status = "blocked" },
+		"missing success report":    func(value *WorkerResult) { value.Report = nil },
+	} {
+		t.Run(name, func(t *testing.T) {
+			copy := result
+			report := *result.Report
+			copy.Report = &report
+			mutate(&copy)
+			encoded, marshalErr := json.Marshal(copy)
+			if marshalErr != nil {
+				t.Fatal(marshalErr)
+			}
+			if err := registry.ValidateJSON("worker-result.schema.json", encoded); err == nil {
+				t.Fatal("invalid worker result passed canonical schema")
+			}
+		})
+	}
+}
+
 func TestRegistryRejectsUnknownSchemaAndTrailingDocument(t *testing.T) {
 	t.Parallel()
 	registry, err := NewRegistry()

@@ -229,8 +229,8 @@ psql "$FORJA_PG_SAFE_URL" \
            a.version,
            (extract(epoch FROM a.created_at) * 1000000)::bigint,
            (extract(epoch FROM a.updated_at) * 1000000)::bigint,
-           a.started_at IS NULL,
-           a.finished_at IS NULL
+	           COALESCE((extract(epoch FROM a.started_at) * 1000000)::bigint, -1),
+	           COALESCE((extract(epoch FROM a.finished_at) * 1000000)::bigint, -1)
     FROM forja.attempts AS a
     JOIN forja.runs AS r
       ON r.tenant_id=a.tenant_id AND r.run_id=a.run_id
@@ -689,13 +689,9 @@ for line in pathlib.Path(attempts_path).read_text().splitlines():
         version,
         created_us,
         updated_us,
-        started_is_null,
-        finished_is_null,
+        started_us,
+        finished_us,
     ) = line.split("\t", 14)
-    if started_is_null != "t" or finished_is_null != "t":
-        raise SystemExit(f"attempt {attempt_id} has unsupported execution timestamps")
-    if created_us != updated_us:
-        raise SystemExit(f"attempt {attempt_id} has unsupported update history")
     attempts[(tenant_id, repository_id, attempt_id)] = {
         "attempt_id": attempt_id,
         "run_id": run_id,
@@ -707,6 +703,9 @@ for line in pathlib.Path(attempts_path).read_text().splitlines():
         "fencing_token": int(fencing_token),
         "version": int(version),
         "created_us": int(created_us),
+        "updated_us": int(updated_us),
+        "started_us": int(started_us),
+        "finished_us": int(finished_us),
     }
 
 attempt_events = {}
@@ -722,69 +721,159 @@ for line in pathlib.Path(attempt_events_path).read_text().splitlines():
         payload_hex,
     ) = line.split("\t", 7)
     key = (tenant_id, repository_id, aggregate_id)
-    if key in attempt_events:
-        raise SystemExit(f"attempt {aggregate_id} has more than one creation event")
     payload = json.loads(bytes.fromhex(payload_hex).decode())
-    if (
-        event_type != "attempt.created"
-        or int(aggregate_version) != 1
-        or not isinstance(payload, dict)
-        or set(payload) != {
+
+    if event_type == "attempt.created":
+        if key in attempt_events or int(aggregate_version) != 1:
+            raise SystemExit(f"attempt {aggregate_id} has an invalid creation event")
+        attempt = payload
+        required = {
             "attempt_id", "run_id", "ordinal", "status", "lease_resource_type",
             "lease_resource_id", "worker_id", "fencing_token", "version",
             "created_at"
         }
-        or not isinstance(payload["attempt_id"], str)
-        or not attempt_id_pattern.fullmatch(payload["attempt_id"])
-        or payload["attempt_id"] != aggregate_id
-        or not isinstance(payload["run_id"], str)
-        or not run_id_pattern.fullmatch(payload["run_id"])
-        or type(payload["ordinal"]) is not int
-        or payload["ordinal"] < 1
-        or not isinstance(payload["status"], str)
-        or not 1 <= len(payload["status"]) <= 100
-        or payload["lease_resource_type"] != "scheduler"
-        or not isinstance(payload["lease_resource_id"], str)
-        or not 1 <= len(payload["lease_resource_id"]) <= 500
-        or not isinstance(payload["worker_id"], str)
-        or not 1 <= len(payload["worker_id"]) <= 500
-        or type(payload["fencing_token"]) is not int
-        or payload["fencing_token"] < 1
-        or type(payload["version"]) is not int
-        or payload["version"] != 1
+    else:
+        if key not in attempt_events or not isinstance(payload, dict):
+            raise SystemExit(f"attempt event {event_id} has no creation predecessor")
+        if event_type in {"attempt.started", "attempt.finished"}:
+            required_payload = {"attempt"}
+            if event_type == "attempt.finished":
+                required_payload.add("result")
+            if set(payload) != required_payload:
+                raise SystemExit(f"attempt event {event_id} has an invalid envelope")
+        elif event_type == "attempt.reconciled":
+            if set(payload) != {"attempt", "reconciled_by"}:
+                raise SystemExit(f"attempt event {event_id} has an invalid envelope")
+            authority = payload["reconciled_by"]
+            if not isinstance(authority, dict) or set(authority) != {
+                "tenant_id", "repository_id", "resource_type", "resource_id",
+                "owner_id", "fencing_token"
+            } or authority["resource_type"] != "scheduler" \
+               or authority["tenant_id"] != tenant_id \
+               or authority["repository_id"] != repository_id \
+               or type(authority["fencing_token"]) is not int \
+               or authority["fencing_token"] < 1:
+                raise SystemExit(f"attempt event {event_id} has invalid recovery authority")
+        else:
+            raise SystemExit(f"attempt event {event_id} has unsupported type {event_type}")
+        attempt = payload["attempt"]
+        required = {
+            "attempt_id", "run_id", "ordinal", "status", "lease_resource_type",
+            "lease_resource_id", "worker_id", "fencing_token", "version",
+            "created_at", "updated_at"
+        }
+        if attempt.get("started_at") is not None:
+            required.add("started_at")
+        if attempt.get("finished_at") is not None:
+            required.add("finished_at")
+
+    if (
+        not isinstance(attempt, dict)
+        or set(attempt) != required
+        or not isinstance(attempt.get("attempt_id"), str)
+        or not attempt_id_pattern.fullmatch(attempt["attempt_id"])
+        or attempt["attempt_id"] != aggregate_id
+        or not isinstance(attempt.get("run_id"), str)
+        or not run_id_pattern.fullmatch(attempt["run_id"])
+        or type(attempt.get("ordinal")) is not int
+        or attempt["ordinal"] < 1
+        or not isinstance(attempt.get("status"), str)
+        or not 1 <= len(attempt["status"]) <= 100
+        or attempt.get("lease_resource_type") != "scheduler"
+        or not isinstance(attempt.get("lease_resource_id"), str)
+        or not 1 <= len(attempt["lease_resource_id"]) <= 500
+        or not isinstance(attempt.get("worker_id"), str)
+        or not 1 <= len(attempt["worker_id"]) <= 500
+        or type(attempt.get("fencing_token")) is not int
+        or attempt["fencing_token"] < 1
+        or type(attempt.get("version")) is not int
+        or attempt["version"] != int(aggregate_version)
     ):
         raise SystemExit(f"attempt event {event_id} has an invalid contract")
     try:
-        created = parse_utc(payload["created_at"])
+        created = parse_utc(attempt["created_at"])
+        updated = parse_utc(attempt.get("updated_at", attempt["created_at"]))
+        started = parse_utc(attempt["started_at"]) if "started_at" in attempt else None
+        finished = parse_utc(attempt["finished_at"]) if "finished_at" in attempt else None
     except (TypeError, ValueError) as error:
         raise SystemExit(
             f"attempt event {event_id} has an invalid timestamp: {error}"
         )
-    elapsed = created - datetime.datetime(
-        1970, 1, 1, tzinfo=datetime.timezone.utc
-    )
-    payload_created_us = (
-        elapsed.days * 86400 * 1000000
-        + elapsed.seconds * 1000000
-        + elapsed.microseconds
-    )
+    epoch = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+    def micros(value):
+        if value is None:
+            return -1
+        elapsed = value - epoch
+        return elapsed.days * 86400 * 1000000 + elapsed.seconds * 1000000 + elapsed.microseconds
+
+    payload_created_us = micros(created)
+    payload_updated_us = micros(updated)
+    previous = attempt_events.get(key)
+    if previous is not None:
+        if attempt["version"] != previous["version"] + 1:
+            raise SystemExit(f"attempt event {event_id} skips an aggregate version")
+        immutable = {
+            "attempt_id", "run_id", "ordinal", "lease_resource_type",
+            "lease_resource_id", "worker_id", "fencing_token", "created_us"
+        }
+        current_immutable = {
+            "attempt_id": attempt["attempt_id"], "run_id": attempt["run_id"],
+            "ordinal": attempt["ordinal"],
+            "lease_resource_type": attempt["lease_resource_type"],
+            "lease_resource_id": attempt["lease_resource_id"],
+            "worker_id": attempt["worker_id"],
+            "fencing_token": attempt["fencing_token"],
+            "created_us": payload_created_us,
+        }
+        if any(previous[field] != current_immutable[field] for field in immutable):
+            raise SystemExit(f"attempt event {event_id} mutates immutable authority")
+        if event_type == "attempt.started" and not (
+            previous["status"] == "queued" and attempt["status"] == "running"
+            and started is not None and finished is None
+        ):
+            raise SystemExit(f"attempt event {event_id} has an invalid start transition")
+        if event_type == "attempt.finished" and not (
+            previous["status"] == "running"
+            and attempt["status"] in {"succeeded", "blocked", "failed_retryable", "failed_terminal", "cancelled"}
+            and finished is not None
+        ):
+            raise SystemExit(f"attempt event {event_id} has an invalid finish transition")
+        if event_type == "attempt.reconciled" and not (
+            previous["status"] in {"queued", "running"}
+            and attempt["status"] == "failed_retryable" and finished is not None
+        ):
+            raise SystemExit(f"attempt event {event_id} has an invalid recovery transition")
+        if event_type == "attempt.finished":
+            result = payload["result"]
+            expected_result_fields = {
+                "task_id", "adapter", "status", "retryable", "termination_reason",
+                "started_at", "finished_at", "duration_ms", "exit_code",
+                "stdout_sha256", "stderr_sha256", "usage", "evidence_refs"
+            }
+            if not isinstance(result, dict) or set(result) != expected_result_fields \
+               or result["status"] != attempt["status"]:
+                raise SystemExit(f"attempt event {event_id} has an invalid safe result")
+
     attempt_events[key] = {
-        "attempt_id": payload["attempt_id"],
-        "run_id": payload["run_id"],
-        "ordinal": payload["ordinal"],
-        "status": payload["status"],
-        "lease_resource_type": payload["lease_resource_type"],
-        "lease_resource_id": payload["lease_resource_id"],
-        "worker_id": payload["worker_id"],
-        "fencing_token": payload["fencing_token"],
-        "version": payload["version"],
+        "attempt_id": attempt["attempt_id"],
+        "run_id": attempt["run_id"],
+        "ordinal": attempt["ordinal"],
+        "status": attempt["status"],
+        "lease_resource_type": attempt["lease_resource_type"],
+        "lease_resource_id": attempt["lease_resource_id"],
+        "worker_id": attempt["worker_id"],
+        "fencing_token": attempt["fencing_token"],
+        "version": attempt["version"],
         "created_us": payload_created_us,
+        "updated_us": payload_updated_us,
+        "started_us": micros(started),
+        "finished_us": micros(finished),
     }
-    if payload_created_us != int(occurred_us):
+    if payload_updated_us != int(occurred_us):
         raise SystemExit(f"attempt event {event_id} occurrence time differs")
 
 if attempts != attempt_events:
-    raise SystemExit("canonical attempts and attempt creation events differ")
+    raise SystemExit("canonical attempts and replayed attempt streams differ")
 
 outbox_parts = pathlib.Path(event_outbox_integrity_path).read_text().strip().split("\t")
 if outbox_parts != ["0", "0"]:

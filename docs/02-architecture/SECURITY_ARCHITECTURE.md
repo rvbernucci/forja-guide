@@ -1,7 +1,7 @@
 # Security Architecture
 
-Status: MCP and daemon HTTP identity, capability, scope, decision, and audit
-controls implemented; worker and retrieval controls proposed
+Status: MCP and daemon controls implemented; Sprint 04 worker controls are an
+implementation candidate; retrieval controls remain proposed
 
 ## Primary Threats
 
@@ -60,11 +60,19 @@ Implemented through Sprint 03:
   with receipt recovery consuming event-specific evidence;
 - deterministic schema validation and idempotent command replay.
 
+Implemented as a Sprint 04 candidate:
+
+- strict worker contracts and full-worktree-only read authorization;
+- sanitized worker and model-command environments;
+- bounded process groups, timers, output, telemetry, and reaping;
+- observed write-scope checks including ignored files and Git index flags;
+- hash-verified evidence references and durable output digests.
+
 Planned controls:
 
 - PostgreSQL row-level security where applicable;
 - expiring approvals and grants;
-- isolated worktrees and process groups;
+- cgroup, container, or equivalent hostile-descendant containment;
 - command and network policies;
 - secret manager integration;
 - signed or hashed artifacts;

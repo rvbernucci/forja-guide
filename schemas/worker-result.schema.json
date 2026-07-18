@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/worker-result.schema.json",
+  "title": "Forja Worker Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["task_id", "attempt_id", "run_id", "schema_version", "adapter", "status", "retryable", "termination_reason", "started_at", "finished_at", "duration_ms", "exit_code", "stdout", "stderr", "stdout_sha256", "stderr_sha256", "usage", "report", "evidence_refs"],
+  "properties": {
+    "task_id": {"type": "string", "pattern": "^task_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "attempt_id": {"type": "string", "pattern": "^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "run_id": {"type": "string", "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "schema_version": {"const": "1.0"},
+    "adapter": {"type": "string", "minLength": 1, "maxLength": 120},
+    "status": {"enum": ["succeeded", "blocked", "failed_retryable", "failed_terminal", "cancelled"]},
+    "retryable": {"type": "boolean"},
+    "termination_reason": {"enum": ["completed", "worker_blocked", "cancelled", "wall_timeout", "inactivity_timeout", "telemetry_failure", "output_limit", "start_failure", "process_failure", "invalid_report", "budget_rejected"]},
+    "started_at": {"type": "string", "format": "date-time"},
+    "finished_at": {"type": "string", "format": "date-time"},
+    "duration_ms": {"type": "integer", "minimum": 0},
+    "exit_code": {"type": ["integer", "null"]},
+    "stdout": {"type": "string", "maxLength": 16777216},
+    "stderr": {"type": "string", "maxLength": 16777216},
+    "stdout_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "stderr_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "usage": {
+      "type": "object", "additionalProperties": false,
+      "required": ["input_tokens", "cached_input_tokens", "output_tokens", "tool_calls"],
+      "properties": {
+        "input_tokens": {"type": "integer", "minimum": 0},
+        "cached_input_tokens": {"type": "integer", "minimum": 0},
+        "output_tokens": {"type": "integer", "minimum": 0},
+        "tool_calls": {"type": "integer", "minimum": 0}
+      }
+    },
+    "report": {
+      "oneOf": [
+        {"$ref": "https://forja.dev/schemas/worker-report.schema.json"},
+        {"type": "null"}
+      ]
+    },
+    "evidence_refs": {
+      "type": "array", "maxItems": 2048, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9._/-]+#sha256=[0-9a-f]{64}$", "maxLength": 4096}
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "succeeded"}}},
+      "then": {
+        "properties": {
+          "retryable": {"const": false},
+          "termination_reason": {"const": "completed"},
+          "report": {
+            "allOf": [
+              {"$ref": "https://forja.dev/schemas/worker-report.schema.json"},
+              {"properties": {"status": {"const": "completed"}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "blocked"}}},
+      "then": {
+        "properties": {
+          "retryable": {"const": false},
+          "termination_reason": {"const": "worker_blocked"},
+          "report": {
+            "allOf": [
+              {"$ref": "https://forja.dev/schemas/worker-report.schema.json"},
+              {"properties": {"status": {"const": "blocked"}}}
+            ]
+          }
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "failed_retryable"}}},
+      "then": {
+        "properties": {
+          "retryable": {"const": true},
+          "termination_reason": {
+            "enum": ["wall_timeout", "inactivity_timeout", "telemetry_failure", "start_failure", "process_failure", "invalid_report"]
+          },
+          "report": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "failed_terminal"}}},
+      "then": {
+        "properties": {
+          "retryable": {"const": false},
+          "termination_reason": {"enum": ["output_limit", "process_failure", "invalid_report", "budget_rejected"]},
+          "report": {"type": "null"}
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "cancelled"}}},
+      "then": {
+        "properties": {
+          "retryable": {"const": false},
+          "termination_reason": {"const": "cancelled"},
+          "report": {"type": "null"}
+        }
+      }
+    }
+  ]
+}

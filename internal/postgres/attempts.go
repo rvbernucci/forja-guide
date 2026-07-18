@@ -28,6 +28,13 @@ func (s *Store) CreateAttempt(
 	metadata runstate.CommandMetadata,
 	proof persistence.LeaseProof,
 ) (persistence.Attempt, error) {
+	if status != "queued" {
+		return persistence.Attempt{}, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.CreateAttempt",
+			"new attempts must start in queued state",
+		)
+	}
 	if length := utf8.RuneCountInString(status); length < 1 || length > 100 {
 		return persistence.Attempt{}, fault.New(
 			fault.CodeInvalidArgument,
@@ -145,7 +152,7 @@ func (s *Store) CreateAttempt(
 		SELECT $1, $2, $3, n.ordinal, $4, $8, $9, $5, $6, 1
 		FROM next_ordinal AS n
 		CROSS JOIN live_fence
-		RETURNING ordinal, created_at`,
+		RETURNING ordinal, created_at, updated_at`,
 		attempt.AttemptID,
 		s.tenantID,
 		attempt.RunID,
@@ -155,7 +162,7 @@ func (s *Store) CreateAttempt(
 		s.repositoryID,
 		proof.ResourceType,
 		proof.ResourceID,
-	).Scan(&attempt.Ordinal, &attempt.CreatedAt)
+	).Scan(&attempt.Ordinal, &attempt.CreatedAt, &attempt.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return persistence.Attempt{}, fault.New(
 			fault.CodeConflict,
@@ -167,7 +174,8 @@ func (s *Store) CreateAttempt(
 		return persistence.Attempt{}, databaseError("postgres.CreateAttempt.insert", err)
 	}
 	attempt.CreatedAt = attempt.CreatedAt.UTC()
-	payload, err := json.Marshal(attempt)
+	attempt.UpdatedAt = attempt.UpdatedAt.UTC()
+	payload, err := json.Marshal(createdAttemptSnapshot(attempt))
 	if err != nil {
 		return persistence.Attempt{}, fault.Wrap(
 			fault.CodeInternal,
@@ -189,7 +197,7 @@ func (s *Store) CreateAttempt(
 	); err != nil {
 		return persistence.Attempt{}, err
 	}
-	if err := saveAttemptReplay(
+	if err := saveCreatedAttemptReplay(
 		ctx,
 		tx,
 		s.tenantID,
@@ -207,6 +215,34 @@ func (s *Store) CreateAttempt(
 		return persistence.Attempt{}, databaseError("postgres.CreateAttempt.commit", err)
 	}
 	return attempt, nil
+}
+
+type createdAttemptEvent struct {
+	AttemptID         string    `json:"attempt_id"`
+	RunID             string    `json:"run_id"`
+	Ordinal           int       `json:"ordinal"`
+	Status            string    `json:"status"`
+	LeaseResourceType string    `json:"lease_resource_type"`
+	LeaseResourceID   string    `json:"lease_resource_id"`
+	WorkerID          string    `json:"worker_id"`
+	FencingToken      int64     `json:"fencing_token"`
+	Version           int       `json:"version"`
+	CreatedAt         time.Time `json:"created_at"`
+}
+
+func createdAttemptSnapshot(attempt persistence.Attempt) createdAttemptEvent {
+	return createdAttemptEvent{
+		AttemptID:         attempt.AttemptID,
+		RunID:             attempt.RunID,
+		Ordinal:           attempt.Ordinal,
+		Status:            attempt.Status,
+		LeaseResourceType: attempt.LeaseResourceType,
+		LeaseResourceID:   attempt.LeaseResourceID,
+		WorkerID:          attempt.WorkerID,
+		FencingToken:      attempt.FencingToken,
+		Version:           attempt.Version,
+		CreatedAt:         attempt.CreatedAt,
+	}
 }
 
 func (s *Store) verifyAttemptFence(
@@ -372,11 +408,28 @@ func decodeStoredAttempt(data []byte) (persistence.Attempt, error) {
 		attempt.LeaseResourceID == "" ||
 		attempt.WorkerID == "" ||
 		attempt.FencingToken < 1 ||
-		attempt.Version != 1 ||
+		attempt.Version < 1 ||
 		!runstate.ValidTimestamp(attempt.CreatedAt) {
 		return persistence.Attempt{}, fmt.Errorf(
 			"invalid stored attempt ordinal, version, or timestamp",
 		)
+	}
+	if attempt.UpdatedAt.IsZero() {
+		// Version 1 receipts created before lifecycle persistence did not expose
+		// updated_at; their immutable creation snapshot remains valid.
+		attempt.UpdatedAt = attempt.CreatedAt
+	}
+	if !runstate.ValidTimestamp(attempt.UpdatedAt) ||
+		attempt.UpdatedAt.Before(attempt.CreatedAt) {
+		return persistence.Attempt{}, fmt.Errorf("invalid stored attempt update timestamp")
+	}
+	if attempt.StartedAt != nil {
+		value := attempt.StartedAt.UTC()
+		attempt.StartedAt = &value
+	}
+	if attempt.FinishedAt != nil {
+		value := attempt.FinishedAt.UTC()
+		attempt.FinishedAt = &value
 	}
 	return attempt, nil
 }
@@ -411,6 +464,40 @@ func saveAttemptReplay(
 		response,
 	); err != nil {
 		return databaseError("postgres.saveAttemptReplay", err)
+	}
+	return nil
+}
+
+func saveCreatedAttemptReplay(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID string,
+	scope string,
+	key string,
+	requestHash []byte,
+	attempt persistence.Attempt,
+) error {
+	response, err := json.Marshal(createdAttemptSnapshot(attempt))
+	if err != nil {
+		return fault.Wrap(
+			fault.CodeInternal,
+			"postgres.saveCreatedAttemptReplay",
+			"encode command response",
+			err,
+		)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.idempotency_keys (
+			tenant_id, scope, idempotency_key, request_hash,
+			response_status, response_body
+		) VALUES ($1, $2, $3, $4, 201, $5)`,
+		tenantID,
+		scope,
+		key,
+		requestHash,
+		response,
+	); err != nil {
+		return databaseError("postgres.saveCreatedAttemptReplay", err)
 	}
 	return nil
 }

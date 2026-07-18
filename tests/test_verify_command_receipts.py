@@ -1,6 +1,7 @@
 """Unit tests for command receipt evidence validation."""
 
 import copy
+import hashlib
 import importlib.util
 import pathlib
 import unittest
@@ -94,3 +95,64 @@ class SprintCancellationEvidenceTests(unittest.TestCase):
         self.assert_rejected(
             lambda event: event["payload"].__setitem__("sequence_number", True)
         )
+
+
+class EmptyReconciliationReceiptTests(unittest.TestCase):
+    """Verify a no-op reconciliation without inventing a domain event."""
+
+    tenant_id = "00000000-0000-4000-8000-000000000001"
+    repository_id = "00000000-0000-4000-8000-000000000002"
+    scope = f"reconcile_attempts:{repository_id}:scheduler-main"
+
+    def receipt(self) -> dict:
+        """Return an independently verifiable empty reconciliation receipt."""
+        response = {
+            "attempts": [],
+            "authority": {
+                "tenant_id": self.tenant_id,
+                "repository_id": self.repository_id,
+                "resource_type": "scheduler",
+                "resource_id": "scheduler-main",
+                "owner_id": "scheduler-1",
+                "fencing_token": 7,
+            },
+            "command": {
+                "tenant_id": self.tenant_id,
+                "repository_id": self.repository_id,
+                "idempotency_key": "empty-reconcile",
+                "actor_type": "system",
+                "actor_id": "reconciler",
+                "correlation_id": "correlation-empty-reconcile",
+                "causation_id": "",
+            },
+        }
+        hash_parts = [
+            self.scope,
+            "scheduler-1",
+            "7",
+            "system",
+            "reconciler",
+            "",
+        ]
+        return {
+            "tenant_id": self.tenant_id,
+            "scope": self.scope,
+            "idempotency_key": "empty-reconcile",
+            "request_hash": hashlib.sha256(
+                "\0".join(hash_parts).encode("utf-8")
+            ).hexdigest(),
+            "status": 200,
+            "response": response,
+        }
+
+    def test_accepts_hash_bound_empty_reconciliation(self) -> None:
+        """The receipt itself carries the proof and command provenance."""
+        evidence = VERIFIER.verify_receipt(self.receipt(), [])
+        self.assertEqual(evidence["domain_event_ids"], set())
+
+    def test_rejects_scope_authority_mismatch(self) -> None:
+        """A no-op receipt cannot substitute another scheduler fence."""
+        receipt = self.receipt()
+        receipt["response"]["authority"]["resource_id"] = "other-scheduler"
+        with self.assertRaises(ValueError):
+            VERIFIER.verify_receipt(receipt, [])

@@ -1,6 +1,6 @@
 # Runtime and MCP Architecture
 
-Status: Implemented through Sprint 03; worker execution remains proposed
+Status: Sprint 03 closed; Sprint 04 bounded worker implementation candidate
 
 ## MCP Boundary
 
@@ -100,9 +100,14 @@ The initial isolation hierarchy is:
 1. separate Git worktree;
 2. dedicated process group;
 3. sanitized environment;
-4. explicit filesystem scope;
+4. observed write-scope verification and full-worktree read scope;
 5. command allowlist and timeout;
 6. optional container or sandbox adapter for higher-risk tasks.
+
+Process groups provide bounded lifecycle control, not complete containment of
+a hostile descendant that creates a new session. Production workers require a
+cgroup, container, or equivalent job boundary; narrower read scopes are
+rejected until they can be enforced mechanically.
 
 ## Validation
 

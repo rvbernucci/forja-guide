@@ -45,6 +45,13 @@ implementation releases.
   audit events, and compatibility-pinned MCP schemas.
 - A fail-closed bearer authentication boundary for later Streamable HTTP
   deployment.
+- Versioned worker task, report, and result contracts with offline cross-schema
+  validation.
+- A bounded `forja-worker` Codex CLI supervisor with process-tree cancellation,
+  sanitized environments, runtime budgets, structured events, and reproducible
+  Linux builds.
+- Fenced attempt start, finish, idempotent replay, and restart reconciliation
+  with secret-safe canonical events.
 
 ### Changed
 
