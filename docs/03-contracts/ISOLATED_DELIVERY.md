@@ -258,9 +258,13 @@ also closes a crash after receipt persistence but before release. No recovery
 path deletes quarantine evidence or updates a default branch.
 Damaged or missing persisted evidence can never authorize the Git CAS or a new
 prepared intent. It also cannot deadlock an already authenticated prepared
-intent: recovery validates the canonical authority artifacts and exact durable
-intent, then may retire it only when the locked Git observation still proves
-the approved pre-CAS state.
+intent: recovery reconstructs and validates the request, commit, lease fences,
+canonical receipt bytes, authority hash, receipt hash, and intent hash from the
+immutable journal. It may then finalize only when a fresh Git observation
+proves the exact result commit, or retire the intent only when a second locked
+observation still proves the approved pre-CAS state. This recovery path never
+performs a new compare-and-swap and therefore does not require external
+validation files after journal preparation.
 Loaded validation evidence also recomputes the deterministic validation ID from
 the exact delivery, Attempt, validator, and result commit. Copying a valid
 bundle between Attempts therefore cannot authorize recovery.
@@ -306,8 +310,8 @@ Before `StartAttempt`, execution failures preserve the non-resumable pair
 and recovery reconciles the Attempt. A failed `Prepare` is a cleanup candidate
 even when it returns no worktree object: exact lease authority remains held
 until the attempt path is durably quarantined or pre-worker absence is proven.
-Recovery of an already completed Run also loads and rehashes its persisted
-validation bundle, reconstructs the receipt-bound commit identity, invokes the
+Recovery of an already completed Run reconstructs the receipt-bound commit and
+authority identity from the immutable publication journal, invokes the
 publication service, freshly rereads the namespaced Git ref, and idempotently
 releases any lease set left active after receipt persistence. A recovered failed
 validation with no publication journal first quarantines the worktree while its
@@ -331,6 +335,9 @@ with an already failed Run indicates interrupted cleanup after a later stage.
 Recovery rejects any active prepared or published journal, then idempotently
 quarantines the worktree and releases the historical lease set without
 rewriting the existing failed Run state.
+Any supervisor-owned `reconciliation-required` marker takes precedence over
+missing source or quarantine paths. Cleanup cannot reinterpret an unresolved
+Git registration mutation as proof that no worktree existed.
 
 ## Validation
 

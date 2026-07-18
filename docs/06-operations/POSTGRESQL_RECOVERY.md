@@ -1,6 +1,7 @@
 # PostgreSQL Recovery
 
-Status: Implemented in Sprint 02; governed command recovery extended in Sprint 03
+Status: Implemented in Sprint 02; governed command and delivery recovery
+extended through Sprint 05
 
 PostgreSQL is Forja's canonical operational authority. A recovery is complete
 only when the database restores and its event streams pass continuity checks.
@@ -21,9 +22,13 @@ same recovery after the Run is already `cancelled` preserves that state
 idempotently. If takeover finds a retryable Attempt while its
 Run is still `preparing`, absence of both worktree and prior quarantine is valid
 pre-worker cleanup; the same absence in `running` or later states remains a
-fail-closed anomaly. For a durably succeeded attempt, recovery reconstructs the deterministic commit,
-loads and rehashes the exact persisted validation bundle, and delegates any
-prepared or published journal row to `PublicationService.Recover`.
+fail-closed anomaly. A durable reconciliation marker always overrides that
+absence and requires administrative Git reconciliation. For a durably
+succeeded attempt without a publication journal, recovery reconstructs the
+deterministic commit and loads or regenerates exact validation evidence. Once a
+prepared or published journal exists, recovery instead delegates its immutable
+receipt and intent to `PublicationService.Recover`; external evidence files are
+no longer required because recovery cannot perform a new Git CAS.
 Journaled recovery derives the commit identity from the schema-validated
 receipt and never runs `commit-tree` without a live delivery fence. Any
 detached lease renewal has its own 45-second deadline, and a real renewal error
@@ -35,9 +40,10 @@ without durable `cancelling` or `cancelled` Run authority, recovery quarantines
 and releases it as a retryable interruption. A blocked Attempt remains terminal;
 governed resume returns its Run to `queued` for a fresh Attempt and immutable
 attempt-scoped authorization.
-Completed Runs do not bypass that boundary: recovery reloads persisted evidence,
-reconstructs the receipt-bound commit, freshly observes the publication ref,
-and retries exact lease-set release. The external verifier also reconstructs
+Completed Runs do not bypass that boundary: recovery validates the journaled
+authority and canonical receipt, reconstructs the receipt-bound commit,
+freshly observes the publication ref, and retries exact lease-set release. The
+external verifier also reconstructs
 attempt-scoped `delivery.authorized` events, their human provenance, request
 digests, governed predecessors, success audits, and idempotency receipts. The
 predecessor relation uses the canonical outbox sequence rather than timestamps,
@@ -98,7 +104,9 @@ and indexes against the same manifest embedded by the runtime, verifies the
 complete trigger set and every trigger function body, verifies bootstrap
 authority, and semantically replays run event streams. Replay rejects gaps,
 invalid payloads, envelope mismatches, changed immutable fields, timestamp
-drift, and illegal FSM transitions. It also requires replayed runs to equal
+drift, and illegal FSM transitions. Replay retains the historical Sprint 04
+`awaiting_decision -> running` edge only for immutable event compatibility;
+new runtime commands must resume through `queued`. It also requires replayed runs to equal
 canonical rows, every event to have its matching outbox message, every attempt
 to equal its complete fencing-authorized creation event, and every idempotency
 receipt to match the recomputed command fingerprint, response, and status. A

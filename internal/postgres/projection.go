@@ -283,13 +283,23 @@ func validateReplayedRunEvent(
 		return corruptRunStream(aggregateID, "previous event has an invalid state")
 	}
 	to, err := runstate.ParseState(run.State)
-	if err != nil || !runstate.CanTransition(from, to) {
+	if err != nil || !canReplayRunTransition(from, to) {
 		return corruptRunStream(
 			aggregateID,
 			fmt.Sprintf("event %s contains an illegal state transition", eventID),
 		)
 	}
 	return nil
+}
+
+func canReplayRunTransition(from runstate.State, to runstate.State) bool {
+	// Sprint 04 resumed blocked work directly into running. New commands must use
+	// a fresh queued scheduling cycle, but immutable pre-upgrade events remain
+	// valid replay input.
+	if from == runstate.StateAwaitingDecision && to == runstate.StateRunning {
+		return true
+	}
+	return runstate.CanTransition(from, to)
 }
 
 func corruptRunStream(runID string, detail string) error {

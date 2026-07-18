@@ -235,6 +235,9 @@ func (m *WorktreeManager) Quarantine(
 	if m.afterAttemptLockTest != nil {
 		m.afterAttemptLockTest("quarantine")
 	}
+	if err := rejectOutstandingReconciliation(resolved.worktreeRoot, request); err != nil {
+		return QuarantineResult{}, err
+	}
 	if err := ensureRequestAuthority(resolved.worktreeRoot, request, false); err != nil {
 		if errors.Is(err, os.ErrNotExist) || errors.Is(err, errAuthorityBindingMissing) {
 			quarantinePath := filepath.Join(
@@ -778,6 +781,35 @@ func quarantineMetadataRelative(request contracts.DeliveryRequest) string {
 		quarantineMetadataRoot,
 		request.DeliveryID,
 		request.AttemptID,
+	)
+}
+
+func rejectOutstandingReconciliation(
+	worktreeRoot string,
+	request contracts.DeliveryRequest,
+) error {
+	root, err := os.OpenRoot(worktreeRoot)
+	if err != nil {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("open worktree root to inspect reconciliation state: %w", err),
+		)
+	}
+	defer root.Close()
+	marker := filepath.Join(
+		quarantineMetadataRelative(request), reconciliationMarkerName,
+	)
+	if _, err := root.Lstat(marker); errors.Is(err, os.ErrNotExist) {
+		return nil
+	} else if err != nil {
+		return errors.Join(
+			ErrGitReconciliationRequired,
+			fmt.Errorf("inspect Git reconciliation marker: %w", err),
+		)
+	}
+	return errors.Join(
+		ErrGitReconciliationRequired,
+		fmt.Errorf("durable Git reconciliation marker remains at %s", marker),
 	)
 }
 
