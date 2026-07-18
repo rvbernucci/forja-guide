@@ -1,8 +1,7 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-04 closed. Sprint 05 is authorized but not yet
-started. Gate A remains achieved; Gate B remains pending until Sprint 05
-closes.
+Status: Active. Sprints 00-04 closed. Sprint 05 is in progress. Gate A remains
+achieved; Gate B remains pending until Sprint 05 closes.
 
 ## Objective
 

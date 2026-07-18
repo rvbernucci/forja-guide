@@ -77,6 +77,11 @@ objective is supplied only over stdin. The invocation forces ephemeral mode,
 ignores user configuration, sets `approval_policy=never`, uses the
 `workspace-write` sandbox, disables sandbox command network access, and asks
 Codex CLI to validate its final message against the embedded report schema.
+Adapter registration requires isolation metadata version `1.0` naming a trusted
+supervisor-side policy. For Codex, that policy independently rebuilds the
+complete invocation, including stdin and supervisor-owned report paths, from
+the approved task. Adapter-provided metadata grants no authority, and no alias,
+compact flag, duplicate override, or ungenerated argument is accepted.
 The evidence directory is the primary writable workspace and each declared
 write scope is an explicit additional writable root. The model reads the
 repository by its absolute path. This blocks an out-of-scope edit-and-restore
@@ -101,6 +106,13 @@ path-list output, and 64 MiB of inspected content; a larger baseline is rejected
 before launch. Sprint 05 adds worktree creation, delivery leases, validation
 pipelines, and controlled publication; Sprint 04
 cannot publish a change.
+
+All supervisor-side Git inspection is output-bounded, cancellation-aware, and
+subject to a two-second per-command deadline. It runs with hooks disabled,
+`core.fsmonitor` and untracked-cache acceleration disabled, external diff
+disabled, replace objects disabled, and a minimal allowlisted environment.
+Effective clean, smudge, process-filter, or active filesystem-monitor
+configuration is rejected before worker launch.
 
 Evidence references use `relative/path#sha256=<64 lowercase hex>` and are
 accepted only when the attempt changed that regular file beneath a proper

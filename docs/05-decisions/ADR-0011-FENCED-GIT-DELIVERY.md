@@ -48,10 +48,35 @@ the delivery fence. File and artifact lease IDs are canonical
 repository-relative scopes. These identities are revalidated from the receipt
 rather than trusted as opaque strings.
 
-Every untrusted worker adapter must declare a versioned isolation capability
-and prove that its effective operating-system writable roots equal the roots
-derived by the delivery service. Adapters without equivalent enforcement fail
-registration.
+Every untrusted worker adapter must declare versioned isolation metadata that
+selects a trusted supervisor-side policy. The policy, not the adapter,
+independently proves that the canonical invocation enforces the operating-system
+writable roots derived by the delivery service. Adapters without a matching
+policy fail registration.
+
+Delivery Git reads and mutations have separate internal deadlines, disable
+repository hooks, and reject effective local or worktree-scoped clean, smudge,
+and process filters before checkout. An atomic filesystem lifecycle lock
+serializes prepare, inspect, and quarantine for one attempt across manager
+instances. Interrupted mutations are reconciled into preserved quarantine
+bytes or a non-reusable tombstone, receive a `reconciliation-required` marker,
+and return failure rather than treating filesystem position as proof of Git
+administrative state. Attempt
+paths are derived from delivery and attempt identities beneath a rooted
+operator directory. Each attempt also stores a supervisor-owned digest of its
+canonical request, preventing an existing path from being replayed with altered
+authority.
+An attempt with an existing quarantine destination is permanently retired from
+preparation; every retry must use a new attempt identity.
+Logical and resolved namespace and writable-scope positions must match, so a
+symlink cannot redirect checkout preparation. Contaminated, clean-retired, or
+unverifiable bytes move to a non-reusable quarantine namespace. Physical
+deletion after worker exposure requires a joint live-lease and process-
+quiescence proof; until that proof is implemented, the runtime preserves the
+bytes rather than trusting a check-then-delete sequence.
+Quarantine verifies the same immutable request digest and invokes Git move only
+when the attempt's common directory matches the authorized repository; foreign
+or unverifiable Git metadata is never mutated.
 
 ## Consequences
 

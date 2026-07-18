@@ -10,10 +10,11 @@ validation.
 
 ### Scope
 
-- [ ] Create and remove isolated Git worktrees per attempt.
-- [ ] Implement file and artifact write leases with fencing tokens.
+- [ ] Create and remove isolated Git worktrees per attempt. Creation and
+  quarantine are implemented; proof-bound physical deletion remains pending.
+- [x] Implement file and artifact write leases with fencing tokens.
 - [ ] Reject writes outside the declared write set.
-- [ ] Require every untrusted adapter to prove equivalent OS-enforced writable
+- [x] Require every untrusted adapter to prove equivalent OS-enforced writable
   roots before registration.
 - [ ] Capture base commit, resulting commit, diff hash, and changed paths.
 - [ ] Implement mechanical validators for tests, formatting, schemas, secrets,
@@ -21,8 +22,8 @@ validation.
 - [ ] Implement independent validator assignment.
 - [ ] Prevent the author from being the only validator.
 - [ ] Produce evidence bundles and close receipts.
-- [ ] Implement retry from clean base and explicit conflict handling.
-- [ ] Add concurrent-author and stale-lease tests.
+- [x] Implement retry from clean base and explicit conflict handling.
+- [x] Add concurrent-author and stale-lease tests.
 
 ### Acceptance
 
