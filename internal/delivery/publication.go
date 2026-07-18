@@ -128,8 +128,9 @@ func (s *PublicationService) Publish(
 			return PublicationResult{}, err
 		}
 	}
+	requirePersistedEvidence := !found || recorded.State == "prepared"
 	intent, receipt, err := s.publicationIntent(
-		ctx, request, result, bundle, leaseSet, receiptTimes, true,
+		ctx, request, result, bundle, leaseSet, receiptTimes, requirePersistedEvidence,
 	)
 	if err != nil {
 		return PublicationResult{}, err
@@ -179,7 +180,8 @@ func (s *PublicationService) Publish(
 			return PublicationResult{}, errors.Join(err, timestampErr)
 		}
 		concurrentIntent, concurrentReceipt, rebuildErr := s.publicationIntent(
-			ctx, request, result, bundle, leaseSet, concurrentTimes, true,
+			ctx, request, result, bundle, leaseSet, concurrentTimes,
+			concurrent.State == "prepared",
 		)
 		if rebuildErr != nil {
 			return PublicationResult{}, errors.Join(err, rebuildErr)

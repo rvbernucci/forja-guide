@@ -195,6 +195,42 @@ func TestLeaseSetAllowsSiblingFileAndArtifactScopes(t *testing.T) {
 	}
 }
 
+func TestMigrationSixRequiresEveryLegacyLeaseSetToDrain(t *testing.T) {
+	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 4)
+	leaseSetID := "attempt_upgrade_drain"
+	seedMigrationFourLeaseSet(t, pool, leaseSetID, false)
+
+	if err := Migrate(t.Context(), pool); err == nil {
+		t.Fatal("migration 006 inferred authority for an active legacy lease set")
+	}
+	var appliedVersion int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT max(version) FROM forja.schema_migrations`,
+	).Scan(&appliedVersion); err != nil {
+		t.Fatal(err)
+	}
+	if appliedVersion != 4 {
+		t.Fatalf("failed migration committed version %d, want 4", appliedVersion)
+	}
+
+	releaseMigrationFourLeaseSet(t, pool, leaseSetID)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("migrate after legacy lease-set drain: %v", err)
+	}
+	var authorizedTTLUS int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT authorized_ttl_us FROM forja.lease_sets
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, leaseSetID,
+	).Scan(&authorizedTTLUS); err != nil {
+		t.Fatal(err)
+	}
+	if authorizedTTLUS != 1000 {
+		t.Fatalf("released legacy lease-set TTL = %d, want non-renewable sentinel", authorizedTTLUS)
+	}
+}
+
 func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 	pool := migratedPool(t)
 	rollbackToMigrationVersion(t, pool, 4)

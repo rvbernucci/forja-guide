@@ -63,15 +63,17 @@ terminal conflict. Exact release is replay-safe after expiry or an earlier relea
 but a changed fence is still rejected while authority remains live.
 Recovery authenticates the canonical request, report, manifest, receipt, and
 durable intent without treating the continued availability of evidence files
-as proof that a CAS occurred. Missing or damaged files still block publication,
-but cannot prevent retirement when Git proves the CAS was not applied.
+as proof that a CAS occurred. Missing or damaged files still block a new CAS,
+but cannot prevent retirement when Git proves the CAS was not applied or exact
+lease release when the durable journal and Git prove it was published.
 Migration rollback is available only before this journal contains history.
 After the first prepared or terminal publication row, downgrade fails closed;
 operators preserve receipt authority and use forward repair rather than delete
 audit state to start an older binary.
-Migration 006 snapshots the current exact duration of every active pre-006
-lease set as its immutable renewal authority. Released historical sets receive
-a non-renewable sentinel duration. Its rollback refuses any active lease set.
+Migration 006 requires every pre-006 lease set to release before upgrade rather
+than inferring its original TTL from timestamps. Released historical sets
+receive a non-renewable sentinel duration. Its rollback likewise refuses any
+active lease set.
 
 Delivery request, validation, evidence, and receipt contracts use version
 `1.1`. They carry the canonical public `tenant_<uuidv4>` and `repo_<uuidv4>`

@@ -45,7 +45,14 @@ func TestPublicationServicePersistsBeforeCASAndReleasesAfterReceipt(t *testing.T
 		t.Fatalf("published ref = %s", ref)
 	}
 	// Durable publication replay must not depend on the original lease still
-	// being live after its successful release.
+	// being live or the evidence store remaining available after its successful
+	// release.
+	reportPath, _, _ := strings.Cut(fixture.bundle.ReportRef, "#sha256=")
+	if err := os.Remove(
+		filepath.Join(fixture.bundle.PhysicalRoot, filepath.FromSlash(reportPath)),
+	); err != nil {
+		t.Fatal(err)
+	}
 	fixture.leaseSet.ExpiresAt = time.Now().UTC().Add(-time.Minute)
 	for index := range fixture.leaseSet.Leases {
 		fixture.leaseSet.Leases[index].ExpiresAt = fixture.leaseSet.ExpiresAt

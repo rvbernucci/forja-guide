@@ -74,6 +74,8 @@ contaminated worktree is quarantined and never reused.
   the exact persisted lease-set and member duration.
 - [x] Persist the lease set's immutable authorized TTL and reject replay or
   renewal that attempts to change it.
+- [x] Require legacy lease sets to drain before migration 006 rather than
+  inferring their original TTL from independently sampled timestamps.
 
 ### 3. Worktree lifecycle
 

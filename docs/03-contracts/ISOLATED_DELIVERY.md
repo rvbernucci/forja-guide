@@ -97,6 +97,9 @@ and requires every member to share the same acquisition, renewal, expiry, and
 exact duration (`expires_at - updated_at`). Replay or renewal with a different
 TTL fails closed; authority cannot be expanded and later disguised by renewing
 back to the approved duration.
+Upgrading to this invariant requires every pre-existing lease set to release;
+migration 006 fails closed instead of guessing an original TTL from historical
+timestamps.
 
 Hierarchical ancestor leasing is intentionally conservative. It prevents
 `internal/worker` and `internal/worker/file.go` from being written by different
