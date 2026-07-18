@@ -6,22 +6,26 @@ import (
 	"encoding/json"
 	"time"
 
+	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
 // Attempt is one durable execution attempt for a run.
 type Attempt struct {
-	AttemptID         string    `json:"attempt_id"`
-	RunID             string    `json:"run_id"`
-	Ordinal           int       `json:"ordinal"`
-	Status            string    `json:"status"`
-	LeaseResourceType string    `json:"lease_resource_type"`
-	LeaseResourceID   string    `json:"lease_resource_id"`
-	WorkerID          string    `json:"worker_id"`
-	FencingToken      int64     `json:"fencing_token"`
-	Version           int       `json:"version"`
-	CreatedAt         time.Time `json:"created_at"`
+	AttemptID         string     `json:"attempt_id"`
+	RunID             string     `json:"run_id"`
+	Ordinal           int        `json:"ordinal"`
+	Status            string     `json:"status"`
+	LeaseResourceType string     `json:"lease_resource_type"`
+	LeaseResourceID   string     `json:"lease_resource_id"`
+	WorkerID          string     `json:"worker_id"`
+	FencingToken      int64      `json:"fencing_token"`
+	StartedAt         *time.Time `json:"started_at,omitempty"`
+	FinishedAt        *time.Time `json:"finished_at,omitempty"`
+	Version           int        `json:"version"`
+	CreatedAt         time.Time  `json:"created_at"`
+	UpdatedAt         time.Time  `json:"updated_at"`
 }
 
 // AttemptRepository creates replay-safe execution attempts.
@@ -33,6 +37,32 @@ type AttemptRepository interface {
 		runstate.CommandMetadata,
 		LeaseProof,
 	) (Attempt, error)
+}
+
+// AttemptLifecycleRepository persists fenced execution and recovery state.
+type AttemptLifecycleRepository interface {
+	AttemptRepository
+	GetAttempt(context.Context, string) (Attempt, error)
+	StartAttempt(
+		context.Context,
+		string,
+		int,
+		runstate.CommandMetadata,
+		LeaseProof,
+	) (Attempt, error)
+	FinishAttempt(
+		context.Context,
+		string,
+		int,
+		contracts.WorkerResult,
+		runstate.CommandMetadata,
+		LeaseProof,
+	) (Attempt, error)
+	ReconcileAbandonedAttempts(
+		context.Context,
+		runstate.CommandMetadata,
+		LeaseProof,
+	) ([]Attempt, error)
 }
 
 // LeaseProof binds a protected write to one live fenced ownership grant.

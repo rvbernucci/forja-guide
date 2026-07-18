@@ -17,6 +17,11 @@ type Registry struct {
 	compiled map[string]*jsonschema.Schema
 }
 
+type schemaResource struct {
+	name       string
+	resourceID string
+}
+
 // NewRegistry compiles every embedded schema and enables format assertions.
 func NewRegistry() (*Registry, error) {
 	entries, err := publicschemas.FS.ReadDir(".")
@@ -27,7 +32,7 @@ func NewRegistry() (*Registry, error) {
 	compiler := jsonschema.NewCompiler()
 	compiler.AssertFormat()
 
-	names := make([]string, 0, len(entries))
+	resources := make([]schemaResource, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".schema.json") {
 			continue
@@ -36,23 +41,35 @@ func NewRegistry() (*Registry, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read schema %s: %w", entry.Name(), err)
 		}
+		var header struct {
+			ID string `json:"$id"`
+		}
+		if err := json.Unmarshal(data, &header); err != nil {
+			return nil, fmt.Errorf("decode schema header %s: %w", entry.Name(), err)
+		}
+		resourceID := strings.TrimSpace(header.ID)
+		if resourceID == "" {
+			resourceID = entry.Name()
+		}
 		document, err := jsonschema.UnmarshalJSON(bytes.NewReader(data))
 		if err != nil {
 			return nil, fmt.Errorf("decode schema %s: %w", entry.Name(), err)
 		}
-		if err := compiler.AddResource(entry.Name(), document); err != nil {
+		if err := compiler.AddResource(resourceID, document); err != nil {
 			return nil, fmt.Errorf("register schema %s: %w", entry.Name(), err)
 		}
-		names = append(names, entry.Name())
+		resources = append(resources, schemaResource{
+			name: entry.Name(), resourceID: resourceID,
+		})
 	}
 
-	compiled := make(map[string]*jsonschema.Schema, len(names))
-	for _, name := range names {
-		schema, err := compiler.Compile(name)
+	compiled := make(map[string]*jsonschema.Schema, len(resources))
+	for _, resource := range resources {
+		schema, err := compiler.Compile(resource.resourceID)
 		if err != nil {
-			return nil, fmt.Errorf("compile schema %s: %w", name, err)
+			return nil, fmt.Errorf("compile schema %s: %w", resource.name, err)
 		}
-		compiled[name] = schema
+		compiled[resource.name] = schema
 	}
 	return &Registry{compiled: compiled}, nil
 }

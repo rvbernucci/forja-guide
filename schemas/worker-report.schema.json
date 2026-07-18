@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/worker-report.schema.json",
+  "title": "Forja Worker Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["status", "summary", "changed_paths", "evidence_refs", "risks"],
+  "properties": {
+    "status": {"enum": ["completed", "blocked"]},
+    "summary": {"type": "string", "minLength": 1, "maxLength": 12000},
+    "changed_paths": {
+      "type": "array", "maxItems": 2048, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4096}
+    },
+    "evidence_refs": {
+      "type": "array", "maxItems": 2048, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9._/-]+#sha256=[0-9a-f]{64}$", "maxLength": 4096}
+    },
+    "risks": {
+      "type": "array", "maxItems": 256,
+      "items": {"type": "string", "minLength": 1, "maxLength": 4000}
+    }
+  }
+}

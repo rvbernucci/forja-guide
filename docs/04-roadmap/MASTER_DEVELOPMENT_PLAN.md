@@ -1,8 +1,8 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-03 closed. Sprint 04 is authorized, but its
-Definition-of-Ready prerequisites and implementation remain open. Gate A
-remains achieved.
+Status: Active. Sprints 00-03 closed. Sprint 04 has a complete implementation
+candidate; evidence publication and immutable closure review remain open.
+Sprint 05 is not yet authorized. Gate A remains achieved.
 
 ## Objective
 

@@ -10,9 +10,10 @@ It is designed around one principle:
 
 ## Status
 
-This repository now includes the **Sprint 03 experimental governed control plane**
-alongside the public architecture and roadmap. It is not yet a production-ready
-multi-agent runtime.
+This repository includes the closed **Sprint 03 governed control plane** and a
+**Sprint 04 bounded worker supervisor implementation candidate** alongside the
+public architecture and roadmap. It is not yet a production-ready multi-agent
+runtime.
 
 The implemented kernel provides `forjad`, `forja`, canonical contract
 validation, a deterministic run state machine, PostgreSQL-backed aggregates and
@@ -23,8 +24,11 @@ builds. Its legacy kernel HTTP surface is bearer-authenticated, scope-bound,
 and derives audit identity only from server configuration. The official Go MCP
 SDK powers an authenticated stdio server with eight
 typed, audited tools for Sprint planning, submission, decisions, inspection,
-cancellation, and resumption. Codex worker execution remains planned for Sprint
-04.
+cancellation, and resumption. The Go worker runner now executes Codex CLI in an
+independent process group with sanitized environment, bounded runtime and
+output, schema-constrained reports, deterministic result classification, and
+fenced PostgreSQL attempt recovery. Sprint 05 still must validate and deliver
+worktree diffs before the end-to-end factory is complete.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -77,6 +81,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forjad`](cmd/forjad/) | Experimental Go daemon |
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
+| [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
 
