@@ -470,7 +470,7 @@ func (s *Supervisor) classifyWorktreeContamination(
 	ignoredBefore map[string]string,
 	result *contracts.WorkerResult,
 ) error {
-	if result.Status == "succeeded" {
+	if result.Status == "succeeded" || result.Status == "blocked" {
 		return nil
 	}
 	actualPaths, actualErr := gitWorktreeChanges(task.WorktreePath)

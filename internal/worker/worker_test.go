@@ -124,6 +124,9 @@ func TestWorkerProcess(t *testing.T) {
 		report("completed", []string{"docs/result.md", "docs/not-created.md"})
 	case "blocked":
 		report("blocked", nil)
+	case "blocked-with-change":
+		_ = os.WriteFile("docs/partial.md", []byte("partial result\n"), 0o600)
+		report("blocked", []string{"docs/partial.md"})
 	case "invalid-report":
 		_ = os.WriteFile(reportPath, []byte(`{"status":"completed"}`), 0o600)
 	case "scope-escape":
@@ -351,6 +354,7 @@ func TestSupervisorClassifications(t *testing.T) {
 		mutate    func(*contracts.WorkerTask)
 	}{
 		{"blocked", "blocked", "blocked", "worker_blocked", false, func(*contracts.WorkerTask) {}},
+		{"blocked with change", "blocked-with-change", "blocked", "worker_blocked", false, func(*contracts.WorkerTask) {}},
 		{"invalid report", "invalid-report", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"scope escape", "scope-escape", "failed_retryable", "invalid_report", true, func(*contracts.WorkerTask) {}},
 		{"extra reported path", "extra-reported-path", "failed_terminal", "worktree_contaminated", false, func(*contracts.WorkerTask) {}},
@@ -381,6 +385,22 @@ func TestSupervisorClassifications(t *testing.T) {
 				t.Fatalf("result = %#v", result)
 			}
 		})
+	}
+}
+
+func TestSupervisorPreservesValidatedBlockedChanges(t *testing.T) {
+	result, err := executeTask(
+		t, processAdapter{mode: "blocked-with-change"}, nil,
+		func(*contracts.WorkerTask) {},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "blocked" || result.Retryable || result.Report == nil ||
+		result.TerminationReason != "worker_blocked" ||
+		len(result.Report.ChangedPaths) != 1 ||
+		result.Report.ChangedPaths[0] != "docs/partial.md" {
+		t.Fatalf("blocked result=%#v", result)
 	}
 }
 
