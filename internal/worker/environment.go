@@ -9,10 +9,8 @@ import (
 )
 
 var inheritedEnvironment = map[string]struct{}{
-	"ALL_PROXY": {}, "HTTP_PROXY": {}, "HTTPS_PROXY": {}, "LANG": {},
-	"LC_ALL": {}, "NO_PROXY": {}, "PATH": {}, "SSL_CERT_DIR": {},
+	"LANG": {}, "LC_ALL": {}, "PATH": {}, "SSL_CERT_DIR": {},
 	"SSL_CERT_FILE": {}, "TMPDIR": {},
-	"all_proxy": {}, "http_proxy": {}, "https_proxy": {}, "no_proxy": {},
 }
 
 // SanitizedEnvironment creates a minimal environment for an untrusted worker.

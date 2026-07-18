@@ -209,6 +209,9 @@ def find_nested_attempt_event(events, event_type, attempt):
 def worker_result_hash_parts(result):
     usage = result["usage"]
     exit_code = "null" if result["exit_code"] is None else str(result["exit_code"])
+    report_sha256 = result["report_sha256"]
+    if not re.fullmatch(r"[0-9a-f]{64}", report_sha256):
+        raise ValueError("finish_attempt event has invalid report_sha256")
     return [
         result["task_id"],
         result["adapter"],
@@ -221,6 +224,7 @@ def worker_result_hash_parts(result):
         exit_code,
         result["stdout_sha256"],
         result["stderr_sha256"],
+        report_sha256,
         str(usage["input_tokens"]),
         str(usage["cached_input_tokens"]),
         str(usage["output_tokens"]),

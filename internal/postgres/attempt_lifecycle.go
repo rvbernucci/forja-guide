@@ -437,6 +437,7 @@ func (s *Store) appendAttemptEvent(
 			"exit_code":          result.ExitCode,
 			"stdout_sha256":      result.StdoutSHA256,
 			"stderr_sha256":      result.StderrSHA256,
+			"report_sha256":      workerReportSHA256(result.Report),
 			"usage":              result.Usage,
 			"evidence_refs":      result.EvidenceRefs,
 		}
@@ -620,12 +621,21 @@ func workerResultHashParts(result contracts.WorkerResult) []string {
 		exitCode,
 		result.StdoutSHA256,
 		result.StderrSHA256,
+		workerReportSHA256(result.Report),
 		strconv.Itoa(result.Usage.InputTokens),
 		strconv.Itoa(result.Usage.CachedInputTokens),
 		strconv.Itoa(result.Usage.OutputTokens),
 		strconv.Itoa(result.Usage.ToolCalls),
 		string(evidence),
 	}
+}
+
+func workerReportSHA256(report *contracts.WorkerReport) string {
+	// WorkerReport is a closed strings-and-slices contract, so encoding cannot
+	// fail. Its schema tests guard that property if the contract ever changes.
+	encoded, _ := json.Marshal(report)
+	hash := sha256.Sum256(encoded)
+	return hex.EncodeToString(hash[:])
 }
 
 type attemptReconciliationReplay struct {

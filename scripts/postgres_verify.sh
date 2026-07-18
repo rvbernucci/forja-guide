@@ -848,11 +848,14 @@ for line in pathlib.Path(attempt_events_path).read_text().splitlines():
             expected_result_fields = {
                 "task_id", "adapter", "status", "retryable", "termination_reason",
                 "started_at", "finished_at", "duration_ms", "exit_code",
-                "stdout_sha256", "stderr_sha256", "usage", "evidence_refs"
+                "stdout_sha256", "stderr_sha256", "report_sha256", "usage",
+                "evidence_refs"
             }
             if not isinstance(result, dict) or set(result) != expected_result_fields \
                or result["status"] != attempt["status"]:
                 raise SystemExit(f"attempt event {event_id} has an invalid safe result")
+            if not re.fullmatch(r"[0-9a-f]{64}", result["report_sha256"]):
+                raise SystemExit(f"attempt event {event_id} has an invalid report hash")
 
     attempt_events[key] = {
         "attempt_id": attempt["attempt_id"],

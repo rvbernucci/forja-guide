@@ -64,6 +64,7 @@ Implemented as a Sprint 04 candidate:
 
 - strict worker contracts and full-worktree-only read authorization;
 - sanitized worker and model-command environments;
+- Codex sandbox write roots derived from declared task scopes;
 - bounded process groups, timers, output, telemetry, and reaping;
 - observed write-scope checks including ignored files and Git index flags;
 - hash-verified evidence references and durable output digests.
@@ -73,8 +74,9 @@ Planned controls:
 - PostgreSQL row-level security where applicable;
 - expiring approvals and grants;
 - cgroup, container, or equivalent hostile-descendant containment;
+- separate worker identity or container filesystem confidentiality;
 - command and network policies;
-- secret manager integration;
+- secret manager integration with brokered, non-filesystem worker credentials;
 - signed or hashed artifacts;
 - dependency and secret scanning;
 - projection provenance and freshness checks;

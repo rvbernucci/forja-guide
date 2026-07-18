@@ -1,10 +1,11 @@
 package worker
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -35,11 +36,15 @@ func (a CodexAdapter) Build(
 		"--config", `shell_environment_policy.ignore_default_excludes=false`,
 		"--config", `shell_environment_policy.include_only=["PATH","HOME","LANG","LC_ALL","TMPDIR","TERM","SSL_CERT_FILE","SSL_CERT_DIR"]`,
 		"--ephemeral",
+		"--ignore-rules",
 		"--sandbox", "workspace-write",
-		"--cd", task.WorktreePath,
+		"--cd", task.EvidenceOutputDir,
 		"--json",
 		"--output-schema", paths.ReportSchemaPath,
 		"--output-last-message", paths.ReportPath,
+	}
+	for _, root := range codexWritableRoots(task) {
+		args = append(args, "--add-dir", root)
 	}
 	if task.Model != nil && strings.TrimSpace(*task.Model) != "" {
 		args = append(args, "--model", strings.TrimSpace(*task.Model))
@@ -63,22 +68,22 @@ func codexPrompt(task contracts.WorkerTask) string {
 Objective:
 %s
 
+Repository path: %s
 Read scopes: %s
 Write scopes: %s
 Context pack reference: %s
 
-Operate only inside the supplied worktree. Do not approve work, change scheduler state, access Forja control services, publish Git changes, or request credentials. Respect the declared write scopes. Finish by returning only the JSON object required by the supplied worker-report schema.
-`, task.Role, task.Objective, strings.Join(task.ReadScopes, ", "), strings.Join(task.WriteScopes, ", "), contextRef)
+Read the repository through its absolute path. Write only inside the declared write scopes and evidence directory exposed by the sandbox. Do not approve work, change scheduler state, access Forja control services, publish Git changes, or request credentials. Finish by returning only the JSON object required by the supplied worker-report schema.
+`, task.Role, task.Objective, task.WorktreePath, strings.Join(task.ReadScopes, ", "), strings.Join(task.WriteScopes, ", "), contextRef)
 }
 
 func (CodexAdapter) ParseUsage(output []byte) contracts.WorkerUsage {
 	var usage contracts.WorkerUsage
-	scanner := bufio.NewScanner(bytes.NewReader(output))
-	buffer := make([]byte, 64*1024)
-	scanner.Buffer(buffer, 2*1024*1024)
-	for scanner.Scan() {
+	// Supervisor output is already bounded, so splitting the complete capture
+	// avoids Scanner's token ceiling silently discarding later usage events.
+	for _, line := range bytes.Split(output, []byte{'\n'}) {
 		var event map[string]any
-		if json.Unmarshal(scanner.Bytes(), &event) != nil {
+		if json.Unmarshal(line, &event) != nil {
 			continue
 		}
 		typeName, _ := event["type"].(string)
@@ -99,6 +104,27 @@ func (CodexAdapter) ParseUsage(output []byte) contracts.WorkerUsage {
 		}
 	}
 	return usage
+}
+
+func codexWritableRoots(task contracts.WorkerTask) []string {
+	evidence := filepath.Clean(task.EvidenceOutputDir)
+	seen := make(map[string]struct{}, len(task.WriteScopes))
+	for _, scope := range task.WriteScopes {
+		root := task.WorktreePath
+		if scope != "." {
+			root = filepath.Join(task.WorktreePath, filepath.FromSlash(scope))
+		}
+		root = filepath.Clean(root)
+		if root != evidence {
+			seen[root] = struct{}{}
+		}
+	}
+	roots := make([]string, 0, len(seen))
+	for root := range seen {
+		roots = append(roots, root)
+	}
+	sort.Strings(roots)
+	return roots
 }
 
 func integerField(value map[string]any, key string) int {

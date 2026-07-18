@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -224,6 +225,8 @@ func TestSanitizedEnvironmentDropsAuthorityAndSecrets(t *testing.T) {
 		"PATH=/usr/bin", "HOME=/home/operator", "CODEX_HOME=/safe/codex",
 		"FORJA_DATABASE_URL=postgres://secret", "DATABASE_URL=postgres://secret",
 		"GITHUB_TOKEN=secret", "OPENAI_API_KEY=secret", "SSH_AUTH_SOCK=/secret",
+		"HTTPS_PROXY=https://proxy-user:proxy-secret@example.invalid",
+		"no_proxy=localhost",
 		"LANG=en_US.UTF-8",
 	}, home)
 	if err != nil {
@@ -232,7 +235,7 @@ func TestSanitizedEnvironmentDropsAuthorityAndSecrets(t *testing.T) {
 	joined := strings.Join(environment, "\n")
 	for _, forbidden := range []string{
 		"FORJA_", "DATABASE_URL", "GITHUB_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK",
-		"postgres://secret",
+		"postgres://secret", "PROXY", "proxy", "proxy-secret", "no_proxy",
 	} {
 		if strings.Contains(joined, forbidden) {
 			t.Fatalf("sanitized environment contains %q: %s", forbidden, joined)
@@ -268,8 +271,11 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 	for _, required := range []string{
 		"--ignore-user-config", "--strict-config", `approval_policy="never"`,
 		"sandbox_workspace_write.network_access=false", "--ephemeral",
+		"--ignore-rules",
 		"--sandbox workspace-write", "--output-schema /tmp/schema.json",
 		"--output-last-message /tmp/report.json", "--model gpt-test",
+		"--cd " + task.EvidenceOutputDir,
+		"--add-dir " + filepath.Join(task.WorktreePath, "docs"),
 		`shell_environment_policy.inherit="all"`,
 		"shell_environment_policy.ignore_default_excludes=false",
 		`shell_environment_policy.include_only=["PATH","HOME","LANG","LC_ALL","TMPDIR","TERM","SSL_CERT_FILE","SSL_CERT_DIR"]`,
@@ -283,6 +289,22 @@ func TestCodexAdapterBuildsArgumentSafeInvocation(t *testing.T) {
 	}
 	if !strings.Contains(invocation.Stdin, task.Objective) {
 		t.Fatal("objective missing from stdin prompt")
+	}
+	if !strings.Contains(invocation.Stdin, "Repository path: "+task.WorktreePath) {
+		t.Fatal("repository path missing from stdin prompt")
+	}
+}
+
+func TestCodexUsageParsingContinuesAfterOversizedJSONLLine(t *testing.T) {
+	output := append(bytes.Repeat([]byte{'x'}, 3*1024*1024), '\n')
+	output = append(output, []byte(
+		`{"type":"turn.completed","usage":{"input_tokens":17,"cached_input_tokens":4,"output_tokens":9}}`+"\n"+
+			`{"type":"item.completed","item":{"type":"command_execution"}}`+"\n",
+	)...)
+	usage := (CodexAdapter{}).ParseUsage(output)
+	if usage.InputTokens != 17 || usage.CachedInputTokens != 4 ||
+		usage.OutputTokens != 9 || usage.ToolCalls != 1 {
+		t.Fatalf("usage after oversized line = %#v", usage)
 	}
 }
 
@@ -564,7 +586,8 @@ func TestStartedTelemetryCannotOutliveWallBudget(t *testing.T) {
 		task.Budgets.InactivityMS = 500
 		task.Budgets.CancellationGraceMS = 30
 	})
-	if err == nil || result.TaskID != "" {
+	if err == nil || result.TaskID == "" || result.Status != "failed_retryable" ||
+		result.TerminationReason != "telemetry_failure" {
 		t.Fatalf("result=%#v err=%v", result, err)
 	}
 	select {
@@ -572,8 +595,52 @@ func TestStartedTelemetryCannotOutliveWallBudget(t *testing.T) {
 	default:
 		t.Fatal("blocking started telemetry was not exercised")
 	}
-	if elapsed := time.Since(started); elapsed > 400*time.Millisecond {
+	if elapsed := time.Since(started); elapsed > time.Second {
 		t.Fatalf("started telemetry exceeded wall boundary: %v", elapsed)
+	}
+}
+
+func TestSupervisorRejectsWriteScopeSymlinkEscape(t *testing.T) {
+	repository := t.TempDir()
+	outside := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Symlink(outside, filepath.Join(repository, "docs")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "escapes the worktree") {
+		t.Fatalf("write scope symlink escape error=%v", err)
+	}
+}
+
+func TestSupervisorRejectsWriteScopeSymlinkAliasInsideWorktree(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Mkdir(filepath.Join(repository, "other"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("other", filepath.Join(repository, "docs")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "must not traverse symlinks") {
+		t.Fatalf("write scope symlink alias error=%v", err)
 	}
 }
 

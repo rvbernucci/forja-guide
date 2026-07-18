@@ -42,8 +42,16 @@ Never pass Forja control credentials, database URLs, Git tokens, SSH agent
 sockets, or unrelated API keys to the worker process. The supervisor uses an
 environment allowlist and sets non-interactive Git safeguards. Codex receives
 its authentication home, but commands launched by the model receive only the
-explicit safe shell-variable allowlist. Start only from a clean worktree; a
-dirty baseline is rejected, and post-run Git paths must be reported and remain
+explicit safe shell-variable allowlist; proxy variables are not forwarded.
+This protects the child-command environment, not every same-user readable file.
+Use a dedicated disposable worker host with no unrelated secrets until Sprint
+12 provides external identity isolation and credential brokerage.
+
+Declared write scopes are directories. The supervisor creates and physically
+validates them, uses the evidence directory as Codex's primary writable root,
+and passes only declared scopes as additional writable roots. Start only from a
+clean worktree; a dirty baseline is rejected, and post-run Git paths must be
+reported and remain
 inside the task's write or evidence scope. Ignored files are not exempt: a
 bounded SHA-256 snapshot detects ignored files created, removed, or modified
 during the attempt. Reject worktrees whose ignored baseline exceeds 2,048
@@ -53,6 +61,10 @@ Sprint 04 supports only `read_scopes: ["."]`; narrower values fail before
 launch. Evidence references identify an attempt-created regular file as
 `relative/path#sha256=<digest>`. Worktrees using `assume-unchanged` or
 `skip-worktree` index flags are rejected.
+
+Do not register another untrusted adapter unless it enforces equivalent OS
+write roots. The generic adapter interface is a trusted integration seam, not
+an automatic sandbox.
 
 ## Cancellation and Budgets
 
