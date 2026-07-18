@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -52,7 +53,18 @@ func (m *WorktreeManager) CreateResultCommit(
 		return CommitResult{}, err
 	}
 
-	tree, err := m.snapshotTree(ctx, resolved)
+	fullTree, allChangedPaths, err := m.snapshotTree(ctx, resolved, []string{"."})
+	if err != nil {
+		return CommitResult{}, err
+	}
+	allowedScopes := append([]string(nil), request.WriteScopes...)
+	allowedScopes = append(allowedScopes, request.ArtifactScopes...)
+	for _, changedPath := range allChangedPaths {
+		if !pathCoveredByScopes(changedPath, allowedScopes) {
+			return CommitResult{}, fmt.Errorf("changed path %q is outside approved write and artifact scopes", changedPath)
+		}
+	}
+	tree, _, err := m.snapshotTree(ctx, resolved, request.WriteScopes)
 	if err != nil {
 		return CommitResult{}, err
 	}
@@ -97,11 +109,16 @@ func (m *WorktreeManager) CreateResultCommit(
 		return CommitResult{}, fmt.Errorf("Git returned a noncanonical result commit")
 	}
 
-	secondTree, err := m.snapshotTree(ctx, resolved)
+	secondFullTree, secondAllChangedPaths, err := m.snapshotTree(ctx, resolved, []string{"."})
 	if err != nil {
 		return CommitResult{}, err
 	}
-	if secondTree != tree {
+	secondTree, _, err := m.snapshotTree(ctx, resolved, request.WriteScopes)
+	if err != nil {
+		return CommitResult{}, err
+	}
+	if secondTree != tree || secondFullTree != fullTree ||
+		!slices.Equal(secondAllChangedPaths, allChangedPaths) {
 		return CommitResult{}, fmt.Errorf("%w: worker bytes changed while creating the result commit", ErrWorktreeDirty)
 	}
 	result, err = m.inspectCommitResult(ctx, resolved, resultCommit)
@@ -185,18 +202,19 @@ func (m *WorktreeManager) inspectCommitResult(
 func (m *WorktreeManager) snapshotTree(
 	ctx context.Context,
 	resolved resolvedRequest,
-) (string, error) {
+	scopes []string,
+) (string, []string, error) {
 	index, err := os.CreateTemp(resolved.worktreeRoot, ".forja-index-*")
 	if err != nil {
-		return "", fmt.Errorf("reserve temporary Git index: %w", err)
+		return "", nil, fmt.Errorf("reserve temporary Git index: %w", err)
 	}
 	indexPath := index.Name()
 	if err := index.Close(); err != nil {
 		_ = os.Remove(indexPath)
-		return "", fmt.Errorf("close temporary Git index reservation: %w", err)
+		return "", nil, fmt.Errorf("close temporary Git index reservation: %w", err)
 	}
 	if err := os.Remove(indexPath); err != nil {
-		return "", fmt.Errorf("prepare temporary Git index: %w", err)
+		return "", nil, fmt.Errorf("prepare temporary Git index: %w", err)
 	}
 	defer os.Remove(indexPath)
 	overrides := map[string]string{"GIT_INDEX_FILE": indexPath}
@@ -204,26 +222,40 @@ func (m *WorktreeManager) snapshotTree(
 		ctx, m.mutationTimeout, resolved.worktreePath, nil, overrides,
 		"read-tree", resolved.baseCommit,
 	); err != nil {
-		return "", fmt.Errorf("seed temporary Git index: %w", err)
+		return "", nil, fmt.Errorf("seed temporary Git index: %w", err)
 	}
-	if _, err := m.gitWithInputAndEnvironment(
-		ctx, m.mutationTimeout, resolved.worktreePath, nil, overrides,
-		"add", "--all", "--", ".",
-	); err != nil {
-		return "", fmt.Errorf("snapshot worker bytes: %w", err)
+	for _, scope := range scopes {
+		if _, err := m.gitWithInputAndEnvironment(
+			ctx, m.mutationTimeout, resolved.worktreePath, nil, overrides,
+			"add", "--all", "--", scope,
+		); err != nil {
+			return "", nil, fmt.Errorf("snapshot worker bytes in %q: %w", scope, err)
+		}
 	}
 	tree, err := m.gitWithInputAndEnvironment(
 		ctx, m.mutationTimeout, resolved.worktreePath, nil, overrides,
 		"write-tree",
 	)
 	if err != nil {
-		return "", fmt.Errorf("write result tree: %w", err)
+		return "", nil, fmt.Errorf("write result tree: %w", err)
 	}
 	value := strings.TrimSpace(string(tree))
 	if !fullObjectIDPattern.MatchString(value) {
-		return "", fmt.Errorf("Git returned a noncanonical snapshot tree")
+		return "", nil, fmt.Errorf("Git returned a noncanonical snapshot tree")
 	}
-	return value, nil
+	changed, err := m.gitWithInputAndEnvironment(
+		ctx, m.readTimeout, resolved.worktreePath, nil, overrides,
+		"diff-index", "--cached", "--name-only", "--no-renames", "-z",
+		resolved.baseCommit, "--",
+	)
+	if err != nil {
+		return "", nil, fmt.Errorf("capture snapshot paths: %w", err)
+	}
+	changedPaths, err := parseChangedPaths(changed)
+	if err != nil {
+		return "", nil, err
+	}
+	return value, changedPaths, nil
 }
 
 func (m *WorktreeManager) deterministicCommitTime(

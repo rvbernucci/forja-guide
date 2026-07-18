@@ -71,7 +71,7 @@ func TestCreateResultCommitRejectsOutOfScopeAndIgnoredBytes(t *testing.T) {
 			t.Fatal(err)
 		}
 		if _, err := manager.CreateResultCommit(t.Context(), request); err == nil ||
-			!strings.Contains(err.Error(), "outside approved write scopes") {
+			!strings.Contains(err.Error(), "outside approved write and artifact scopes") {
 			t.Fatalf("out-of-scope commit error = %v", err)
 		}
 		if head := strings.TrimSpace(runGitTest(t, worktree.Path, "rev-parse", "HEAD")); head != base {
@@ -97,6 +97,44 @@ func TestCreateResultCommitRejectsOutOfScopeAndIgnoredBytes(t *testing.T) {
 			t.Fatalf("ignored-byte commit error = %v", err)
 		}
 	})
+}
+
+func TestCreateResultCommitAllowsArtifactsWithoutCommittingThem(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(worktree.Path, "internal/generated/result.txt"),
+		[]byte("code\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(worktree.Path, "evidence", "worker-report.json"),
+		[]byte("{\"status\":\"completed\"}\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(result.ChangedPaths, []string{"internal/generated/result.txt"}) {
+		t.Fatalf("result commit paths = %q", result.ChangedPaths)
+	}
+	if artifactPaths := runGitTest(
+		t, repository, "ls-tree", "-r", "--name-only", result.ResultCommit, "--", "evidence",
+	); artifactPaths != "" {
+		t.Fatalf("artifact was committed into the result tree: %q", artifactPaths)
+	}
+	content, err := os.ReadFile(filepath.Join(worktree.Path, "evidence", "worker-report.json"))
+	if err != nil || !strings.Contains(string(content), "completed") {
+		t.Fatalf("worker artifact was not preserved: %q err=%v", content, err)
+	}
 }
 
 func TestCreateResultCommitCapturesDeletionAndAdditionInByteOrder(t *testing.T) {

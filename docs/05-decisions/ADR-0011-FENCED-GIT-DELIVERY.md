@@ -81,7 +81,9 @@ or unverifiable Git metadata is never mutated.
 Result commits are built with a temporary index, deterministic supervisor
 identity, deterministic parent-relative timestamp, and a fixed delivery
 message. This does not stage the author checkout or move its detached `HEAD`.
-The service snapshots the tree twice and rejects concurrent byte changes.
+Only approved write scopes enter that tree. A separate full snapshot covers
+write and artifact scopes; both snapshots are repeated, so out-of-authority or
+concurrently changing code and artifact bytes fail before validation.
 Mechanical and independent validation use separate fresh worktrees. Trusted
 validators are direct argv invocations whose resolved executable content,
 environment, timeout, and output budget are bound into their command digest;
