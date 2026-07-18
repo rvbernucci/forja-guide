@@ -484,6 +484,12 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 	if err := contracts.ValidateRepositoryStorageIdentity(intent.TenantID, intent.RepositoryID); err != nil {
 		return invalidPublicationError("publication intent has an invalid repository identity")
 	}
+	if err := contracts.ValidateDeliveryID(intent.DeliveryID); err != nil {
+		return invalidPublicationError("publication intent has an invalid delivery ID")
+	}
+	if err := contracts.ValidateDeliveryAttemptID(intent.AttemptID); err != nil {
+		return invalidPublicationError("publication intent has an invalid attempt ID")
+	}
 	if intent.LeaseSetID != intent.AttemptID || intent.DeliveryID == "" || intent.AttemptID == "" ||
 		intent.LeaseTTLMS < contracts.MinimumPublicationLeaseTTLMS || intent.LeaseTTLMS > 86_400_000 ||
 		intent.PublicationRef != "refs/forja/deliveries/"+intent.DeliveryID ||

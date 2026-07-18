@@ -459,6 +459,25 @@ func TestRegistryValidatesDeliveryContracts(t *testing.T) {
 	}
 }
 
+func TestDeliveryIdentityValidatorsRejectNonCanonicalValues(t *testing.T) {
+	t.Parallel()
+	for name, test := range map[string]struct {
+		validate func(string) error
+		value    string
+	}{
+		"delivery prefix":       {ValidateDeliveryID, "attempt_11111111-2222-4333-8444-555555555555"},
+		"delivery UUID version": {ValidateDeliveryID, "delivery_11111111-2222-3333-8444-555555555555"},
+		"attempt prefix":        {ValidateDeliveryAttemptID, "delivery_11111111-2222-4333-8444-555555555555"},
+		"attempt UUID variant":  {ValidateDeliveryAttemptID, "attempt_11111111-2222-4333-7444-555555555555"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := test.validate(test.value); err == nil {
+				t.Fatalf("non-canonical identity %q passed validation", test.value)
+			}
+		})
+	}
+}
+
 func passingValidationCheck(
 	checkID string,
 	kind string,

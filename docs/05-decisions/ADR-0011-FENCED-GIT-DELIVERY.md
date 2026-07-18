@@ -51,13 +51,15 @@ timestamp; replay and recovery preserve any earlier receipt's exact timestamp
 precision and RFC3339 offsets. The journal `updated_at` retains the database transition clock. The
 transaction requires at least 40 seconds of live authority for
 the bounded 30-second Git mutation, so expiry or replacement fails before Git
-is invoked. The request authorizes at least a 60-second TTL, the publication
-intent binds it into its identity digest, and the adapter requires the persisted
+is invoked. The request authorizes at least a 60-second TTL that must also
+strictly exceed its worker wall-clock plus cancellation-grace budgets. The
+publication intent binds it into its identity digest, and the adapter requires the persisted
 immutable lease-set TTL and every member duration to equal that hashed
 authority. A renewal must reuse the same TTL. Recovery trusts neither a
 caller assertion nor timing: it rereads the exact direct Git ref. It finalizes
 only when that ref equals the intent's result commit. When the approved previous
-state remains, it reobserves under the publication lock, persists `abandoned`,
+state remains, including an absent ref authorized for ref creation, it
+reobserves under the publication lock, persists `abandoned`,
 releases the exact lease, and reports not-applied; every other state records a
 terminal conflict. Exact release is replay-safe after expiry or an earlier release,
 but a changed fence is still rejected while authority remains live.

@@ -34,6 +34,31 @@ var repositoryStorageIdentityPattern = regexp.MustCompile(
 	`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
 )
 
+var (
+	deliveryIDPattern = regexp.MustCompile(
+		`^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+	)
+	attemptIDPattern = regexp.MustCompile(
+		`^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`,
+	)
+)
+
+// ValidateDeliveryID enforces the canonical delivery-prefixed UUIDv4 form.
+func ValidateDeliveryID(deliveryID string) error {
+	if !deliveryIDPattern.MatchString(deliveryID) {
+		return fmt.Errorf("delivery ID is not a canonical delivery-prefixed UUIDv4")
+	}
+	return nil
+}
+
+// ValidateDeliveryAttemptID enforces the canonical attempt-prefixed UUIDv4 form.
+func ValidateDeliveryAttemptID(attemptID string) error {
+	if !attemptIDPattern.MatchString(attemptID) {
+		return fmt.Errorf("attempt ID is not a canonical attempt-prefixed UUIDv4")
+	}
+	return nil
+}
+
 // ValidateRepositoryIdentity enforces canonical prefixed public authority IDs.
 func ValidateRepositoryIdentity(tenantID string, repositoryID string) error {
 	if !strings.HasPrefix(tenantID, "tenant_") ||
@@ -71,6 +96,12 @@ func ValidateRepositoryStorageIdentity(tenantID string, repositoryID string) err
 func ValidateDeliveryRequest(request DeliveryRequest) error {
 	if request.SchemaVersion != DeliverySchemaVersion {
 		return fmt.Errorf("delivery request has unsupported schema version %q", request.SchemaVersion)
+	}
+	if err := ValidateDeliveryID(request.DeliveryID); err != nil {
+		return err
+	}
+	if err := ValidateDeliveryAttemptID(request.AttemptID); err != nil {
+		return err
 	}
 	if err := ValidateRepositoryIdentity(request.TenantID, request.RepositoryID); err != nil {
 		return err
@@ -131,6 +162,9 @@ func ValidateDeliveryRequest(request DeliveryRequest) error {
 func ValidateValidationReport(report ValidationReport) error {
 	if report.SchemaVersion != DeliverySchemaVersion {
 		return fmt.Errorf("validation report has unsupported schema version %q", report.SchemaVersion)
+	}
+	if err := ValidateDeliveryID(report.DeliveryID); err != nil {
+		return err
 	}
 	if err := ValidateRepositoryIdentity(report.TenantID, report.RepositoryID); err != nil {
 		return err
@@ -319,6 +353,9 @@ func validateDeliveryReceiptStructure(receipt DeliveryReceipt) error {
 	if receipt.SchemaVersion != DeliverySchemaVersion {
 		return fmt.Errorf("delivery receipt has unsupported schema version %q", receipt.SchemaVersion)
 	}
+	if err := ValidateDeliveryID(receipt.DeliveryID); err != nil {
+		return err
+	}
 	if err := ValidateRepositoryIdentity(receipt.TenantID, receipt.RepositoryID); err != nil {
 		return err
 	}
@@ -502,6 +539,9 @@ func decodeCanonicalEvidenceManifest(content []byte) (EvidenceManifest, error) {
 	}
 	if manifest.SchemaVersion != DeliverySchemaVersion || len(manifest.Entries) == 0 {
 		return EvidenceManifest{}, fmt.Errorf("evidence manifest has an unsupported version or no entries")
+	}
+	if err := ValidateDeliveryID(manifest.DeliveryID); err != nil {
+		return EvidenceManifest{}, fmt.Errorf("evidence manifest: %w", err)
 	}
 	if err := ValidateRepositoryIdentity(manifest.TenantID, manifest.RepositoryID); err != nil {
 		return EvidenceManifest{}, fmt.Errorf("evidence manifest: %w", err)

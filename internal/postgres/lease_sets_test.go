@@ -231,6 +231,72 @@ func TestMigrationSixRequiresEveryLegacyLeaseSetToDrain(t *testing.T) {
 	}
 }
 
+func TestMigrationSixFailsFastBehindLeaseSetReader(t *testing.T) {
+	pool := migratedPool(t)
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("prepare migration 006 retry: %v", err)
+	}
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen := true
+	defer func() {
+		if blockerOpen {
+			_ = blocker.Rollback(t.Context())
+		}
+	}()
+	if _, err := blocker.Exec(
+		t.Context(), "LOCK TABLE forja.lease_sets IN ACCESS SHARE MODE",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	migrationErr := Migrate(t.Context(), pool)
+	var databaseErr *pgconn.PgError
+	if !errors.As(migrationErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("contended migration error = %v, want lock_not_available", migrationErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("contended migration failed after %s, want fail-fast", elapsed)
+	}
+	if err := blocker.Rollback(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	blockerOpen = false
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("migration 006 retry after reader drained: %v", err)
+	}
+}
+
+func TestMigrationFiveRollbackFailsFastBehindPublicationReader(t *testing.T) {
+	pool := migratedPool(t)
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback migration 006: %v", err)
+	}
+	blocker, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = blocker.Rollback(t.Context()) }()
+	if _, err := blocker.Exec(
+		t.Context(), "LOCK TABLE forja.delivery_publications IN ACCESS SHARE MODE",
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	started := time.Now()
+	rollbackErr := RollbackLast(t.Context(), pool)
+	var databaseErr *pgconn.PgError
+	if !errors.As(rollbackErr, &databaseErr) || databaseErr.Code != "55P03" {
+		t.Fatalf("contended rollback error = %v, want lock_not_available", rollbackErr)
+	}
+	if elapsed := time.Since(started); elapsed > time.Second {
+		t.Fatalf("contended rollback failed after %s, want fail-fast", elapsed)
+	}
+}
+
 func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 	pool := migratedPool(t)
 	rollbackToMigrationVersion(t, pool, 4)

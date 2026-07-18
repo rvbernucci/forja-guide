@@ -367,6 +367,7 @@ func verifyPersistedEvidenceRoot(
 	expected map[string]contracts.EvidenceEntry,
 ) error {
 	seen := make(map[string]struct{}, len(expected)+1)
+	allowedDirectories := expectedEvidenceDirectories(expected, manifestPath)
 	err := fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -379,6 +380,9 @@ func verifyPersistedEvidenceRoot(
 			return fmt.Errorf("persisted evidence path %q is a symlink", logical)
 		}
 		if entry.IsDir() {
+			if _, allowed := allowedDirectories[logical]; !allowed {
+				return fmt.Errorf("unexpected persisted evidence directory %q", logical)
+			}
 			return nil
 		}
 		if !entry.Type().IsRegular() {
@@ -425,6 +429,24 @@ func verifyPersistedEvidenceRoot(
 		return fmt.Errorf("persisted validation evidence is missing its manifest")
 	}
 	return nil
+}
+
+func expectedEvidenceDirectories(
+	expected map[string]contracts.EvidenceEntry,
+	manifestPath string,
+) map[string]struct{} {
+	directories := map[string]struct{}{".": {}}
+	paths := make([]string, 0, len(expected)+1)
+	paths = append(paths, manifestPath)
+	for logical := range expected {
+		paths = append(paths, logical)
+	}
+	for _, logical := range paths {
+		for directory := path.Dir(logical); directory != "."; directory = path.Dir(directory) {
+			directories[directory] = struct{}{}
+		}
+	}
+	return directories
 }
 
 func readEvidenceFile(root *os.Root, logicalPath string, expectedSize int64) ([]byte, error) {

@@ -90,7 +90,8 @@ Each protected commit, validation, receipt, and publication operation checks
 the exact live owner and fencing token. Expiry or replacement fails closed.
 Receipt worktree fences use the delivery ID as their resource ID. File and
 artifact fence IDs are canonical repository-relative scopes.
-Requests authorize a lease TTL of at least 60 seconds, and the publication
+Requests authorize a lease TTL of at least 60 seconds and strictly greater than
+the approved worker wall-clock plus cancellation-grace budgets. The publication
 intent binds that value into its identity digest. PostgreSQL requires the
 persisted lease set to retain that immutable duration in `authorized_ttl_us`
 and requires every member to share the same acquisition, renewal, expiry, and
@@ -269,8 +270,9 @@ artifact bytes changed while the commit was created.
 Validation evidence is staged and atomically renamed beneath a distinct
 operator-owned root. It contains the canonical independent report, mechanical
 report, and bounded stdout/stderr for both lanes. The manifest inventories all
-content except itself; symlinked namespaces, unexpected files, changed bytes,
-or missing entries fail closed.
+content except itself; symlinked namespaces, unexpected files or directories,
+changed bytes, or missing entries fail closed. Directory traversal is limited
+to the exact parent set required by the manifest and manifest path.
 
 ## Failure and Retry
 
@@ -284,10 +286,11 @@ or missing entries fail closed.
   durable.
 - A receipt replay must be byte-equivalent; the same delivery ID cannot publish
   different content.
-- A prepared publication whose ref still has the approved old object is
+- A prepared publication whose ref still has the approved old state is
   reobserved under the publication lock, retired as `abandoned`, and releases
-  its exact lease before recovery reports not-applied. A fresh attempt may then
-  reacquire the delivery fence.
+  its exact lease before recovery reports not-applied. For ref-creation
+  attempts, an absent ref (`null`) is that approved old state. A fresh attempt
+  may then reacquire the delivery fence.
 - A prepared publication whose ref has any unapproved object becomes a durable
   conflict and is never overwritten.
 

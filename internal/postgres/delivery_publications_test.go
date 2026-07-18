@@ -21,6 +21,30 @@ const (
 	publicationTestAttempt  = "attempt_55555555-5555-4555-8555-555555555555"
 )
 
+func TestPublicationIntentRejectsMalformedLifecycleIDsBeforePersistence(t *testing.T) {
+	leaseSet := persistence.LeaseSet{LeaseSetID: publicationTestAttempt}
+	base := publicationIntentFixture(
+		t, leaseSet, publicationTestDelivery, publicationTestAttempt, "authority",
+	)
+	for name, mutate := range map[string]func(*persistence.DeliveryPublicationIntent){
+		"delivery": func(intent *persistence.DeliveryPublicationIntent) {
+			intent.DeliveryID = "delivery-not-a-uuid"
+		},
+		"attempt": func(intent *persistence.DeliveryPublicationIntent) {
+			intent.AttemptID = "attempt-not-a-uuid"
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			intent := base
+			mutate(&intent)
+			if err := validatePublicationIntent(intent); err == nil ||
+				!strings.Contains(err.Error(), "invalid "+name+" ID") {
+				t.Fatalf("malformed %s ID validation error = %v", name, err)
+			}
+		})
+	}
+}
+
 func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 	pool := migratedPool(t)
 	store := newIntegrationStore(t, pool)

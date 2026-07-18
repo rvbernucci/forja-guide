@@ -143,7 +143,7 @@ func (s *PublicationService) Publish(
 		case "published":
 			observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 			if err != nil {
-				return PublicationResult{}, err
+				return PublicationResult{}, publicationRefReadError(err)
 			}
 			if observed == nil || *observed != result.ResultCommit {
 				return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
@@ -200,7 +200,7 @@ func (s *PublicationService) Publish(
 	if record.State == "published" {
 		observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 		if err != nil {
-			return PublicationResult{}, err
+			return PublicationResult{}, publicationRefReadError(err)
 		}
 		if observed == nil || *observed != result.ResultCommit {
 			return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
@@ -246,7 +246,7 @@ func (s *PublicationService) Publish(
 	}
 	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 	if err != nil {
-		return PublicationResult{}, err
+		return PublicationResult{}, publicationRefReadError(err)
 	}
 	if observed == nil || *observed != result.ResultCommit {
 		return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
@@ -297,7 +297,10 @@ func (s *PublicationService) Recover(
 	}
 	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 	if err != nil {
-		return PublicationResult{}, err
+		if record.State == "prepared" {
+			return PublicationResult{}, s.recordInvalidPublicationRefConflict(ctx, intent, err)
+		}
+		return PublicationResult{}, publicationRefReadError(err)
 	}
 	if record.State == "published" {
 		if observed == nil || *observed != result.ResultCommit {
@@ -318,7 +321,7 @@ func (s *PublicationService) Recover(
 		}
 		observed, err = s.observePublicationRef(ctx, request.PublicationRef)
 		if err != nil {
-			return PublicationResult{}, err
+			return PublicationResult{}, publicationRefReadError(err)
 		}
 		if observed == nil || *observed != result.ResultCommit {
 			return PublicationResult{}, fmt.Errorf("%w: recovered receipt disagrees with the Git ref", ErrPublicationConflict)
@@ -333,13 +336,13 @@ func (s *PublicationService) Recover(
 			},
 		)
 		if err != nil {
-			return PublicationResult{}, err
+			return PublicationResult{}, s.recordInvalidPublicationRefConflict(ctx, intent, err)
 		}
 		switch record.State {
 		case "published":
 			observed, err = s.observePublicationRef(ctx, request.PublicationRef)
 			if err != nil {
-				return PublicationResult{}, err
+				return PublicationResult{}, publicationRefReadError(err)
 			}
 			if observed == nil || *observed != result.ResultCommit {
 				return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
@@ -607,6 +610,9 @@ func (s *PublicationService) applyPublicationCAS(
 ) error {
 	observed, err := s.observePublicationRef(ctx, intent.PublicationRef)
 	if err != nil {
+		if conflict, invalid := invalidPublicationRefConflict(err); invalid {
+			return conflict
+		}
 		return err
 	}
 	if observed != nil && *observed == intent.ResultCommit {
@@ -640,6 +646,9 @@ func (s *PublicationService) applyPublicationCAS(
 		return nil
 	}
 	if observeErr != nil {
+		if conflict, invalid := invalidPublicationRefConflict(observeErr); invalid {
+			return conflict
+		}
 		return errors.Join(fmt.Errorf("compare-and-swap publication: %w", updateErr), observeErr)
 	}
 	if optionalCommitEqual(observed, intent.PublicationPreviousCommit) {
@@ -657,6 +666,48 @@ func (s *PublicationService) applyPublicationCAS(
 type publicationRefConflict struct {
 	observed *string
 	cause    error
+}
+
+type invalidPublicationRefObservation struct {
+	cause error
+}
+
+func (e *invalidPublicationRefObservation) Error() string {
+	return e.cause.Error()
+}
+
+func (e *invalidPublicationRefObservation) Unwrap() error {
+	return e.cause
+}
+
+func invalidPublicationRefConflict(err error) (*publicationRefConflict, bool) {
+	var invalid *invalidPublicationRefObservation
+	if !errors.As(err, &invalid) {
+		return nil, false
+	}
+	return &publicationRefConflict{
+		cause: fmt.Errorf("%w: %v", ErrPublicationConflict, invalid),
+	}, true
+}
+
+func publicationRefReadError(err error) error {
+	if conflict, invalid := invalidPublicationRefConflict(err); invalid {
+		return conflict.cause
+	}
+	return err
+}
+
+func (s *PublicationService) recordInvalidPublicationRefConflict(
+	ctx context.Context,
+	intent persistence.DeliveryPublicationIntent,
+	err error,
+) error {
+	conflict, invalid := invalidPublicationRefConflict(err)
+	if !invalid {
+		return err
+	}
+	_, journalErr := s.journal.ConflictDeliveryPublication(ctx, intent, nil)
+	return errors.Join(conflict.cause, journalErr)
 }
 
 func (e *publicationRefConflict) Error() string {
@@ -691,13 +742,17 @@ func (s *PublicationService) observePublicationRef(
 	}
 	lines := bytes.Split(output, []byte{'\n'})
 	if len(lines) != 1 {
-		return nil, fmt.Errorf("publication ref lookup was ambiguous")
+		return nil, &invalidPublicationRefObservation{
+			cause: fmt.Errorf("publication ref lookup was ambiguous"),
+		}
 	}
 	fields := bytes.Split(lines[0], []byte{0})
 	if len(fields) != 4 || string(fields[0]) != publicationRef ||
 		string(fields[1]) != "commit" || len(fields[3]) != 0 ||
 		!fullObjectIDPattern.Match(fields[2]) {
-		return nil, fmt.Errorf("publication ref is symbolic or does not identify a canonical commit")
+		return nil, &invalidPublicationRefObservation{
+			cause: fmt.Errorf("publication ref is symbolic or does not identify a canonical commit"),
+		}
 	}
 	value := string(fields[2])
 	return &value, nil

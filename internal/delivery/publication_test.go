@@ -317,11 +317,51 @@ func TestPublicationServiceRejectsDescendantInsteadOfExactRef(t *testing.T) {
 	)
 	if _, err := service.Publish(
 		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
-	); err == nil || !strings.Contains(err.Error(), "does not identify a canonical commit") {
+	); !errors.Is(err, ErrPublicationConflict) ||
+		!strings.Contains(err.Error(), "does not identify a canonical commit") {
 		t.Fatalf("descendant ref publication error = %v", err)
 	}
-	if !slices.Equal(journal.events, []string{"prepare"}) {
+	if !slices.Equal(journal.events, []string{"prepare", "conflict"}) {
 		t.Fatalf("descendant ref publication events = %q", journal.events)
+	}
+}
+
+func TestPublicationRecoveryRecordsInvalidRefAsTerminalConflict(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal,
+		&recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
+	intent, _, err := service.publicationIntent(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}, true,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedAt := time.Now().UTC()
+	journal.record = persistence.DeliveryPublication{
+		Intent: intent, State: "prepared", PreparedAt: preparedAt, UpdatedAt: preparedAt,
+	}
+	journal.found = true
+	runGitTest(t, fixture.repository, "update-ref", "-d", fixture.request.PublicationRef)
+	runGitTest(
+		t, fixture.repository, "update-ref",
+		fixture.request.PublicationRef+"/descendant", fixture.result.BaseCommit,
+	)
+
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); !errors.Is(err, ErrPublicationConflict) {
+		t.Fatalf("invalid-ref recovery error = %v, want conflict", err)
+	}
+	if journal.record.State != "conflict" || !slices.Equal(journal.events, []string{"conflict"}) {
+		t.Fatalf("invalid-ref recovery state=%q events=%q", journal.record.State, journal.events)
 	}
 }
 
@@ -391,6 +431,31 @@ func TestPublicationServiceRejectsChangedPersistedEvidenceBeforeJournal(t *testi
 				t.Fatalf("changed evidence reached publication journal: %q", journal.events)
 			}
 		})
+	}
+}
+
+func TestPublicationServiceRejectsUninventoriedEvidenceDirectories(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	if err := os.MkdirAll(
+		filepath.Join(fixture.bundle.PhysicalRoot, "unlisted", "empty", "tree"), 0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+	journal := newMemoryPublicationJournal()
+	service, err := NewPublicationService(
+		fixture.manager, journal,
+		&recordingLeaseSets{events: &journal.events}, fixture.authority(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Publish(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil || !strings.Contains(err.Error(), "unexpected persisted evidence directory") {
+		t.Fatalf("uninventoried evidence directory error = %v", err)
+	}
+	if len(journal.events) != 0 {
+		t.Fatalf("uninventoried evidence reached publication journal: %q", journal.events)
 	}
 }
 

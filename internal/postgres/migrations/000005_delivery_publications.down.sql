@@ -3,7 +3,7 @@ LOCK TABLE
     forja.lease_sets,
     forja.lease_set_members,
     forja.delivery_publications
-IN ACCESS EXCLUSIVE MODE;
+IN ACCESS EXCLUSIVE MODE NOWAIT;
 
 DO $$
 BEGIN
