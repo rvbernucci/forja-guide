@@ -24,6 +24,11 @@ func TestValidatorRegistryPinsDefinitionsAndRejectsAuthorityExpansion(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close validator registry: %v", err)
+		}
+	})
 	argv[3] = "fail"
 	resolved, err := registry.resolve([]string{"unit-tests"})
 	if err != nil {
@@ -68,7 +73,17 @@ func TestValidatorRegistryRejectsReservedShellAndInvalidBudgets(t *testing.T) {
 	}
 }
 
-func TestRegisteredValidatorRejectsExecutableMutation(t *testing.T) {
+func TestValidatorRegistryRejectsWindowsAndAlternateStreamPaths(t *testing.T) {
+	for _, value := range []string{"C:relative.json", "config/value.json:stream"} {
+		if _, err := NewValidatorRegistry(nil, []SchemaBinding{{
+			Path: value, SchemaName: "run.schema.json",
+		}}, nil); err == nil {
+			t.Fatalf("platform-specific path %q was accepted", value)
+		}
+	}
+}
+
+func TestRegisteredValidatorUsesPrivateCopyAfterSourceMutation(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("executable script fixture requires a Unix host")
 	}
@@ -82,6 +97,11 @@ func TestRegisteredValidatorRejectsExecutableMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close validator registry: %v", err)
+		}
+	})
 	if err := os.WriteFile(executable, []byte("#!/bin/sh\nexit 1\n"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -89,9 +109,9 @@ func TestRegisteredValidatorRejectsExecutableMutation(t *testing.T) {
 		t.Context(), registry.definitions["pinned"], t.TempDir(), t.TempDir(),
 		registry.environ, time.Now, "independent",
 	)
-	if execution.check.Status != "failed" || execution.check.Detail == nil ||
-		!strings.Contains(*execution.check.Detail, "identity changed") {
-		t.Fatalf("mutated executable result = %#v", execution.check)
+	if execution.check.Status != "passed" ||
+		registry.definitions["pinned"].executablePath == executable {
+		t.Fatalf("private executable result = %#v definition=%#v", execution.check, registry.definitions["pinned"])
 	}
 }
 
@@ -112,6 +132,11 @@ func TestRegisteredValidatorIsBoundedAndUsesSanitizedEnvironment(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close validator registry: %v", err)
+		}
+	})
 	now := func() time.Time { return time.Now().UTC() }
 
 	environment := runRegisteredValidator(t.Context(), registry.definitions["environment"], worktree, home, registry.environ, now, "independent")

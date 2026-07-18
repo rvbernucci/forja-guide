@@ -154,6 +154,55 @@ func TestValidationServiceFailsClosedOnMandatoryChecks(t *testing.T) {
 	}
 }
 
+func TestValidationServiceRecompilesUnchangedSchemaDependents(t *testing.T) {
+	repository, root, _ := deliveryRepository(t)
+	directory := filepath.Join(repository, "internal/generated")
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	dependent := `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.test/a.schema.json","type":"object","properties":{"value":{"$ref":"https://example.test/b.schema.json#/$defs/value"}}}` + "\n"
+	dependency := `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.test/b.schema.json","$defs":{"value":{"type":"string"}}}` + "\n"
+	if err := os.WriteFile(filepath.Join(directory, "a.schema.json"), []byte(dependent), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(directory, "b.schema.json"), []byte(dependency), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	runGitTest(t, repository, "add", "internal/generated/a.schema.json", "internal/generated/b.schema.json")
+	runGitTest(t, repository, "commit", "--quiet", "-m", "schema fixtures")
+	base := strings.TrimSpace(runGitTest(t, repository, "rev-parse", "HEAD"))
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	brokenDependency := `{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"https://example.test/b.schema.json","type":"object"}` + "\n"
+	if err := os.WriteFile(
+		filepath.Join(worktree.Path, "internal/generated/b.schema.json"),
+		[]byte(brokenDependency), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := testValidationService(t, manager, t.TempDir(), []ValidatorDefinition{
+		testValidatorDefinition(t, "unit-tests", "pass"),
+	}, nil)
+	bundle, err := service.Validate(t.Context(), request, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range bundle.Report.Checks {
+		if check.CheckID == "schema-validation" && check.Status == "failed" {
+			return
+		}
+	}
+	t.Fatalf("broken unchanged schema dependent was accepted: %#v", bundle.Report.Checks)
+}
+
 func TestValidationServiceDetectsValidatorMutationAndPreservesCheckout(t *testing.T) {
 	repository, root, base := deliveryRepository(t)
 	manager := testWorktreeManager(t)
@@ -176,6 +225,9 @@ func TestValidationServiceDetectsValidatorMutationAndPreservesCheckout(t *testin
 	}
 	if bundle.Report.Status != "failed" {
 		t.Fatal("validator-mutated checkout passed validation")
+	}
+	if bundle.Report.CleanCheckout {
+		t.Fatal("validator-mutated checkout reported clean checkout")
 	}
 	for _, check := range bundle.Report.Checks {
 		if check.CheckID == "clean-checkout" && check.Status != "failed" {
@@ -378,6 +430,11 @@ func testValidationService(
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if err := registry.Close(); err != nil {
+			t.Errorf("close validator registry: %v", err)
+		}
+	})
 	service, err := NewValidationService(manager, registry, evidenceRoot, nil)
 	if err != nil {
 		t.Fatal(err)

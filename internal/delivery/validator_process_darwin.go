@@ -8,8 +8,9 @@ import (
 	"syscall"
 )
 
-func configureValidatorProcess(command *exec.Cmd) {
+func configureValidatorProcess(command *exec.Cmd) error {
 	command.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	return nil
 }
 
 func signalValidatorProcessTree(process *os.Process, signal syscall.Signal) error {

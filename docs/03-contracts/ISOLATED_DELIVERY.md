@@ -123,7 +123,7 @@ Canonical delivery identity contains:
 - exact base and result commits;
 - result tree object ID;
 - byte-sorted changed paths;
-- SHA-256 of `git diff --binary --full-index <base> <result>`;
+- SHA-256 of the config-stable canonical patch command defined below;
 - validation and evidence references with SHA-256 digests.
 
 The service publishes with compare-and-swap ref semantics. A missing target is
@@ -148,24 +148,36 @@ them.
 Configured format and test validators are trusted argv arrays stored in the
 runtime registry. They have wall-clock and output budgets and receive a
 sanitized environment. Registration resolves the executable to a physical
-path and binds its content hash, canonical argv, sanitized environment,
-timeout, and output budget into the command digest. A changed executable,
-timeout, output overflow, or process-tree cancellation fails the check.
+path, copies its bytes into an operator-private executable registry, and binds
+that pinned content hash, canonical argv, sanitized environment, timeout, and
+output budget into the command digest. A changed private copy, timeout, output
+overflow, unavailable process-tree containment, or cancellation fails the check.
 Reports contain hashes and bounded details, not raw unbounded output.
 
 The delivery service first runs the complete mechanical lane in a fresh
 supervisor-only checkout. It then creates another clean checkout, recomputes
-the Git identity, and reruns the built-ins and every required registry entry
-under a validator identity different from the author. Only the second lane
+the Git identity, and reruns the built-ins under a validator identity different
+from the author. Every registry entry named by the delivery remains required,
+but is scheduled only after every mandatory built-in passes in that lane. A
+built-in failure therefore terminates the lane before trusted external code is
+run and records a failed report rather than an incomplete success. Only the second lane
 forms the authoritative validation report; the mechanical lane has a separate
 canonical report in the same evidence manifest. A passing first-lane check
 cannot substitute for independent reproduction.
+`clean_checkout` is derived from the independent lane's final checkout check:
+it is `true` for a passing report and may be `false` only in persisted failure
+evidence.
 
 The supervisor creates the result through a temporary Git index, leaving the
 author worktree's detached `HEAD` and index unchanged. Commit author,
 committer, message, parent, and timestamp are deterministic. The service then
-derives the result tree, byte-sorted changed paths, and SHA-256 of Git's
-`--binary --full-index --no-renames` patch directly from immutable commits.
+derives the result tree, byte-sorted changed paths, and SHA-256 of the following
+config-stable patch directly from immutable commits:
+
+```text
+git -c core.quotePath=true diff --binary --full-index --no-ext-diff --no-textconv --no-color --no-renames --unified=3 --inter-hunk-context=0 --diff-algorithm=myers --no-indent-heuristic --src-prefix=a/ --dst-prefix=b/ --submodule=short -O/dev/null <base> <result> --
+```
+
 Only declared write scopes enter the result tree. Artifact scopes remain
 outside the Git object database; a rooted SHA-256 filesystem inventory proves
 that every changed path belongs to either set and that neither code nor

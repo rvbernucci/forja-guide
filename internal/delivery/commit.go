@@ -279,6 +279,11 @@ func (m *WorktreeManager) inspectCommitResult(
 	if !fullObjectIDPattern.Match(tree) {
 		return CommitResult{}, fmt.Errorf("Git returned a noncanonical result tree")
 	}
+	if err := m.validateSupervisorCommitMetadata(
+		ctx, resolved, resultCommit, string(tree),
+	); err != nil {
+		return CommitResult{}, err
+	}
 	changed, err := m.git(
 		ctx, resolved.repositoryPath,
 		"diff-tree", "--no-commit-id", "--name-only", "--no-renames", "-r", "-z",
@@ -296,7 +301,11 @@ func (m *WorktreeManager) inspectCommitResult(
 	}
 	patch, err := m.git(
 		ctx, resolved.repositoryPath,
-		"diff", "--binary", "--full-index", "--no-ext-diff", "--no-color", "--no-renames",
+		"-c", "core.quotePath=true",
+		"diff", "--binary", "--full-index", "--no-ext-diff", "--no-textconv",
+		"--no-color", "--no-renames", "--unified=3", "--inter-hunk-context=0",
+		"--diff-algorithm=myers", "--no-indent-heuristic",
+		"--src-prefix=a/", "--dst-prefix=b/", "--submodule=short", "-O/dev/null",
 		resolved.baseCommit, resultCommit, "--",
 	)
 	if err != nil {
@@ -310,6 +319,36 @@ func (m *WorktreeManager) inspectCommitResult(
 		PatchSHA256:  fmt.Sprintf("%x", digest),
 		ChangedPaths: changedPaths,
 	}, nil
+}
+
+func (m *WorktreeManager) validateSupervisorCommitMetadata(
+	ctx context.Context,
+	resolved resolvedRequest,
+	resultCommit string,
+	resultTree string,
+) error {
+	commitTime, err := m.deterministicCommitTime(ctx, resolved)
+	if err != nil {
+		return err
+	}
+	timestamp := strconv.FormatInt(commitTime.Unix(), 10) + " +0000"
+	expected := fmt.Sprintf(
+		"tree %s\nparent %s\n"+
+			"author Forja Delivery Service <delivery@forja.invalid> %s\n"+
+			"committer Forja Delivery Service <delivery@forja.invalid> %s\n\n"+
+			"Forja delivery %s\n",
+		resultTree, resolved.baseCommit, timestamp, timestamp, resolved.request.DeliveryID,
+	)
+	actual, err := m.git(
+		ctx, resolved.repositoryPath, "cat-file", "commit", resultCommit,
+	)
+	if err != nil {
+		return fmt.Errorf("inspect result commit metadata: %w", err)
+	}
+	if !bytes.Equal(actual, []byte(expected)) {
+		return fmt.Errorf("result commit metadata is not the deterministic supervisor identity")
+	}
+	return nil
 }
 
 func (m *WorktreeManager) snapshotTree(

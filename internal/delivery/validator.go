@@ -26,7 +26,7 @@ const (
 	maximumValidatorTimeout     = time.Hour
 	minimumValidatorOutputBytes = 1024
 	maximumValidatorOutputBytes = 16 << 20
-	maximumRegistryOutputBytes  = 128 << 20
+	maximumRegistryOutputBytes  = 120 << 20
 	validatorStopGrace          = 250 * time.Millisecond
 	validatorKillGrace          = 2 * time.Second
 )
@@ -64,6 +64,9 @@ type ValidatorRegistry struct {
 	definitions map[string]registeredValidator
 	bindings    map[string]string
 	environ     []string
+	privateRoot string
+	closeOnce   sync.Once
+	closeErr    error
 }
 
 type registeredValidator struct {
@@ -73,6 +76,7 @@ type registeredValidator struct {
 	maxOutputBytes int
 	commandDigest  string
 	executableHash string
+	executablePath string
 }
 
 // NewValidatorRegistry validates and pins every trusted registry entry.
@@ -88,6 +92,23 @@ func NewValidatorRegistry(
 		definitions: make(map[string]registeredValidator, len(definitions)),
 		bindings:    make(map[string]string, len(bindings)),
 		environ:     append([]string(nil), environ...),
+	}
+	completed := false
+	defer func() {
+		if !completed && registry.privateRoot != "" {
+			_ = os.RemoveAll(registry.privateRoot)
+		}
+	}()
+	if len(definitions) > 0 {
+		privateRoot, err := os.MkdirTemp("", "forja-validator-registry-*")
+		if err != nil {
+			return nil, fmt.Errorf("create private validator registry: %w", err)
+		}
+		if err := os.Chmod(privateRoot, 0o700); err != nil {
+			_ = os.RemoveAll(privateRoot)
+			return nil, fmt.Errorf("secure private validator registry: %w", err)
+		}
+		registry.privateRoot = privateRoot
 	}
 	totalOutputBudget := 0
 	for _, definition := range definitions {
@@ -115,7 +136,9 @@ func NewValidatorRegistry(
 		if err != nil {
 			return nil, fmt.Errorf("validator %q: %w", definition.ID, err)
 		}
-		executableHash, err := hashRegularFile(argv[0])
+		executablePath, executableHash, err := pinValidatorExecutable(
+			argv[0], registry.privateRoot, definition.ID,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("validator %q executable: %w", definition.ID, err)
 		}
@@ -145,6 +168,7 @@ func NewValidatorRegistry(
 			maxOutputBytes: definition.MaxOutputBytes,
 			commandDigest:  fmt.Sprintf("%x", digest),
 			executableHash: executableHash,
+			executablePath: executablePath,
 		}
 	}
 	for _, binding := range bindings {
@@ -163,7 +187,22 @@ func NewValidatorRegistry(
 		}
 		registry.bindings[binding.Path] = binding.SchemaName
 	}
+	completed = true
 	return registry, nil
+}
+
+// Close removes the operator-private executable copies after all validation
+// activity using this registry has stopped.
+func (r *ValidatorRegistry) Close() error {
+	if r == nil {
+		return nil
+	}
+	r.closeOnce.Do(func() {
+		if r.privateRoot != "" {
+			r.closeErr = os.RemoveAll(r.privateRoot)
+		}
+	})
+	return r.closeErr
 }
 
 func (r *ValidatorRegistry) resolve(ids []string) ([]registeredValidator, error) {
@@ -213,15 +252,46 @@ func pinValidatorArgv(argv []string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve executable symlinks: %w", err)
 	}
-	info, err := os.Stat(physical)
-	if err != nil {
-		return nil, fmt.Errorf("stat executable: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
-		return nil, fmt.Errorf("executable is not an executable regular file")
-	}
 	values[0] = physical
 	return values, nil
+}
+
+func pinValidatorExecutable(sourcePath string, privateRoot string, id string) (string, string, error) {
+	if privateRoot == "" {
+		return "", "", fmt.Errorf("private validator registry is required")
+	}
+	source, err := openValidatorSource(sourcePath)
+	if err != nil {
+		return "", "", err
+	}
+	defer source.Close()
+	targetPath := filepath.Join(privateRoot, id)
+	target, err := os.OpenFile(targetPath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return "", "", fmt.Errorf("create private executable copy: %w", err)
+	}
+	removeTarget := true
+	defer func() {
+		_ = target.Close()
+		if removeTarget {
+			_ = os.Remove(targetPath)
+		}
+	}()
+	digest := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(target, digest), source); err != nil {
+		return "", "", fmt.Errorf("copy private executable: %w", err)
+	}
+	if err := target.Sync(); err != nil {
+		return "", "", fmt.Errorf("sync private executable: %w", err)
+	}
+	if err := target.Chmod(0o500); err != nil {
+		return "", "", fmt.Errorf("make private executable immutable: %w", err)
+	}
+	if err := target.Close(); err != nil {
+		return "", "", fmt.Errorf("close private executable: %w", err)
+	}
+	removeTarget = false
+	return targetPath, fmt.Sprintf("%x", digest.Sum(nil)), nil
 }
 
 type validationExecution struct {
@@ -241,10 +311,10 @@ func runRegisteredValidator(
 	lane string,
 ) validationExecution {
 	startedAt := now().UTC()
-	command := exec.Command(definition.argv[0], definition.argv[1:]...)
+	command := exec.Command(definition.executablePath, definition.argv[1:]...)
 	command.Dir = directory
 	command.Env = validatorEnvironment(environ, home)
-	configureValidatorProcess(command)
+	containmentErr := configureValidatorProcess(command)
 	overflow := make(chan struct{})
 	var overflowOnce sync.Once
 	quota := &commandOutputQuota{
@@ -257,8 +327,11 @@ func runRegisteredValidator(
 	status := "passed"
 	detail := ""
 	var exitCode *int
-	actualExecutableHash, executableErr := hashRegularFile(definition.argv[0])
-	if executableErr != nil || actualExecutableHash != definition.executableHash {
+	actualExecutableHash, executableErr := hashRegularFile(definition.executablePath)
+	if containmentErr != nil {
+		status = "failed"
+		detail = "validator process-tree containment is unavailable"
+	} else if executableErr != nil || actualExecutableHash != definition.executableHash {
 		status = "failed"
 		detail = "validator executable identity changed after registration"
 	} else if err := command.Start(); err != nil {
@@ -294,7 +367,7 @@ func runRegisteredValidator(
 			detail = "validator exited unsuccessfully"
 		}
 	}
-	if actualHash, err := hashRegularFile(definition.argv[0]); err != nil || actualHash != definition.executableHash {
+	if actualHash, err := hashRegularFile(definition.executablePath); err != nil || actualHash != definition.executableHash {
 		status = "failed"
 		detail = "validator executable identity changed during execution"
 	}
@@ -421,7 +494,8 @@ func validatorEnvironment(source []string, home string) []string {
 }
 
 func validateRepositoryRelativePath(value string) error {
-	if value == "" || strings.ContainsAny(value, "\\\x00\r\n") ||
+	if value == "" || strings.ContainsAny(value, "\\:\x00\r\n") ||
+		filepath.VolumeName(value) != "" ||
 		filepath.IsAbs(value) || filepath.ToSlash(filepath.Clean(value)) != value ||
 		value == ".." || strings.HasPrefix(value, "../") {
 		return fmt.Errorf("path %q is not canonical and repository-relative", value)

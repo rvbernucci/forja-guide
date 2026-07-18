@@ -143,9 +143,13 @@ func (s *ValidationService) Validate(
 	})
 	checks := make([]contracts.ValidationCheck, 0, len(independentExecutions))
 	status := "passed"
+	cleanCheckout := false
 	latest := time.Time{}
 	for _, execution := range independentExecutions {
 		checks = append(checks, execution.check)
+		if execution.check.CheckID == "clean-checkout" {
+			cleanCheckout = execution.check.Status == "passed"
+		}
 		if execution.check.Status != "passed" {
 			status = "failed"
 		}
@@ -167,7 +171,7 @@ func (s *ValidationService) Validate(
 		PatchSHA256:   result.PatchSHA256,
 		AuthorID:      request.AuthorID,
 		ValidatorID:   request.ValidatorID,
-		CleanCheckout: true,
+		CleanCheckout: cleanCheckout,
 		Checks:        checks,
 		CreatedAt:     createdAt,
 	}

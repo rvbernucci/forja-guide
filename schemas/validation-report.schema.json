@@ -19,7 +19,7 @@
     "patch_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
     "author_id": {"type": "string", "minLength": 1, "maxLength": 160},
     "validator_id": {"type": "string", "minLength": 1, "maxLength": 160},
-    "clean_checkout": {"const": true},
+    "clean_checkout": {"type": "boolean"},
     "checks": {
       "type": "array", "minItems": 1, "maxItems": 128,
       "items": {
@@ -45,5 +45,14 @@
       }
     },
     "created_at": {"type": "string", "format": "date-time"}
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"status": {"const": "passed"}},
+        "required": ["status"]
+      },
+      "then": {"properties": {"clean_checkout": {"const": true}}}
+    }
+  ]
 }

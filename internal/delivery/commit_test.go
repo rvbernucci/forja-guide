@@ -28,6 +28,10 @@ func TestCreateResultCommitIsDeterministicAndDoesNotMutateAttemptGitState(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
+	runGitTest(t, repository, "config", "diff.algorithm", "histogram")
+	runGitTest(t, repository, "config", "diff.indentHeuristic", "true")
+	runGitTest(t, repository, "config", "diff.interHunkContext", "99")
+	runGitTest(t, repository, "config", "core.quotePath", "false")
 	second, err := manager.CreateResultCommit(t.Context(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -195,5 +199,37 @@ func TestCreateResultCommitRejectsSymlinkInMutableScope(t *testing.T) {
 	if _, err := manager.CreateResultCommit(t.Context(), request); err == nil ||
 		!strings.Contains(err.Error(), "symbolic link") {
 		t.Fatalf("symlink commit error = %v", err)
+	}
+}
+
+func TestInspectCommitResultRejectsNonSupervisorMetadata(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(worktree.Path, "internal/generated/result.txt"),
+		[]byte("bounded result\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	forged := strings.TrimSpace(runGitTest(
+		t, repository, "commit-tree", result.ResultTree, "-p", base,
+		"-m", "Forja delivery "+request.DeliveryID,
+	))
+	resolved, err := manager.resolveRequest(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.inspectCommitResult(t.Context(), resolved, forged); err == nil ||
+		!strings.Contains(err.Error(), "deterministic supervisor identity") {
+		t.Fatalf("forged metadata error = %v", err)
 	}
 }

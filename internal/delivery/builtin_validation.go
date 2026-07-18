@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/santhosh-tekuri/jsonschema/v6"
@@ -91,15 +92,15 @@ func (s *ValidationService) gitTreeEntry(
 	}
 	entries := bytes.Split(output, []byte{0})
 	if len(entries) != 2 || len(entries[0]) == 0 {
-		return gitTreeEntry{}, false, fmt.Errorf("Git returned ambiguous tree entries for %q", repositoryPath)
+		return gitTreeEntry{}, false, fmt.Errorf("git returned ambiguous tree entries for %q", repositoryPath)
 	}
 	header, name, ok := bytes.Cut(entries[0], []byte{'\t'})
 	if !ok || string(name) != repositoryPath {
-		return gitTreeEntry{}, false, fmt.Errorf("Git returned the wrong tree path for %q", repositoryPath)
+		return gitTreeEntry{}, false, fmt.Errorf("git returned the wrong tree path for %q", repositoryPath)
 	}
 	fields := strings.Fields(string(header))
 	if len(fields) != 3 || !fullObjectIDPattern.MatchString(fields[2]) {
-		return gitTreeEntry{}, false, fmt.Errorf("Git returned malformed tree metadata for %q", repositoryPath)
+		return gitTreeEntry{}, false, fmt.Errorf("git returned malformed tree metadata for %q", repositoryPath)
 	}
 	return gitTreeEntry{fields[0], fields[1], fields[2], string(name)}, true, nil
 }
@@ -163,6 +164,9 @@ func (s *ValidationService) validateJSONAndSchemas(
 		if !strings.HasSuffix(strings.ToLower(changedPath), ".json") {
 			continue
 		}
+		if strings.HasSuffix(changedPath, ".schema.json") {
+			changedSchemas[changedPath] = struct{}{}
+		}
 		content, exists, err := s.resultBlob(ctx, resolved, result.ResultCommit, changedPath)
 		if err != nil {
 			return err
@@ -178,21 +182,17 @@ func (s *ValidationService) validateJSONAndSchemas(
 				return fmt.Errorf("changed JSON %q violates %s: %w", changedPath, schemaName, err)
 			}
 		}
-		if strings.HasSuffix(changedPath, ".schema.json") {
-			changedSchemas[changedPath] = struct{}{}
-		}
 	}
 	if len(changedSchemas) == 0 {
 		return nil
 	}
-	return s.compileRepositorySchemas(ctx, resolved, result.ResultCommit, changedSchemas)
+	return s.compileRepositorySchemas(ctx, resolved, result.ResultCommit)
 }
 
 func (s *ValidationService) compileRepositorySchemas(
 	ctx context.Context,
 	resolved resolvedRequest,
 	commit string,
-	changed map[string]struct{},
 ) error {
 	output, err := s.manager.git(
 		ctx, resolved.repositoryPath,
@@ -235,13 +235,15 @@ func (s *ValidationService) compileRepositorySchemas(
 		}
 		resources[name] = resourceID
 	}
-	for changedPath := range changed {
-		resourceID, ok := resources[changedPath]
-		if !ok {
-			return fmt.Errorf("changed schema %q is not present in the result tree", changedPath)
-		}
+	names := make([]string, 0, len(resources))
+	for name := range resources {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	for _, name := range names {
+		resourceID := resources[name]
 		if _, err := compiler.Compile(resourceID); err != nil {
-			return fmt.Errorf("compile changed schema %q: %w", changedPath, err)
+			return fmt.Errorf("compile repository schema %q: %w", name, err)
 		}
 	}
 	return nil
