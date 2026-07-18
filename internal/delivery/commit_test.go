@@ -178,3 +178,22 @@ func TestCreateResultCommitCapturesDeletionAndAdditionInByteOrder(t *testing.T) 
 		t.Fatalf("changed paths = %q, want %q", result.ChangedPaths, want)
 	}
 }
+
+func TestCreateResultCommitRejectsSymlinkInMutableScope(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(
+		"../../README.md", filepath.Join(worktree.Path, "internal/generated/link"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.CreateResultCommit(t.Context(), request); err == nil ||
+		!strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("symlink commit error = %v", err)
+	}
+}

@@ -231,15 +231,11 @@ func hashWorkspacePath(root *os.Root, digest io.Writer, repositoryPath string) e
 		}
 		return writeDigestField(digest, contentDigest.Sum(nil))
 	case info.Mode()&os.ModeSymlink != 0:
-		target, err := root.Readlink(name)
-		if err != nil {
-			return fmt.Errorf("read changed symlink %q: %w", repositoryPath, err)
-		}
-		return writeDigestField(digest, []byte(target))
+		return fmt.Errorf("changed path %q is a symbolic link", repositoryPath)
 	case info.IsDir():
 		return writeDigestField(digest, []byte("directory"))
 	default:
-		return writeDigestField(digest, []byte("special"))
+		return fmt.Errorf("changed path %q is not a regular file or directory", repositoryPath)
 	}
 }
 

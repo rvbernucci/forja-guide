@@ -116,14 +116,6 @@ func TestValidationServiceFailsClosedOnMandatoryChecks(t *testing.T) {
 			},
 			failedID: "generated-file-policy",
 		},
-		"symlink": {
-			prepare: func(t *testing.T, worktree string) {
-				if err := os.Symlink("../../README.md", filepath.Join(worktree, "internal/generated/link")); err != nil {
-					t.Fatal(err)
-				}
-			},
-			failedID: "filesystem-safety",
-		},
 	}
 	for name, fixture := range cases {
 		t.Run(name, func(t *testing.T) {
