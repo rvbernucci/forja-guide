@@ -419,7 +419,7 @@ func (s *Supervisor) applyReport(
 	if err != nil || actualErr != nil || ignoredErr != nil || evidenceDirectoryErr != nil ||
 		!pathsWithinScopes(report.ChangedPaths, allowedScopes) ||
 		!pathsWithinScopes(actualPaths, allowedScopes) ||
-		!pathsListed(actualPaths, report.ChangedPaths) ||
+		!samePaths(actualPaths, report.ChangedPaths) ||
 		!validEvidenceReferences(task, report.EvidenceRefs, actualPaths) {
 		result.Status = "failed_retryable"
 		result.Retryable = true
@@ -444,12 +444,15 @@ func effectiveWriteScopes(task contracts.WorkerTask) []string {
 	return scopes
 }
 
-func pathsListed(actual []string, reported []string) bool {
-	known := make(map[string]struct{}, len(reported))
-	for _, path := range reported {
+func samePaths(actual []string, reported []string) bool {
+	if len(actual) != len(reported) {
+		return false
+	}
+	known := make(map[string]struct{}, len(actual))
+	for _, path := range actual {
 		known[path] = struct{}{}
 	}
-	for _, path := range actual {
+	for _, path := range reported {
 		if _, exists := known[path]; !exists {
 			return false
 		}

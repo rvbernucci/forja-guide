@@ -26,10 +26,16 @@ func TestRunExecutesOneShotWorker(t *testing.T) {
 	script := `#!/bin/sh
 set -eu
 report=''
+write_scope=''
 while [ "$#" -gt 0 ]; do
-  if [ "$1" = '--output-last-message' ]; then report="$2"; shift 2; else shift; fi
+  if [ "$1" = '--output-last-message' ]; then report="$2"; shift 2
+  elif [ "$1" = '--add-dir' ] && [ -z "$write_scope" ]; then write_scope="$2"; shift 2
+  else shift
+  fi
 done
 test -n "$report"
+test -n "$write_scope"
+printf '%s\n' 'fake result' >"$write_scope/result.md"
 cat >"$report" <<'JSON'
 {"status":"completed","summary":"fake completed","changed_paths":["docs/result.md"],"evidence_refs":[],"risks":[]}
 JSON
