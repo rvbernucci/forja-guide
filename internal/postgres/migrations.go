@@ -178,6 +178,47 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 		return nil
 	}
 	selected := migrations[appliedCount-1]
+	if selected.version >= 4 && selected.version <= 6 {
+		if err := lockIncrementalMigrationWriters(ctx, tx); err != nil {
+			return fmt.Errorf("serialize Sprint 05 rollback compatibility check: %w", err)
+		}
+		var hasSprint05IncompatibleHistory bool
+		if err := tx.QueryRow(ctx, `
+			SELECT
+				EXISTS (
+					SELECT 1 FROM forja.events
+					WHERE aggregate_type='approval'
+					  AND event_type='delivery.authorized'
+				)
+				OR EXISTS (
+					SELECT 1 FROM forja.idempotency_keys
+					WHERE scope LIKE 'authorize_delivery:%'
+				)
+				OR EXISTS (
+					SELECT 1
+					FROM (
+						SELECT payload->>'state' AS state,
+						       lag(payload->>'state') OVER (
+						         PARTITION BY tenant_id, repository_id, aggregate_id
+						         ORDER BY aggregate_version
+						       ) AS previous_state
+						FROM forja.events
+						WHERE aggregate_type='run'
+						  AND event_type IN ('run.created', 'run.transitioned')
+					) AS history
+					WHERE previous_state='awaiting_decision'
+					  AND state='queued'
+				)`,
+		).Scan(&hasSprint05IncompatibleHistory); err != nil {
+			return fmt.Errorf("inspect Sprint 05 rollback compatibility: %w", err)
+		}
+		if hasSprint05IncompatibleHistory {
+			return fmt.Errorf(
+				"rollback migration %d: Sprint 05 delivery authorization history or queued blocked-run resume history is incompatible with the Sprint 04 verifier",
+				selected.version,
+			)
+		}
+	}
 	if _, err := tx.Exec(ctx, selected.down); err != nil {
 		return fmt.Errorf("rollback migration %d: %w", selected.version, err)
 	}

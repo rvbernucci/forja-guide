@@ -83,6 +83,127 @@ func TestValidationServiceProducesIndependentCanonicalEvidence(t *testing.T) {
 	}
 }
 
+func TestValidationServiceLoadsExactPersistedEvidenceForRecovery(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	evidenceRoot := t.TempDir()
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(worktree.Path, "internal/generated/recovery.json"),
+		[]byte("{\"recovery\":true}\n"), 0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := testValidationService(t, manager, evidenceRoot, []ValidatorDefinition{
+		testValidatorDefinition(t, "unit-tests", "pass"),
+	}, nil)
+	original, err := service.Validate(t.Context(), request, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := service.Load(t.Context(), request)
+	if err != nil {
+		t.Fatalf("load persisted evidence: %v", err)
+	}
+	if !slices.Equal(loaded.ReportJSON, original.ReportJSON) ||
+		!slices.Equal(loaded.ManifestJSON, original.ManifestJSON) ||
+		loaded.ReportRef != original.ReportRef || loaded.ManifestRef != original.ManifestRef ||
+		loaded.PhysicalRoot != original.PhysicalRoot {
+		t.Fatalf("loaded bundle differs from persisted authority")
+	}
+	if err := os.Remove(filepath.Join(loaded.PhysicalRoot, "evidence", "validation.json")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Load(t.Context(), request); err == nil {
+		t.Fatal("incomplete persisted evidence was accepted during recovery")
+	}
+}
+
+func TestValidationServiceRejectsMisplacedEvidenceFromAnotherAuthority(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	evidenceRoot := t.TempDir()
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeValidationFixture(t, worktree.Path, "authority.txt", "bound\n")
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := testValidationService(t, manager, evidenceRoot, []ValidatorDefinition{
+		testValidatorDefinition(t, "unit-tests", "pass"),
+	}, nil)
+	original, err := service.Validate(t.Context(), request, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	misbound := request
+	misbound.DeliveryID = "delivery_00000000-0000-4000-8000-000000000091"
+	misbound.AttemptID = "attempt_00000000-0000-4000-8000-000000000092"
+	misbound.TaskID = "task_00000000-0000-4000-8000-000000000093"
+	misbound.PublicationRef = "refs/forja/deliveries/" + misbound.DeliveryID
+	destination := filepath.Join(evidenceRoot, misbound.DeliveryID, misbound.AttemptID)
+	if err := os.MkdirAll(filepath.Dir(destination), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(original.PhysicalRoot, destination); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Load(t.Context(), misbound); err == nil ||
+		!strings.Contains(err.Error(), "authority envelope") {
+		t.Fatalf("misplaced evidence load error = %v", err)
+	}
+}
+
+func TestValidationServiceRejectsEvidenceCopiedFromAnotherAttempt(t *testing.T) {
+	repository, root, base := deliveryRepository(t)
+	evidenceRoot := t.TempDir()
+	manager := testWorktreeManager(t)
+	request := deliveryRequest(repository, root, base)
+	worktree, err := manager.Prepare(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeValidationFixture(t, worktree.Path, "attempt.txt", "bound\n")
+	result, err := manager.CreateResultCommit(t.Context(), request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := testValidationService(t, manager, evidenceRoot, []ValidatorDefinition{
+		testValidatorDefinition(t, "unit-tests", "pass"),
+	}, nil)
+	original, err := service.Validate(t.Context(), request, result)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	otherAttempt := request
+	otherAttempt.AttemptID = "attempt_00000000-0000-4000-8000-000000000094"
+	otherAttempt.AttemptOrdinal = 2
+	destination := filepath.Join(
+		evidenceRoot, otherAttempt.DeliveryID, otherAttempt.AttemptID,
+	)
+	if err := os.Rename(original.PhysicalRoot, destination); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Load(t.Context(), otherAttempt); err == nil ||
+		!strings.Contains(err.Error(), "approved attempt") {
+		t.Fatalf("cross-attempt evidence load error = %v", err)
+	}
+}
+
 func TestValidationServiceFailsClosedOnMandatoryChecks(t *testing.T) {
 	cases := map[string]struct {
 		prepare  func(*testing.T, string)

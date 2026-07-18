@@ -376,6 +376,71 @@ func TestDurableResumeReplaysAfterRunAdvances(t *testing.T) {
 	}
 }
 
+func TestDurableBlockedResumePassesArchiveVerification(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, err := control.NewService(store)
+	if err != nil {
+		t.Fatal(err)
+	}
+	principal, err := control.NewPrincipal(
+		"human", "blocked-resume-approver", control.AllPermissions...,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	runID := mustRunID(t)
+	run, err := store.CreateRun(
+		t.Context(), runID, "Verify a governed blocked-run resume",
+		testMetadata("blocked-resume-create"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index, target := range []runstate.State{
+		runstate.StateAwaitingApproval,
+		runstate.StateQueued,
+		runstate.StatePreparing,
+		runstate.StateRunning,
+		runstate.StateValidating,
+		runstate.StateAwaitingDecision,
+	} {
+		run, err = store.TransitionRun(
+			t.Context(), runID, run.Version, target,
+			testMetadata(fmt.Sprintf("blocked-resume-transition-%d", index)),
+		)
+		if err != nil {
+			t.Fatalf("prepare blocked run for %s: %v", target, err)
+		}
+	}
+	resumed, err := service.ResumeRun(t.Context(), principal, control.TransitionInput{
+		RunID:           run.RunID,
+		ExpectedVersion: run.Version,
+		Command: control.CommandContext{
+			IdempotencyKey: "blocked-resume-command",
+			CorrelationID:  "blocked-resume-command",
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resumed.State != string(runstate.StateQueued) {
+		t.Fatalf("resumed blocked Run state = %q, want queued", resumed.State)
+	}
+	verify := postgresScriptCommand(t, "../../scripts/postgres_verify.sh")
+	if output, err := verify.CombinedOutput(); err != nil {
+		t.Fatalf("verify blocked-run resume archive: %v\n%s", err, output)
+	}
+}
+
 func TestMCPControlLifecycleIsDurableAndAudited(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)

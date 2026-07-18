@@ -156,3 +156,217 @@ class EmptyReconciliationReceiptTests(unittest.TestCase):
         receipt["response"]["authority"]["resource_id"] = "other-scheduler"
         with self.assertRaises(ValueError):
             VERIFIER.verify_receipt(receipt, [])
+
+
+class DeliveryAuthorizationEvidenceTests(unittest.TestCase):
+    """Require the latest pre-approval execution state to remain queued."""
+
+    tenant_id = "00000000-0000-4000-8000-000000000001"
+    repository_id = "00000000-0000-4000-8000-000000000002"
+    delivery_id = "delivery_00000000-0000-4000-8000-000000000003"
+    attempt_id = "attempt_00000000-0000-4000-8000-000000000004"
+    run_id = "run_00000000-0000-4000-8000-000000000005"
+    approved_at = "2026-07-18T12:00:00Z"
+
+    def request(self) -> dict:
+        """Return one canonical delivery request."""
+        return {
+            "delivery_id": self.delivery_id,
+            "tenant_id": "tenant_" + self.tenant_id,
+            "repository_id": "repo_" + self.repository_id,
+            "task_id": "task_00000000-0000-4000-8000-000000000006",
+            "attempt_id": self.attempt_id,
+            "run_id": self.run_id,
+            "schema_version": "1.1",
+            "repository_path": "/tmp/repository",
+            "worktree_root": "/tmp/worktrees",
+            "base_commit": "a" * 40,
+            "publication_ref": "refs/forja/deliveries/" + self.delivery_id,
+            "publication_previous_commit": None,
+            "author_id": "worker-author",
+            "validator_id": "independent-validator",
+            "role": "implementer",
+            "objective": "Deliver one governed change",
+            "read_scopes": ["."],
+            "write_scopes": ["internal/generated"],
+            "artifact_scopes": ["evidence"],
+            "evidence_scope": "evidence",
+            "attempt_ordinal": 1,
+            "worker_budgets": {
+                "wall_clock_ms": 1000,
+                "inactivity_ms": 500,
+                "max_output_bytes": 4096,
+                "cancellation_grace_ms": 100,
+                "max_retries": 1,
+            },
+            "mechanical_validator_ids": ["unit"],
+            "lease_ttl_ms": 60000,
+        }
+
+    def evidence(self) -> tuple[dict, dict, list[dict], list[str]]:
+        """Return a valid authorization and its governed predecessors."""
+        request = self.request()
+        digest = hashlib.sha256(
+            VERIFIER.go_json_bytes(VERIFIER.ordered_delivery_request(request))
+        ).hexdigest()
+        approved_us = VERIFIER.parse_utc_us(self.approved_at)
+        authorization = {
+            "request": request,
+            "request_sha256": digest,
+            "approved_by": "independent-human",
+            "approved_at": self.approved_at,
+        }
+        event = {
+            "tenant_id": self.tenant_id,
+            "repository_id": self.repository_id,
+            "aggregate_type": "approval",
+            "aggregate_id": self.delivery_id + ":" + self.attempt_id,
+            "aggregate_version": 1,
+            "outbox_id": 40,
+            "event_type": "delivery.authorized",
+            "occurred_us": approved_us,
+            "actor_type": "human",
+            "actor_id": "independent-human",
+            "payload": authorization,
+        }
+        events = [
+            {
+                "tenant_id": self.tenant_id,
+                "repository_id": self.repository_id,
+                "aggregate_type": "decision",
+                "aggregate_id": "decision-1",
+                "aggregate_version": 2,
+                "outbox_id": 10,
+                "event_type": "decision.approved",
+                "occurred_us": approved_us - 3,
+                "payload": {
+                    "run_id": self.run_id,
+                    "action": "submit_sprint",
+                    "status": "approved",
+                },
+            },
+            {
+                "tenant_id": self.tenant_id,
+                "repository_id": self.repository_id,
+                "aggregate_type": "run",
+                "aggregate_id": self.run_id,
+                "aggregate_version": 3,
+                "outbox_id": 20,
+                "event_type": "run.transitioned",
+                "occurred_us": approved_us - 2,
+                "payload": {
+                    "run_id": self.run_id,
+                    "objective": request["objective"],
+                    "state": "queued",
+                },
+            },
+            {
+                "tenant_id": self.tenant_id,
+                "repository_id": self.repository_id,
+                "aggregate_type": "attempt",
+                "aggregate_id": self.attempt_id,
+                "aggregate_version": 1,
+                "outbox_id": 30,
+                "event_type": "attempt.created",
+                "occurred_us": approved_us - 1,
+                "payload": {
+                    "attempt_id": self.attempt_id,
+                    "run_id": self.run_id,
+                    "ordinal": 1,
+                    "status": "queued",
+                },
+            },
+            event,
+        ]
+        scope = ["authorize_delivery", self.repository_id, self.delivery_id, self.attempt_id]
+        return event, authorization, events, scope
+
+    def test_accepts_latest_queued_run_and_attempt(self) -> None:
+        """The canonical queued predecessor state remains valid."""
+        event, authorization, events, scope = self.evidence()
+        VERIFIER.validate_delivery_authorization(event, authorization, events, scope)
+
+    def test_rejects_run_that_advanced_before_authorization(self) -> None:
+        """An old queued Run snapshot cannot authorize a running Run."""
+        event, authorization, events, scope = self.evidence()
+        events.insert(-1, {
+            "tenant_id": self.tenant_id,
+            "repository_id": self.repository_id,
+            "aggregate_type": "run",
+            "aggregate_id": self.run_id,
+            "aggregate_version": 4,
+            "outbox_id": 35,
+            "event_type": "run.transitioned",
+            "occurred_us": event["occurred_us"] - 1,
+            "payload": {
+                "run_id": self.run_id,
+                "objective": authorization["request"]["objective"],
+                "state": "running",
+            },
+        })
+        with self.assertRaisesRegex(ValueError, "stale execution authority"):
+            VERIFIER.validate_delivery_authorization(event, authorization, events, scope)
+
+    def test_rejects_attempt_that_advanced_before_authorization(self) -> None:
+        """An old creation event cannot conceal a started attempt."""
+        event, authorization, events, scope = self.evidence()
+        events.insert(-1, {
+            "tenant_id": self.tenant_id,
+            "repository_id": self.repository_id,
+            "aggregate_type": "attempt",
+            "aggregate_id": self.attempt_id,
+            "aggregate_version": 2,
+            "outbox_id": 35,
+            "event_type": "attempt.started",
+            "occurred_us": event["occurred_us"] - 1,
+            "payload": {
+                "attempt": {
+                    "attempt_id": self.attempt_id,
+                    "run_id": self.run_id,
+                    "ordinal": 1,
+                    "status": "running",
+                }
+            },
+        })
+        with self.assertRaisesRegex(ValueError, "stale execution authority"):
+            VERIFIER.validate_delivery_authorization(event, authorization, events, scope)
+
+    def test_accepts_clock_skew_when_outbox_order_proves_predecessors(self) -> None:
+        """Wall-clock skew cannot invalidate monotonic committed ordering."""
+        event, authorization, events, scope = self.evidence()
+        for predecessor in events[:-1]:
+            predecessor["occurred_us"] = event["occurred_us"] + 100
+        VERIFIER.validate_delivery_authorization(event, authorization, events, scope)
+
+    def test_rejects_schema_consistent_but_semantically_invalid_requests(self) -> None:
+        """A matching digest cannot legitimize malformed execution authority."""
+        corruptions = {
+            "task identity": lambda request: request.__setitem__("task_id", "task-invalid"),
+            "repository root": lambda request: request.__setitem__("repository_path", "/"),
+            "scope traversal": lambda request: request.__setitem__("write_scopes", ["../escape"]),
+            "worker budget": lambda request: request["worker_budgets"].__setitem__("wall_clock_ms", 99),
+            "lease horizon": lambda request: request.__setitem__("lease_ttl_ms", -1),
+            "retry budget": lambda request: request.__setitem__("attempt_ordinal", 3),
+            "null context reference": lambda request: request.__setitem__(
+                "context_pack_ref", None
+            ),
+            "null model": lambda request: request.__setitem__("model", None),
+            "null token budget": lambda request: request["worker_budgets"].__setitem__(
+                "max_tokens", None
+            ),
+            "null command budget": lambda request: request["worker_budgets"].__setitem__(
+                "max_commands", None
+            ),
+        }
+        for name, corrupt in corruptions.items():
+            with self.subTest(name=name):
+                event, authorization, events, scope = self.evidence()
+                corrupt(authorization["request"])
+                ordered = VERIFIER.ordered_delivery_request(authorization["request"])
+                authorization["request_sha256"] = hashlib.sha256(
+                    VERIFIER.go_json_bytes(ordered)
+                ).hexdigest()
+                with self.assertRaisesRegex(ValueError, "delivery authorization"):
+                    VERIFIER.validate_delivery_authorization(
+                        event, authorization, events, scope
+                    )

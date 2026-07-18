@@ -14,6 +14,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 )
@@ -22,6 +23,79 @@ var deliveryLeaseTypes = map[string]struct{}{
 	"artifact": {},
 	"file":     {},
 	"worktree": {},
+}
+
+// GetLeaseSet reconstructs the immutable historical lease-set proof. The
+// returned state tells callers whether it remains renewable; historical
+// snapshots are still required to verify prepared publication intents.
+func (s *Store) GetLeaseSet(
+	ctx context.Context,
+	leaseSetID string,
+) (persistence.LeaseSet, string, bool, error) {
+	if err := contracts.ValidateDeliveryAttemptID(leaseSetID); err != nil {
+		return persistence.LeaseSet{}, "", false, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.RepeatableRead})
+	if err != nil {
+		return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var ownerID, state string
+	var acquiredAt, expiresAt time.Time
+	err = tx.QueryRow(ctx, `
+		SELECT owner_id, state, acquired_at, expires_at
+		FROM forja.lease_sets
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3`,
+		s.tenantID, s.repositoryID, leaseSetID,
+	).Scan(&ownerID, &state, &acquiredAt, &expiresAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return persistence.LeaseSet{}, "", false, nil
+	}
+	if err != nil {
+		return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.set", err)
+	}
+	rows, err := tx.Query(ctx, `
+		SELECT resource_type, resource_id, fencing_token
+		FROM forja.lease_set_members
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3
+		ORDER BY resource_type, resource_id`,
+		s.tenantID, s.repositoryID, leaseSetID,
+	)
+	if err != nil {
+		return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.members", err)
+	}
+	defer rows.Close()
+	leases := make([]persistence.Lease, 0)
+	for rows.Next() {
+		lease := persistence.Lease{
+			LeaseKey: persistence.LeaseKey{
+				TenantID: s.tenantID, RepositoryID: s.repositoryID,
+			},
+			OwnerID: ownerID, AcquiredAt: acquiredAt.UTC(), ExpiresAt: expiresAt.UTC(),
+		}
+		if err := rows.Scan(&lease.ResourceType, &lease.ResourceID, &lease.FencingToken); err != nil {
+			return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.scan", err)
+		}
+		leases = append(leases, lease)
+	}
+	if err := rows.Err(); err != nil {
+		return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.rows", err)
+	}
+	if len(leases) == 0 {
+		return persistence.LeaseSet{}, "", false, fault.New(
+			fault.CodeInternal, "postgres.GetLeaseSet", "lease set has no immutable members",
+		)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return persistence.LeaseSet{}, "", false, databaseError("postgres.GetLeaseSet.commit", err)
+	}
+	return persistence.LeaseSet{
+		LeaseSetID: leaseSetID,
+		OwnerID:    ownerID,
+		Leases:     leases,
+		AcquiredAt: acquiredAt.UTC(),
+		ExpiresAt:  expiresAt.UTC(),
+	}, state, true, nil
 }
 
 // AcquireLeaseSet atomically grants one immutable set of delivery resources.

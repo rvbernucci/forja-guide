@@ -418,7 +418,7 @@ func resumeTarget(run contracts.Run) (runstate.State, error) {
 	case string(runstate.StateFailedRetryable):
 		return runstate.StateQueued, nil
 	case string(runstate.StateAwaitingDecision):
-		return runstate.StateRunning, nil
+		return runstate.StateQueued, nil
 	default:
 		return "", fault.New(
 			fault.CodeConflict,
@@ -471,7 +471,7 @@ func (s *MemoryRepository) appendSuccessAuditLocked(
 
 func isPrivilegedResumeTransition(source string, target runstate.State) bool {
 	return (source == string(runstate.StateFailedRetryable) && target == runstate.StateQueued) ||
-		(source == string(runstate.StateAwaitingDecision) && target == runstate.StateRunning)
+		(source == string(runstate.StateAwaitingDecision) && target == runstate.StateQueued)
 }
 
 func (s *MemoryRepository) replayLocked(scope, key string, requestHash [sha256.Size]byte, target any) (bool, error) {

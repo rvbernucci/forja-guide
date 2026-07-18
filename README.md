@@ -34,9 +34,21 @@ PostgreSQL attempt recovery. The isolated-delivery library now creates
 supervisor-owned commits, performs mechanical and independent clean-checkout
 validation, persists content-addressed evidence, and publishes only a
 namespaced Git ref through a PostgreSQL-journaled compare-and-swap protocol.
-Its full Git/PostgreSQL path is exercised by deterministic integration tests;
-the production scheduler/MCP command that composes worker execution with this
-library remains pending. Sprint 04 is not a production
+`internal/execution` now composes an approved queued Run, its exact fenced
+durable attempt, the real worker supervisor, isolated Git delivery,
+independent validation, and receipt-backed publication. Before mutation, an
+independent human approves the complete delivery envelope; its immutable event
+and SHA-256 bind the base commit, scopes, budgets, identities, validators, and
+publication target. A dual scheduler/delivery lease heartbeat cancels work on
+lost authority, while persisted evidence and the publication journal support
+bounded restart recovery without database editing. Every delivery attempt has
+its own immutable human authorization, and completed recovery re-observes the
+exact Git ref while retrying idempotent lease release. The publication fence
+rejects contradictory Run transitions from journal
+preparation until the published delivery closes as `completed`. Its full
+approval-to-publication path is exercised against PostgreSQL and real child
+processes. A public scheduler/MCP delivery command remains outside Sprint 05.
+Sprint 04 is not a production
 confidentiality boundary: workers require a dedicated disposable host until
 separate-identity containment and credential brokerage close the documented
 Sprint 12 gate.
@@ -93,6 +105,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
+| [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
@@ -149,7 +162,8 @@ process-level smoke checks before validating public files, JSON schemas,
 internal Markdown links, private paths, and common credential patterns.
 
 With a disposable PostgreSQL database available, run the durability,
-concurrency, backup/restore, and process-restart acceptance suite:
+approval-to-publication, rollback compatibility, concurrency, backup/restore,
+and process-restart acceptance suite:
 
 ```bash
 export FORJA_TEST_DATABASE_URL='postgres:///forja_test?host=/tmp'

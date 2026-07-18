@@ -5,12 +5,13 @@ import datetime
 import hashlib
 import json
 import pathlib
+import posixpath
 import re
 import sys
 from collections import defaultdict
 
 
-DOMAIN_AGGREGATES = {"run", "attempt", "sprint", "decision"}
+DOMAIN_AGGREGATES = {"run", "attempt", "sprint", "decision", "approval"}
 MUTATING_TOOLS = {
     "forja.plan_sprint",
     "forja.submit_sprint",
@@ -18,6 +19,7 @@ MUTATING_TOOLS = {
     "forja.reject_decision",
     "forja.cancel_run",
     "forja.resume_run",
+    "forja.authorize_delivery",
 }
 SPRINT_ID = re.compile(
     r"^sprint_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
@@ -25,6 +27,24 @@ SPRINT_ID = re.compile(
 RUN_ID = re.compile(
     r"^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
+DELIVERY_ID = re.compile(
+    r"^delivery_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+ATTEMPT_ID = re.compile(
+    r"^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+TASK_ID = re.compile(
+    r"^task_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+TENANT_ID = re.compile(
+    r"^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+REPOSITORY_ID = re.compile(
+    r"^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+)
+COMMIT_ID = re.compile(r"^[0-9a-f]{40}$")
+CONTEXT_REF = re.compile(r"^(artifact|context)_[A-Za-z0-9_-]+$")
+VALIDATOR_ID = re.compile(r"^[a-z0-9][a-z0-9._-]{0,119}$")
 
 
 def canonical_json(value):
@@ -41,14 +61,29 @@ def decode_hex(value):
     return bytes.fromhex(value).decode("utf-8")
 
 
+def parse_utc_us(value):
+    if not isinstance(value, str) or not value.endswith("Z"):
+        raise ValueError("timestamp must be an RFC3339 UTC string")
+    parsed = datetime.datetime.fromisoformat(value[:-1] + "+00:00")
+    if parsed.utcoffset() != datetime.timedelta(0):
+        raise ValueError("timestamp must use UTC")
+    elapsed = parsed - datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
+    return (
+        elapsed.days * 86400 * 1000000
+        + elapsed.seconds * 1000000
+        + elapsed.microseconds
+    )
+
+
 def load_events(path):
     events = []
     event_ids = set()
+    outbox_ids = set()
     for line_number, line in enumerate(pathlib.Path(path).read_text().splitlines(), 1):
-        fields = line.split("\t", 12)
-        if len(fields) != 13:
+        fields = line.split("\t", 14)
+        if len(fields) != 15:
             raise ValueError(
-                f"command event row {line_number} has {len(fields)} fields, want 13"
+                f"command event row {line_number} has {len(fields)} fields, want 15"
             )
         (
             tenant_id,
@@ -57,7 +92,9 @@ def load_events(path):
             aggregate_id,
             aggregate_version,
             event_id,
+            outbox_id,
             event_type,
+            occurred_us,
             actor_type_hex,
             actor_id_hex,
             correlation_hex,
@@ -67,7 +104,11 @@ def load_events(path):
         ) = fields
         if event_id in event_ids:
             raise ValueError(f"duplicate event ID {event_id}")
+        outbox_id = int(outbox_id)
+        if outbox_id < 1 or outbox_id in outbox_ids:
+            raise ValueError(f"invalid or duplicate outbox ID {outbox_id}")
         event_ids.add(event_id)
+        outbox_ids.add(outbox_id)
         events.append(
             {
                 "tenant_id": tenant_id,
@@ -76,7 +117,9 @@ def load_events(path):
                 "aggregate_id": aggregate_id,
                 "aggregate_version": int(aggregate_version),
                 "event_id": event_id,
+                "outbox_id": outbox_id,
                 "event_type": event_type,
+                "occurred_us": int(occurred_us),
                 "actor_type": decode_hex(actor_type_hex),
                 "actor_id": decode_hex(actor_id_hex),
                 "correlation_id": decode_hex(correlation_hex),
@@ -165,6 +208,7 @@ def parse_scope(scope):
         "submit_sprint": 3,
         "resolve_decision": 3,
         "resume_run": 3,
+        "authorize_delivery": 4,
     }
     if not parts or parts[0] not in expected_lengths:
         raise ValueError(f"unsupported command receipt scope {scope!r}")
@@ -307,6 +351,336 @@ def verify_hash(receipt, primary, parts, tool_name=""):
 def require_object(value, fields, label):
     if not isinstance(value, dict) or set(value) != set(fields):
         raise ValueError(f"{label} must contain exactly {sorted(fields)}")
+
+
+def go_json_bytes(value):
+    """Encode the approved request exactly like Go encoding/json on its struct."""
+    encoded = json.dumps(
+        value,
+        ensure_ascii=False,
+        allow_nan=False,
+        separators=(",", ":"),
+    )
+    return (
+        encoded.replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+        .replace("\u2028", "\\u2028")
+        .replace("\u2029", "\\u2029")
+        .encode("utf-8")
+    )
+
+
+def ordered_delivery_request(request):
+    required = [
+        "delivery_id", "tenant_id", "repository_id", "task_id", "attempt_id",
+        "run_id", "schema_version", "repository_path", "worktree_root",
+        "base_commit", "publication_ref", "publication_previous_commit",
+        "author_id", "validator_id", "role", "objective", "read_scopes",
+        "write_scopes", "artifact_scopes", "evidence_scope", "attempt_ordinal",
+        "worker_budgets", "mechanical_validator_ids", "lease_ttl_ms",
+    ]
+    optional = ["context_pack_ref", "model"]
+    if not isinstance(request, dict) or set(request) != set(required) | {
+        field for field in optional if field in request
+    }:
+        raise ValueError("delivery authorization request has invalid fields")
+    ordered = {}
+    for field in required[:20]:
+        ordered[field] = request[field]
+    if "context_pack_ref" in request:
+        ordered["context_pack_ref"] = request["context_pack_ref"]
+    ordered["attempt_ordinal"] = request["attempt_ordinal"]
+    if "model" in request:
+        ordered["model"] = request["model"]
+    budgets = request["worker_budgets"]
+    budget_required = [
+        "wall_clock_ms", "inactivity_ms", "max_output_bytes",
+        "cancellation_grace_ms", "max_retries",
+    ]
+    budget_optional = ["max_tokens", "max_commands"]
+    if not isinstance(budgets, dict) or set(budgets) != set(budget_required) | {
+        field for field in budget_optional if field in budgets
+    }:
+        raise ValueError("delivery authorization has invalid worker budgets")
+    ordered_budgets = {field: budgets[field] for field in budget_required}
+    for field in budget_optional:
+        if field in budgets:
+            ordered_budgets[field] = budgets[field]
+    ordered["worker_budgets"] = ordered_budgets
+    ordered["mechanical_validator_ids"] = request["mechanical_validator_ids"]
+    ordered["lease_ttl_ms"] = request["lease_ttl_ms"]
+    return ordered
+
+
+def is_integer(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def validate_absolute_root(value, label):
+    if (
+        not isinstance(value, str)
+        or not 1 <= len(value) <= 4096
+        or value == "/"
+        or "\\" in value
+        or "\x00" in value
+        or not value.startswith("/")
+        or value.startswith("//")
+        or posixpath.normpath(value) != value
+    ):
+        raise ValueError(f"delivery authorization has invalid {label}")
+
+
+def scope_covers(value, scopes):
+    return any(value == scope or value.startswith(scope + "/") for scope in scopes)
+
+
+def validate_scopes(values, label, allow_root):
+    if (
+        not isinstance(values, list)
+        or not 1 <= len(values) <= 256
+        or values != sorted(values)
+        or len(values) != len(set(values))
+    ):
+        raise ValueError(f"delivery authorization has invalid {label}")
+    for index, value in enumerate(values):
+        if (
+            not isinstance(value, str)
+            or not 1 <= len(value) <= 1024
+            or "\\" in value
+            or "\x00" in value
+            or value.startswith("/")
+            or posixpath.normpath(value) != value
+            or value == ".."
+            or value.startswith("../")
+            or (value == "." and not allow_root)
+            or scope_covers(value, values[:index])
+        ):
+            raise ValueError(f"delivery authorization has invalid {label}")
+    if allow_root and "." in values and values != ["."]:
+        raise ValueError("delivery authorization has invalid root read scope")
+
+
+def validate_delivery_request_contract(request):
+    string_patterns = {
+        "delivery_id": DELIVERY_ID,
+        "tenant_id": TENANT_ID,
+        "repository_id": REPOSITORY_ID,
+        "task_id": TASK_ID,
+        "attempt_id": ATTEMPT_ID,
+        "run_id": RUN_ID,
+        "base_commit": COMMIT_ID,
+    }
+    if any(
+        not isinstance(request[field], str)
+        or not pattern.fullmatch(request[field])
+        for field, pattern in string_patterns.items()
+    ):
+        raise ValueError("delivery authorization has invalid contract identity")
+    if request["schema_version"] != "1.1":
+        raise ValueError("delivery authorization has invalid schema version")
+    validate_absolute_root(request["repository_path"], "repository path")
+    validate_absolute_root(request["worktree_root"], "worktree root")
+    repository = request["repository_path"]
+    worktrees = request["worktree_root"]
+    if (
+        repository == worktrees
+        or repository.startswith(worktrees + "/")
+        or worktrees.startswith(repository + "/")
+    ):
+        raise ValueError("delivery authorization roots overlap")
+    previous = request["publication_previous_commit"]
+    if previous is not None and (
+        not isinstance(previous, str) or not COMMIT_ID.fullmatch(previous)
+    ):
+        raise ValueError("delivery authorization has invalid previous commit")
+    if request["publication_ref"] != "refs/forja/deliveries/" + request["delivery_id"]:
+        raise ValueError("delivery authorization has invalid publication ref")
+    for field in ("author_id", "validator_id"):
+        if not isinstance(request[field], str) or not 1 <= len(request[field]) <= 160:
+            raise ValueError(f"delivery authorization has invalid {field}")
+    if request["author_id"] == request["validator_id"]:
+        raise ValueError("delivery authorization author and validator must differ")
+    if request["role"] not in {"implementer", "tester"}:
+        raise ValueError("delivery authorization has invalid role")
+    if not isinstance(request["objective"], str) or not 3 <= len(request["objective"]) <= 8000:
+        raise ValueError("delivery authorization has invalid objective")
+    if "context_pack_ref" in request and (
+        not isinstance(request["context_pack_ref"], str)
+        or not CONTEXT_REF.fullmatch(request["context_pack_ref"])
+    ):
+        raise ValueError("delivery authorization has invalid context pack ref")
+    if "model" in request and (
+        not isinstance(request["model"], str)
+        or not 1 <= len(request["model"]) <= 200
+    ):
+        raise ValueError("delivery authorization has invalid model")
+
+    budgets = request["worker_budgets"]
+    bounds = {
+        "wall_clock_ms": (100, 86400000),
+        "inactivity_ms": (100, 3600000),
+        "max_output_bytes": (1024, 16777216),
+        "cancellation_grace_ms": (10, 30000),
+        "max_retries": (0, 10),
+    }
+    if any(
+        not is_integer(budgets[field])
+        or not minimum <= budgets[field] <= maximum
+        for field, (minimum, maximum) in bounds.items()
+    ):
+        raise ValueError("delivery authorization has invalid worker budget values")
+    for field, maximum in (("max_tokens", None), ("max_commands", 10000)):
+        if field in budgets:
+            value = budgets[field]
+            if (
+                not is_integer(value)
+                or value < 1
+                or (maximum is not None and value > maximum)
+            ):
+                raise ValueError(f"delivery authorization has invalid {field}")
+    ordinal = request["attempt_ordinal"]
+    if not is_integer(ordinal) or ordinal < 1 or ordinal > budgets["max_retries"] + 1:
+        raise ValueError("delivery authorization has invalid attempt ordinal")
+    lease_ttl = request["lease_ttl_ms"]
+    if (
+        not is_integer(lease_ttl)
+        or not 60000 <= lease_ttl <= 86400000
+        or lease_ttl <= budgets["wall_clock_ms"] + budgets["cancellation_grace_ms"]
+    ):
+        raise ValueError("delivery authorization has invalid lease TTL")
+
+    validate_scopes(request["read_scopes"], "read scopes", True)
+    validate_scopes(request["write_scopes"], "write scopes", False)
+    validate_scopes(request["artifact_scopes"], "artifact scopes", False)
+    writable = sorted(request["write_scopes"] + request["artifact_scopes"])
+    validate_scopes(writable, "combined writable scopes", False)
+    evidence = request["evidence_scope"]
+    validate_scopes([evidence], "evidence scope", False)
+    if not scope_covers(evidence, request["artifact_scopes"]):
+        raise ValueError("delivery authorization evidence scope is not covered")
+    validators = request["mechanical_validator_ids"]
+    if (
+        not isinstance(validators, list)
+        or not 1 <= len(validators) <= 64
+        or validators != sorted(validators)
+        or len(validators) != len(set(validators))
+        or any(not isinstance(value, str) or not VALIDATOR_ID.fullmatch(value) for value in validators)
+    ):
+        raise ValueError("delivery authorization has invalid mechanical validators")
+
+
+def validate_delivery_authorization(event, authorization, events, scope_parts):
+    require_object(
+        authorization,
+        {"request", "request_sha256", "approved_by", "approved_at"},
+        "delivery authorization",
+    )
+    request = ordered_delivery_request(authorization["request"])
+    validate_delivery_request_contract(request)
+    repository_id, delivery_id, attempt_id = scope_parts[1:]
+    expected_digest = hashlib.sha256(go_json_bytes(request)).hexdigest()
+    id_patterns = {
+        "delivery_id": DELIVERY_ID,
+        "attempt_id": ATTEMPT_ID,
+        "run_id": RUN_ID,
+    }
+    if any(
+        not isinstance(request[field], str)
+        or not pattern.fullmatch(request[field])
+        for field, pattern in id_patterns.items()
+    ):
+        raise ValueError("delivery authorization has an invalid identity")
+    if (
+        event["aggregate_version"] != 1
+        or event["aggregate_id"] != delivery_id + ":" + attempt_id
+        or request["delivery_id"] != delivery_id
+        or request["attempt_id"] != attempt_id
+        or request["repository_id"] != "repo_" + repository_id
+        or request["tenant_id"] != "tenant_" + event["tenant_id"]
+        or event["repository_id"] != repository_id
+        or request["schema_version"] != "1.1"
+        or request["publication_ref"] != "refs/forja/deliveries/" + delivery_id
+        or authorization["request_sha256"] != expected_digest
+        or event["actor_type"] != "human"
+        or event["actor_id"] != authorization["approved_by"]
+        or event["actor_id"] in {request["author_id"], request["validator_id"]}
+        or request["author_id"] == request["validator_id"]
+    ):
+        raise ValueError("delivery authorization disagrees with its authority envelope")
+    approved_us = parse_utc_us(authorization["approved_at"])
+    if approved_us != event["occurred_us"]:
+        raise ValueError("delivery authorization timestamp differs from its event")
+    if (
+        type(request["attempt_ordinal"]) is not int
+        or request["attempt_ordinal"] < 1
+        or not isinstance(request["objective"], str)
+        or not 3 <= len(request["objective"]) <= 8000
+    ):
+        raise ValueError("delivery authorization has invalid execution authority")
+
+    prior = [
+        candidate for candidate in events
+        if candidate["tenant_id"] == event["tenant_id"]
+        and candidate["repository_id"] == event["repository_id"]
+        and candidate["outbox_id"] < event["outbox_id"]
+    ]
+    approved_decisions = [
+        candidate for candidate in prior
+        if candidate["aggregate_type"] == "decision"
+        and candidate["event_type"] == "decision.approved"
+        and isinstance(candidate["payload"], dict)
+        and candidate["payload"].get("run_id") == request["run_id"]
+        and candidate["payload"].get("action") == "submit_sprint"
+        and candidate["payload"].get("status") == "approved"
+    ]
+    attempts = [
+        candidate for candidate in prior
+        if candidate["aggregate_type"] == "attempt"
+        and candidate["event_type"] == "attempt.created"
+        and candidate["aggregate_id"] == request["attempt_id"]
+        and isinstance(candidate["payload"], dict)
+        and candidate["payload"].get("run_id") == request["run_id"]
+        and candidate["payload"].get("ordinal") == request["attempt_ordinal"]
+        and candidate["payload"].get("status") == "queued"
+    ]
+    run_events = [
+        candidate for candidate in prior
+        if candidate["aggregate_type"] == "run"
+        and candidate["aggregate_id"] == request["run_id"]
+        and isinstance(candidate["payload"], dict)
+    ]
+    attempt_events = [
+        candidate for candidate in prior
+        if candidate["aggregate_type"] == "attempt"
+        and candidate["aggregate_id"] == request["attempt_id"]
+        and isinstance(candidate["payload"], dict)
+    ]
+    if (
+        len(approved_decisions) != 1
+        or len(attempts) != 1
+        or not run_events
+        or not attempt_events
+    ):
+        raise ValueError("delivery authorization lacks prior governed execution authority")
+    latest_run = max(run_events, key=lambda candidate: candidate["aggregate_version"])
+    latest_attempt = max(
+        attempt_events, key=lambda candidate: candidate["aggregate_version"]
+    )
+    run_snapshot = latest_run["payload"]
+    attempt_payload = latest_attempt["payload"]
+    attempt_snapshot = attempt_payload.get("attempt", attempt_payload)
+    if (
+        not isinstance(attempt_snapshot, dict)
+        or run_snapshot.get("run_id") != request["run_id"]
+        or run_snapshot.get("objective") != request["objective"]
+        or run_snapshot.get("state") != "queued"
+        or attempt_snapshot.get("attempt_id") != request["attempt_id"]
+        or attempt_snapshot.get("run_id") != request["run_id"]
+        or attempt_snapshot.get("ordinal") != request["attempt_ordinal"]
+        or attempt_snapshot.get("status") != "queued"
+    ):
+        raise ValueError("delivery authorization used stale execution authority")
 
 
 def validate_sprint_cancellation_event(event, run_id):
@@ -684,6 +1058,21 @@ def verify_receipt(receipt, events):
         hash_parts = ["resume_run", run_id, str(response["version"] - 1)]
         expected_response = response
         tool_name = "forja.resume_run"
+    elif command == "authorize_delivery":
+        delivery_id = scope_parts[2]
+        primary = find_event(
+            candidates,
+            "approval",
+            "delivery.authorized",
+            response,
+            aggregate_id=delivery_id + ":" + scope_parts[3],
+        )
+        validate_delivery_authorization(primary, response, events, scope_parts)
+        domain_events.append(primary)
+        status = 200
+        hash_parts = [receipt["scope"], response["request_sha256"]]
+        expected_response = response
+        tool_name = "forja.authorize_delivery"
     else:
         raise AssertionError(f"unreachable command {command}")
 

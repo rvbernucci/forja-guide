@@ -273,6 +273,26 @@ func verifyPersistedValidationBundle(
 	request contracts.DeliveryRequest,
 	bundle ValidationBundle,
 ) error {
+	if bundle.Report.DeliveryID != request.DeliveryID ||
+		bundle.Report.TenantID != request.TenantID ||
+		bundle.Report.RepositoryID != request.RepositoryID ||
+		bundle.Report.BaseCommit != request.BaseCommit ||
+		bundle.Report.AuthorID != request.AuthorID ||
+		bundle.Report.ValidatorID != request.ValidatorID {
+		return fmt.Errorf("persisted validation report differs from the approved authority envelope")
+	}
+	wantValidationID := deterministicValidationID(
+		request,
+		CommitResult{ResultCommit: bundle.Report.ResultCommit},
+	)
+	if bundle.Report.ValidationID != wantValidationID {
+		return fmt.Errorf("persisted validation report differs from the approved attempt")
+	}
+	if bundle.Manifest.DeliveryID != request.DeliveryID ||
+		bundle.Manifest.TenantID != request.TenantID ||
+		bundle.Manifest.RepositoryID != request.RepositoryID {
+		return fmt.Errorf("persisted evidence manifest differs from the approved authority envelope")
+	}
 	physicalRoot, err := canonicalDirectory(bundle.PhysicalRoot, "persisted validation evidence")
 	if err != nil {
 		return err

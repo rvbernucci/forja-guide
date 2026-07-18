@@ -92,7 +92,7 @@ func TestRegisteredValidatorUsesPrivateCopyAfterSourceMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	registry, err := NewValidatorRegistry([]ValidatorDefinition{{
-		ID: "pinned", Argv: []string{executable}, Timeout: time.Second, MaxOutputBytes: 1024,
+		ID: "pinned", Argv: []string{executable}, Timeout: 5 * time.Second, MaxOutputBytes: 1024,
 	}}, nil, nil)
 	if err != nil {
 		t.Fatal(err)

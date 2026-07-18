@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+- Keep Runs non-resumable when durable Attempt finalization fails, and record
+  the immutable attempt-scoped human delivery authorization boundary in
+  ADR-0011.
+- Preserve legacy blocked-run transition verification, reject the new queued
+  edge before Sprint 04 rollback, and fsync quarantine marker directory entries.
+- Refresh replacement scheduler authority after detached recovery lease renewal
+  and before publication can mutate its journal or Git ref.
+- Recheck approver separation when consuming persisted authority and fsync both
+  sides of quarantine moves before reporting durable cleanup.
+- Retire worktrees and exact lease sets before exposing terminal worker states,
+  and make cancellation recovery replay-safe for every durable Attempt outcome.
+- Keep pre-start failures non-resumable until fenced Attempt reconciliation,
+  and retain delivery leases until rejected preparation bytes are quarantined.
+- Recheck Run and Attempt lifecycle authority for legacy prepared publication
+  journals, and keep quarantine control markers outside repository-owned bytes.
+- Pass every authorized artifact scope into the worker sandbox, require
+  quarantine proof after worker start, and sync the full metadata parent chain.
+- Bind recovered validation evidence to its exact Attempt-derived validation
+  ID and apply publication fences to governed Run resumes.
+- Refresh scheduler authority immediately before live publication and sync
+  reconciliation markers through their actual rooted parent namespace.
+
 - Serialize incremental migrations against command and standalone audit writers
   before any migration-generated outbox records can be allocated.
 - Acquire the command-side migration barrier before aggregate locks, including
@@ -11,6 +33,15 @@
   mixed-version lock cycle.
 - Accept only contract-valid, identity-bound Sprint cancellation evidence from
   the generic Run transition path during receipt and recovery verification.
+- Queue a fresh attempt after blocked decisions, require durable Run authority
+  for cancellation, bind loaded evidence identities to their approved request,
+  and serialize Sprint 05 rollback checks with command writers.
+- Keep caller-interrupted result commits retryable and reject explicit null
+  optionals from delivery-authorization archive verification.
+- Align operational archive replay with governed blocked-run resumes to a fresh
+  queued attempt.
+- Refresh recovery scheduler authority synchronously before Git mutation and
+  require a durable request-bound marker for quarantine replay.
 
 All notable public changes to Forja Guide are recorded here.
 
@@ -52,6 +83,36 @@ implementation releases.
   Linux builds.
 - Fenced attempt start, finish, idempotent replay, and restart reconciliation
   with secret-safe canonical events.
+- A governed execution pipeline that binds an approved Run to its exact fenced
+  attempt, real worker process, isolated Git commit, independent validation,
+  durable publication receipt, and terminal Run state.
+- Immutable human approval of the complete delivery authority envelope,
+  continuous scheduler/delivery lease renewal, canonical pre-launch failure
+  records, and restart recovery from persisted validation evidence and the
+  publication journal.
+- Attempt-scoped delivery authorization streams, semantic archive verification
+  for their receipts, completed-publication Git revalidation, idempotent lease
+  cleanup, and canonical normalization of worker result/error contradictions.
+- A hash-pinned Sprint 05 rollback rehearsal that reverses migrations 006-004
+  and starts the authoritative Sprint 04 daemon against migration 003.
+- Fail-closed rollback preflight for persisted delivery authorizations, bounded
+  publication recovery, and outbox-sequenced authorization reconstruction that
+  remains correct under application/database clock skew.
+- Caller-cancellation-safe bounded publication, race-safe heartbeat shutdown,
+  and complete independent delivery-request validation during archive replay.
+- Run-locked publication/cancellation serialization, scheduler-resource-bound
+  recovery, restart closure for terminal non-success attempts, pre-rebuild
+  conflict settlement, and authorization leases held through commit.
+- Pre-worktree synchronous authority refresh, cleanup recovery for succeeded
+  attempts behind failed Runs, and audited delivery-authorization replays.
+- Worker-boundary heartbeat settlement before attempt persistence, followed by
+  synchronous dual-authority refresh and heartbeat restart before Git mutation.
+- Restart completion for already-cancelling Runs, stage-aware pre-worktree
+  cleanup, and retryable classification of commit failures caused by lease loss.
+- Journal-only commit reconstruction without unfenced Git mutation, bounded
+  detached recovery renewal, and shutdown-race-safe heartbeat error retention.
+- Never-created retry binding recovery and a publication fence that blocks all
+  incompatible Run transitions from `prepared` through `published`.
 
 ### Changed
 

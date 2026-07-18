@@ -6,6 +6,52 @@ PostgreSQL is Forja's canonical operational authority. A recovery is complete
 only when the database restores and its event streams pass continuity checks.
 Qdrant and Neo4j are derived stores and are rebuilt later from the outbox.
 
+At the execution layer, `Pipeline.Recover` revalidates immutable human request
+approval and a live replacement scheduler fence. It never assumes an old
+worker process has stopped. Active attempts become recoverable only after the
+old fence expires and fenced reconciliation marks them retryable. The
+replacement must own the same scheduler resource recorded by the attempt; a
+different scheduler resource in the repository cannot adopt it. Terminal
+non-success attempts complete idempotent quarantine, lease release, and Run
+closure after restart. Succeeded attempts whose Run already became failed
+retry the interrupted quarantine/release path without changing that terminal
+Run state. A Run already in `cancelling` reaches `cancelled` after process
+quiescence and cleanup for every terminal durable Attempt status; replaying the
+same recovery after the Run is already `cancelled` preserves that state
+idempotently. If takeover finds a retryable Attempt while its
+Run is still `preparing`, absence of both worktree and prior quarantine is valid
+pre-worker cleanup; the same absence in `running` or later states remains a
+fail-closed anomaly. For a durably succeeded attempt, recovery reconstructs the deterministic commit,
+loads and rehashes the exact persisted validation bundle, and delegates any
+prepared or published journal row to `PublicationService.Recover`.
+Journaled recovery derives the commit identity from the schema-validated
+receipt and never runs `commit-tree` without a live delivery fence. Any
+detached lease renewal has its own 45-second deadline, and a real renewal error
+cannot be hidden by a concurrent heartbeat shutdown. After that detached
+delivery renewal, recovery synchronously refreshes the replacement scheduler
+fence again before publication may touch its journal or Git ref.
+An Attempt that merely reports `cancelled` cannot manufacture cancellation:
+without durable `cancelling` or `cancelled` Run authority, recovery quarantines
+and releases it as a retryable interruption. A blocked Attempt remains terminal;
+governed resume returns its Run to `queued` for a fresh Attempt and immutable
+attempt-scoped authorization.
+Completed Runs do not bypass that boundary: recovery reloads persisted evidence,
+reconstructs the receipt-bound commit, freshly observes the publication ref,
+and retries exact lease-set release. The external verifier also reconstructs
+attempt-scoped `delivery.authorized` events, their human provenance, request
+digests, governed predecessors, success audits, and idempotency receipts. The
+predecessor relation uses the canonical outbox sequence rather than timestamps,
+so clock skew cannot invalidate legitimate authority. The verifier also
+reapplies the full delivery-request contract instead of trusting a matching
+digest alone. Publication is detached from caller cancellation but retains a
+dedicated 45-second deadline in both normal and recovery paths.
+First journal preparation and Run cancellation serialize on the same locked
+Run row. A cancellation cannot cross a `prepared` or `published` journal, and
+publication cannot prepare after the Run has entered cancellation.
+The same fence rejects every incompatible transition while publication is
+`prepared` or `published`; only a published delivery may advance its Run to
+`completed`.
+
 ## Safety Rules
 
 - Use a dedicated database and least-privilege credentials.
@@ -112,6 +158,17 @@ The ledger stores a SHA-256 checksum over each up/down pair. Startup and
 rollback reject modified, gapped, or unknown applied history. This prevents an
 older binary from starting against a forward-migrated database.
 
+Before checking Sprint 05 delivery-authorization compatibility, rollback
+acquires the same command/event/outbox/lease writer barrier used by incremental
+upgrade and holds it through the down migration commit. A concurrent command
+writer therefore makes rollback fail closed instead of allowing authorization
+history to appear after the compatibility snapshot.
+The same preflight rejects the Sprint 05 blocked-run resume edge from
+`awaiting_decision` to `queued`, because the authoritative Sprint 04 verifier
+understands only its historical transition to `running`. Forward verification
+continues accepting both historical and current event shapes, while the current
+runtime emits only the safer queued transition.
+
 Production rollbacks should prefer forward repair when a migration has already
 served writes. Exercise every down migration in a disposable database before
 release. Migration 003 first locks the idempotency command table, which every
@@ -166,6 +223,14 @@ prepared, published, conflicted, or abandoned publication history. If history
 exists, stop delivery intake and use forward repair; never delete canonical
 receipts merely to run an older schema or binary.
 
+Returning to the authoritative Sprint 04 binary requires reversing migrations
+006, 005, and 004 in that order. Reversing only 006 and 005 is insufficient:
+Sprint 04 does not contain the lease-set schema introduced by migration 004.
+Run `scripts/rehearse_sprint05_rollback.sh` with a disposable
+`FORJA_TEST_DATABASE_URL`; it builds the hash-pinned Sprint 04 close commit,
+downgrades the database to migration 003, proves that exact daemon reaches
+readiness with auto-migration disabled, and then reapplies the current schema.
+
 ## Automated Drill
 
 The integration suite uses a disposable database:
@@ -181,4 +246,6 @@ migration-ledger tampering, structural
 and semantic event corruption, durable process restart, fenced command replay,
 tenant and repository isolation, semantic schema drift, atomic attempt events,
 safe projection watermarks, governed lifecycle backup and restore, governed
-receipt/audit corruption, and non-overlapping outbox claims.
+receipt/audit corruption, non-overlapping outbox claims, exact Sprint 04 binary
+compatibility after a three-migration downgrade, and one approved
+Run-to-worker-to-publication execution.

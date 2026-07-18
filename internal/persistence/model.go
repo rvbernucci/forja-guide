@@ -101,6 +101,7 @@ type LeaseSet struct {
 
 // LeaseRepository coordinates ownership without exposing database locking.
 type LeaseRepository interface {
+	VerifyLease(context.Context, LeaseProof, time.Duration) (Lease, error)
 	AcquireLease(
 		context.Context,
 		LeaseKey,
@@ -129,6 +130,29 @@ type LeaseSetRepository interface {
 	) (LeaseSet, error)
 	RenewLeaseSet(context.Context, LeaseSet, time.Duration) (LeaseSet, error)
 	ReleaseLeaseSet(context.Context, LeaseSet) error
+}
+
+// DeliveryAuthorization is the immutable human approval of one complete
+// delivery authority envelope. The digest covers every request field.
+type DeliveryAuthorization struct {
+	Request       contracts.DeliveryRequest `json:"request"`
+	RequestSHA256 string                    `json:"request_sha256"`
+	ApprovedBy    string                    `json:"approved_by"`
+	ApprovedAt    time.Time                 `json:"approved_at"`
+}
+
+// DeliveryAuthorizationRepository persists and reads exact request approval.
+type DeliveryAuthorizationRepository interface {
+	AuthorizeDelivery(
+		context.Context,
+		contracts.DeliveryRequest,
+		runstate.CommandMetadata,
+	) (DeliveryAuthorization, error)
+	GetDeliveryAuthorization(
+		context.Context,
+		string,
+		string,
+	) (DeliveryAuthorization, bool, error)
 }
 
 // DeliveryPublicationIntent is the immutable, replay-safe authority persisted

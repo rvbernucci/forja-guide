@@ -234,16 +234,20 @@ func TestMemoryRepositoryReservesResumeTransitionsForResumeRun(t *testing.T) {
 		}
 	}
 	if _, err := repository.TransitionRun(
-		t.Context(), runID, run.Version, runstate.StateRunning,
+		t.Context(), runID, run.Version, runstate.StateQueued,
 		memoryCommandMetadata("memory-generic-decision-resume"),
 	); !fault.IsCode(err, fault.CodePermissionDenied) {
 		t.Fatalf("generic awaiting_decision resume error = %v, want permission denied", err)
 	}
-	if _, err := service.ResumeRun(t.Context(), principal, TransitionInput{
+	resumedDecision, err := service.ResumeRun(t.Context(), principal, TransitionInput{
 		RunID: run.RunID, ExpectedVersion: run.Version,
 		Command: testCommand("memory-governed-decision-resume"),
-	}); err != nil {
+	})
+	if err != nil {
 		t.Fatal(err)
+	}
+	if resumedDecision.State != string(runstate.StateQueued) {
+		t.Fatalf("resumed decision state = %q, want queued", resumedDecision.State)
 	}
 }
 
