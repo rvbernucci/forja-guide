@@ -132,12 +132,17 @@ func (s *Store) CompleteDeliveryPublication(
 	ctx context.Context,
 	intent persistence.DeliveryPublicationIntent,
 	leaseSet persistence.LeaseSet,
+	revalidate func(context.Context) error,
 	apply func(context.Context) error,
 ) (persistence.DeliveryPublication, error) {
-	if apply == nil {
-		return persistence.DeliveryPublication{}, invalidPublicationError("publication apply callback is required")
+	if revalidate == nil || apply == nil {
+		return persistence.DeliveryPublication{}, invalidPublicationError("publication revalidation and apply callbacks are required")
 	}
 	keys, proofs, digest, err := s.validatePublicationAuthority(intent, leaseSet)
+	if err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	publicationAt, err := publicationReceiptTime(intent)
 	if err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
@@ -190,29 +195,45 @@ func (s *Store) CompleteDeliveryPublication(
 	// publication lock across the bounded Git CAS. No compliant writer can
 	// replace the fence until the immutable receipt is committed or this
 	// transaction rolls back.
+	if err := revalidate(ctx); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	// Revalidate the minimum authority horizon after the potentially expensive
+	// evidence read and immediately before the bounded Git compare-and-swap.
+	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
+		ctx, tx, leaseSet, keys, proofs, digest,
+		minimumPublicationAuthorityTimeRemaining,
+	); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
 	if err := apply(ctx); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
-	var publishedAt time.Time
+	var publishedAt, updatedAt time.Time
 	if err := tx.QueryRow(ctx, `
 		UPDATE forja.delivery_publications
 		SET state='published', observed_commit=result_commit,
-		    published_at=clock_timestamp(), updated_at=clock_timestamp()
-		WHERE tenant_id=$1 AND repository_id=$2
-		  AND delivery_id=$3 AND attempt_id=$4 AND state='prepared'
-		RETURNING published_at`,
-		s.tenantID, s.repositoryID, intent.DeliveryID, intent.AttemptID,
-	).Scan(&publishedAt); err != nil {
+		    published_at=$1, updated_at=clock_timestamp()
+		WHERE tenant_id=$2 AND repository_id=$3
+		  AND delivery_id=$4 AND attempt_id=$5 AND state='prepared'
+		RETURNING published_at, updated_at`,
+		publicationAt.Truncate(time.Microsecond), s.tenantID, s.repositoryID,
+		intent.DeliveryID, intent.AttemptID,
+	).Scan(&publishedAt, &updatedAt); err != nil {
 		return persistence.DeliveryPublication{}, databaseError("postgres.CompleteDeliveryPublication.update", err)
+	}
+	if !publishedAt.UTC().Equal(publicationAt.Truncate(time.Microsecond)) {
+		return persistence.DeliveryPublication{}, invalidPublicationError("database publication timestamp disagrees with receipt")
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return persistence.DeliveryPublication{}, databaseError("postgres.CompleteDeliveryPublication.commit", err)
 	}
-	publishedAt = publishedAt.UTC()
+	publishedAt = publicationAt
+	updatedAt = updatedAt.UTC()
 	record.State = "published"
 	record.ObservedCommit = cloneOptionalString(&intent.ResultCommit)
 	record.PublishedAt = &publishedAt
-	record.UpdatedAt = publishedAt
+	record.UpdatedAt = updatedAt
 	return record, nil
 }
 
@@ -300,16 +321,20 @@ func (s *Store) transitionPublicationWithoutLease(
 			"postgres.transitionPublicationWithoutLease", "publication is no longer prepared",
 		)
 	}
-	var changedAt time.Time
+	var changedAt, publishedAt time.Time
 	if state == "published" {
+		publishedAt, err = publicationReceiptTime(intent)
+		if err != nil {
+			return persistence.DeliveryPublication{}, err
+		}
 		err = tx.QueryRow(ctx, `
 			UPDATE forja.delivery_publications
 			SET state='published', observed_commit=$1,
-			    published_at=clock_timestamp(), updated_at=clock_timestamp()
-			WHERE tenant_id=$2 AND repository_id=$3
-			  AND delivery_id=$4 AND attempt_id=$5 AND state='prepared'
-			RETURNING published_at`,
-			observedCommit, s.tenantID, s.repositoryID,
+			    published_at=$2, updated_at=clock_timestamp()
+			WHERE tenant_id=$3 AND repository_id=$4
+			  AND delivery_id=$5 AND attempt_id=$6 AND state='prepared'
+			RETURNING updated_at`,
+			observedCommit, publishedAt.Truncate(time.Microsecond), s.tenantID, s.repositoryID,
 			intent.DeliveryID, intent.AttemptID,
 		).Scan(&changedAt)
 	} else {
@@ -334,7 +359,8 @@ func (s *Store) transitionPublicationWithoutLease(
 	record.ObservedCommit = cloneOptionalString(observedCommit)
 	record.UpdatedAt = changedAt
 	if state == "published" {
-		record.PublishedAt = &changedAt
+		publishedAt = publishedAt.UTC()
+		record.PublishedAt = &publishedAt
 	}
 	return record, nil
 }
@@ -438,6 +464,18 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 	return nil
 }
 
+func publicationReceiptTime(intent persistence.DeliveryPublicationIntent) (time.Time, error) {
+	var receipt contracts.DeliveryReceipt
+	if err := json.Unmarshal(intent.ReceiptJSON, &receipt); err != nil {
+		return time.Time{}, invalidPublicationError("receipt bytes are not valid JSON")
+	}
+	if receipt.CreatedAt.IsZero() || receipt.PublishedAt.IsZero() ||
+		receipt.PublishedAt.Before(receipt.CreatedAt) {
+		return time.Time{}, invalidPublicationError("receipt operation timestamps are inconsistent")
+	}
+	return receipt.PublishedAt.UTC(), nil
+}
+
 func (s *Store) validatePublicationScope(intent persistence.DeliveryPublicationIntent) error {
 	if intent.TenantID != s.tenantID || intent.RepositoryID != s.repositoryID {
 		return invalidPublicationError("publication intent is outside the store repository scope")
@@ -534,7 +572,10 @@ func loadDeliveryPublication(
 	record.PreparedAt = record.PreparedAt.UTC()
 	record.UpdatedAt = record.UpdatedAt.UTC()
 	if publishedAt != nil {
-		value := publishedAt.UTC()
+		value, timestampErr := publicationReceiptTime(record.Intent)
+		if timestampErr != nil {
+			return persistence.DeliveryPublication{}, false, timestampErr
+		}
 		record.PublishedAt = &value
 	}
 	return record, true, nil

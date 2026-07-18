@@ -151,7 +151,11 @@ approved previous object ID.
 
 Publication follows a durable cross-system protocol:
 
-1. PostgreSQL records a canonical `prepared` intent containing the exact
+1. The publication service reopens the physical evidence root, pins its file
+   identity across open, enumerates and reads through that same rooted handle,
+   rejects links, missing or additional files, and recomputes every manifest
+   size and SHA-256 before journal mutation. PostgreSQL then records a canonical `prepared`
+   intent containing the exact
    tenant and repository, delivery attempt, lease set, authority digest,
    receipt bytes and digest,
    previous object ID, result object ID, and namespaced ref.
@@ -159,13 +163,16 @@ Publication follows a durable cross-system protocol:
    time remaining for the bounded Git operation. One transaction holds every
    resource and publication advisory lock while Git updates only
    `refs/forja/deliveries/<delivery-id>` with `update-ref --no-deref` and the
-   approved old object ID. Ref observation verifies the exact ref name, a
+   approved old object ID. The callback revalidates the persisted evidence
+   again inside this fence; PostgreSQL then rechecks the same lease fences and
+   minimum authority horizon immediately before Git mutation. Ref observation verifies the exact ref name, a
    direct commit object, and no symbolic target.
 3. Before releasing those locks, the same transaction changes the exact
    prepared row to `published`, retaining the canonical receipt and observed
    result object ID.
-4. Only after the published row commits does the service release the exact
-   fenced lease set.
+4. After every path that returns a published row, including a concurrent exact
+   completion, the service rereads the ref and requires the exact result
+   commit. Only then does it release the exact fenced lease set.
 
 An attempt can move from `prepared` only to `published` or `conflict`.
 Replaying a published attempt requires byte-identical intent and a fresh Git
@@ -177,10 +184,11 @@ also closes a crash after receipt persistence but before release. No recovery
 path deletes quarantine evidence or updates a default branch.
 
 The Git callback is bounded to 30 seconds; publication requires at least 40
-seconds of lease authority remaining before invoking it. Expired, replaced, or
-short-horizon fences fail before Git mutation. Holding the advisory locks over
-the callback prevents a compliant concurrent acquirer from replacing authority
-between fence verification and compare-and-swap. A process failure after Git
+seconds of lease authority both before evidence revalidation and again
+immediately before invoking Git. Expired, replaced, or short-horizon fences fail
+before Git mutation. Holding the advisory locks over both checks and callbacks
+prevents a compliant concurrent acquirer from replacing authority between fence
+verification and compare-and-swap. A process failure after Git
 mutation but before the SQL commit leaves `prepared` authority for exact-ref
 recovery rather than manufacturing a receipt.
 The integration suite injects this exact fault after the real Git CAS and
@@ -279,6 +287,16 @@ The canonical evidence manifest inventories byte-sorted paths, hashes, sizes,
 and media types. Every entry must remain inside the approved evidence scope,
 the manifest cannot include itself, and it must include the exact canonical
 validation report referenced by the receipt.
+The receipt's equal `created_at` and `published_at` values identify the first
+canonical publication operation, not validation completion. New operations
+use PostgreSQL-compatible microsecond precision, and exact concurrent
+publishers and recovery reuse the immutable recorded value. PostgreSQL stores
+the same `published_at` for newly prepared intents; replay and recovery preserve
+the exact bytes of any earlier contract-valid receipt, including distinct
+creation/publication values, RFC3339 offsets, and nanosecond precision, rather
+than rewriting its authority. The persistence adapter surfaces that exact receipt publication
+timestamp despite PostgreSQL's internal microsecond normalization. The journal
+`updated_at` records the database transition clock.
 Every mechanical validator ID approved by the request must also appear as a
 passing check in the independent report. The receipt's previous publication
 commit must exactly match the request, including `null` when creating a ref.

@@ -10,6 +10,7 @@ import (
 	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
@@ -48,6 +49,7 @@ type PublicationService struct {
 	schemas            *contracts.Registry
 	authority          RepositoryAuthority
 	repositoryIdentity os.FileInfo
+	now                func() time.Time
 }
 
 // NewPublicationService constructs a publication boundary over trusted Git
@@ -79,7 +81,7 @@ func NewPublicationService(
 	}
 	return &PublicationService{
 		manager: manager, journal: journal, leaseSet: leaseSet, schemas: schemas,
-		authority: authority, repositoryIdentity: repositoryIdentity,
+		authority: authority, repositoryIdentity: repositoryIdentity, now: time.Now,
 	}, nil
 }
 
@@ -109,15 +111,25 @@ func (s *PublicationService) Publish(
 	bundle ValidationBundle,
 	leaseSet persistence.LeaseSet,
 ) (PublicationResult, error) {
-	intent, receipt, err := s.publicationIntent(ctx, request, result, bundle, leaseSet)
-	if err != nil {
-		return PublicationResult{}, err
-	}
 	// A completed journal row is immutable authority. Check it before requiring
 	// the lease to still be live so a process restart can replay an already
 	// published result after the original lease was released or expired.
 	recorded, found, err := s.journal.GetDeliveryPublication(
 		ctx, request.DeliveryID, request.AttemptID,
+	)
+	if err != nil {
+		return PublicationResult{}, err
+	}
+	publicationAt := s.now().UTC().Truncate(time.Microsecond)
+	receiptTimes := publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}
+	if found {
+		receiptTimes, err = recordedPublicationTimes(recorded)
+		if err != nil {
+			return PublicationResult{}, err
+		}
+	}
+	intent, receipt, err := s.publicationIntent(
+		ctx, request, result, bundle, leaseSet, receiptTimes,
 	)
 	if err != nil {
 		return PublicationResult{}, err
@@ -145,7 +157,32 @@ func (s *PublicationService) Publish(
 	}
 	record, err := s.journal.PrepareDeliveryPublication(ctx, intent, leaseSet)
 	if err != nil {
-		return PublicationResult{}, err
+		// Two exact first publishers can choose different operation timestamps
+		// before either observes the prepared row. The first durable timestamp is
+		// canonical; rebuild against it and accept only an otherwise exact intent.
+		concurrent, concurrentFound, loadErr := s.journal.GetDeliveryPublication(
+			ctx, request.DeliveryID, request.AttemptID,
+		)
+		if loadErr != nil {
+			return PublicationResult{}, errors.Join(err, loadErr)
+		}
+		if !concurrentFound {
+			return PublicationResult{}, err
+		}
+		concurrentTimes, timestampErr := recordedPublicationTimes(concurrent)
+		if timestampErr != nil {
+			return PublicationResult{}, errors.Join(err, timestampErr)
+		}
+		concurrentIntent, concurrentReceipt, rebuildErr := s.publicationIntent(
+			ctx, request, result, bundle, leaseSet, concurrentTimes,
+		)
+		if rebuildErr != nil {
+			return PublicationResult{}, errors.Join(err, rebuildErr)
+		}
+		if exactErr := requireExactPublicationRecord(concurrent, concurrentIntent); exactErr != nil {
+			return PublicationResult{}, errors.Join(err, exactErr)
+		}
+		intent, receipt, record = concurrentIntent, concurrentReceipt, concurrent
 	}
 	if err := requireExactPublicationRecord(record, intent); err != nil {
 		return PublicationResult{}, err
@@ -167,9 +204,17 @@ func (s *PublicationService) Publish(
 		return PublicationResult{}, fmt.Errorf("publication journal returned unsupported state %q", record.State)
 	}
 
+	callbackRan := false
 	record, err = s.journal.CompleteDeliveryPublication(
 		ctx, intent, leaseSet,
+		func(context.Context) error {
+			if err := verifyPersistedValidationBundle(request, bundle); err != nil {
+				return fmt.Errorf("revalidate persisted publication evidence: %w", err)
+			}
+			return nil
+		},
 		func(applyContext context.Context) error {
+			callbackRan = true
 			return s.applyPublicationCAS(applyContext, request, intent)
 		},
 	)
@@ -186,7 +231,14 @@ func (s *PublicationService) Publish(
 	if record.State != "published" {
 		return PublicationResult{}, fmt.Errorf("publication journal did not persist a published receipt")
 	}
-	return s.releasePublishedLease(ctx, receipt, leaseSet, false)
+	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
+	if err != nil {
+		return PublicationResult{}, err
+	}
+	if observed == nil || *observed != result.ResultCommit {
+		return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
+	}
+	return s.releasePublishedLease(ctx, receipt, leaseSet, !callbackRan)
 }
 
 // Recover finalizes only an exact prepared intent when the trusted Git read
@@ -198,12 +250,22 @@ func (s *PublicationService) Recover(
 	bundle ValidationBundle,
 	leaseSet persistence.LeaseSet,
 ) (PublicationResult, error) {
-	intent, receipt, err := s.publicationIntent(ctx, request, result, bundle, leaseSet)
+	record, found, err := s.journal.GetDeliveryPublication(
+		ctx, request.DeliveryID, request.AttemptID,
+	)
 	if err != nil {
 		return PublicationResult{}, err
 	}
-	record, found, err := s.journal.GetDeliveryPublication(
-		ctx, request.DeliveryID, request.AttemptID,
+	publicationAt := s.now().UTC().Truncate(time.Microsecond)
+	receiptTimes := publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt}
+	if found {
+		receiptTimes, err = recordedPublicationTimes(record)
+		if err != nil {
+			return PublicationResult{}, err
+		}
+	}
+	intent, receipt, err := s.publicationIntent(
+		ctx, request, result, bundle, leaseSet, receiptTimes,
 	)
 	if err != nil {
 		return PublicationResult{}, err
@@ -234,6 +296,13 @@ func (s *PublicationService) Recover(
 		}
 		if record.State != "published" {
 			return PublicationResult{}, fmt.Errorf("recovery did not persist a published receipt")
+		}
+		observed, err = s.observePublicationRef(ctx, request.PublicationRef)
+		if err != nil {
+			return PublicationResult{}, err
+		}
+		if observed == nil || *observed != result.ResultCommit {
+			return PublicationResult{}, fmt.Errorf("%w: recovered receipt disagrees with the Git ref", ErrPublicationConflict)
 		}
 		return s.releasePublishedLease(ctx, receipt, leaseSet, true)
 	}
@@ -269,6 +338,7 @@ func (s *PublicationService) publicationIntent(
 	result CommitResult,
 	bundle ValidationBundle,
 	leaseSet persistence.LeaseSet,
+	receiptTimes publicationReceiptTimes,
 ) (persistence.DeliveryPublicationIntent, contracts.DeliveryReceipt, error) {
 	if err := s.verifyRepositoryAuthority(); err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
@@ -331,12 +401,17 @@ func (s *PublicationService) publicationIntent(
 		AuthorID:                  request.AuthorID, ValidatorID: request.ValidatorID,
 		LeaseFences: fences, ValidationReportRef: bundle.ReportRef,
 		EvidenceManifestRef: bundle.ManifestRef,
-		CreatedAt:           bundle.Report.CreatedAt, PublishedAt: bundle.Report.CreatedAt,
+		CreatedAt:           receiptTimes.CreatedAt, PublishedAt: receiptTimes.PublishedAt,
 	}
 	if err := contracts.ValidateDeliveryPublication(
 		request, bundle.Report, bundle.ManifestJSON, receipt,
 	); err != nil {
 		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, err
+	}
+	if err := verifyPersistedValidationBundle(request, bundle); err != nil {
+		return persistence.DeliveryPublicationIntent{}, contracts.DeliveryReceipt{}, fmt.Errorf(
+			"verify persisted publication evidence: %w", err,
+		)
 	}
 	receiptJSON, err := json.Marshal(receipt)
 	if err != nil {
@@ -379,6 +454,35 @@ func (s *PublicationService) publicationIntent(
 		ReceiptSHA256:             fmt.Sprintf("%x", receiptDigest),
 		IntentSHA256:              fmt.Sprintf("%x", intentDigest), ReceiptJSON: receiptJSON,
 	}, receipt, nil
+}
+
+type publicationReceiptTimes struct {
+	CreatedAt   time.Time
+	PublishedAt time.Time
+}
+
+func recordedPublicationTimes(
+	record persistence.DeliveryPublication,
+) (publicationReceiptTimes, error) {
+	var receipt contracts.DeliveryReceipt
+	if err := json.Unmarshal(record.Intent.ReceiptJSON, &receipt); err != nil {
+		return publicationReceiptTimes{}, fmt.Errorf("decode recorded publication receipt timestamp: %w", err)
+	}
+	if receipt.CreatedAt.IsZero() || receipt.PublishedAt.IsZero() ||
+		receipt.PublishedAt.Before(receipt.CreatedAt) {
+		return publicationReceiptTimes{}, fmt.Errorf("recorded publication receipt has inconsistent operation timestamps")
+	}
+	return publicationReceiptTimes{
+		CreatedAt: receipt.CreatedAt, PublishedAt: receipt.PublishedAt,
+	}, nil
+}
+
+func recordedPublicationTime(record persistence.DeliveryPublication) (time.Time, error) {
+	timestamps, err := recordedPublicationTimes(record)
+	if err != nil {
+		return time.Time{}, err
+	}
+	return timestamps.PublishedAt, nil
 }
 
 func receiptFences(

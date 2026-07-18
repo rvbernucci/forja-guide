@@ -98,6 +98,15 @@ contaminated worktree is quarantined and never reused.
   swap against the expected old object ID.
 - [x] Persist the delivery receipt before releasing the lease set.
 - [x] Make receipt creation and publication replay-safe.
+- [x] Reopen and hash the persisted evidence inventory before journal mutation
+  and again inside the fenced Git callback, with enumeration and reads pinned to
+  one opened directory identity.
+- [x] Revalidate the exact lease set and minimum authority horizon after the
+  in-fence evidence read and immediately before Git mutation.
+- [x] Reobserve the exact publication ref after concurrent completion or
+  recovery transition before releasing any lease.
+- [x] Pin one stable publication-operation timestamp across receipt, journal,
+  concurrent replay, and crash recovery.
 - [x] Reconcile exact prepared attempts after lease expiry without deleting
   quarantined evidence or inferring publication from timing.
 - [x] Reject cross-repository path redirection before journal or Git mutation.

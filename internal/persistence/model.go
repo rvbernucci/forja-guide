@@ -177,6 +177,7 @@ type DeliveryPublicationRepository interface {
 		DeliveryPublicationIntent,
 		LeaseSet,
 		func(context.Context) error,
+		func(context.Context) error,
 	) (DeliveryPublication, error)
 	RecoverDeliveryPublication(
 		context.Context,

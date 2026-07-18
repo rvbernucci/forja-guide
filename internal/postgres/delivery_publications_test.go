@@ -51,6 +51,7 @@ func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 	applyCalls := 0
 	published, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
+		func(context.Context) error { return nil },
 		func(context.Context) error {
 			applyCalls++
 			return nil
@@ -63,8 +64,21 @@ func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 		published.ObservedCommit == nil || *published.ObservedCommit != intent.ResultCommit {
 		t.Fatalf("published record = %#v", published)
 	}
+	var receipt contracts.DeliveryReceipt
+	if err := json.Unmarshal(intent.ReceiptJSON, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !published.PublishedAt.Equal(receipt.PublishedAt) ||
+		published.UpdatedAt.Before(*published.PublishedAt) {
+		t.Fatalf("publication timestamps = published %v updated %v receipt %v",
+			published.PublishedAt, published.UpdatedAt, receipt.PublishedAt)
+	}
 	completedReplay, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
+		func(context.Context) error {
+			t.Fatal("published replay called revalidation")
+			return nil
+		},
 		func(context.Context) error {
 			t.Fatal("published replay called Git apply")
 			return nil
@@ -85,6 +99,10 @@ func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 	}
 	completedAfterRelease, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
+		func(context.Context) error {
+			t.Fatal("released published replay called revalidation")
+			return nil
+		},
 		func(context.Context) error {
 			t.Fatal("released published replay called Git apply")
 			return nil
@@ -131,6 +149,10 @@ func TestDeliveryPublicationDoesNotApplyWithStaleFence(t *testing.T) {
 			called = true
 			return nil
 		},
+		func(context.Context) error {
+			called = true
+			return nil
+		},
 	); !isFaultCode(err, fault.CodeConflict) {
 		t.Fatalf("stale completion error = %v, want conflict", err)
 	}
@@ -167,11 +189,57 @@ func TestDeliveryPublicationDoesNotApplyWithShortAuthorityHorizon(t *testing.T) 
 			called = true
 			return nil
 		},
+		func(context.Context) error {
+			called = true
+			return nil
+		},
 	); !isFaultCode(err, fault.CodeConflict) {
 		t.Fatalf("short-horizon completion error = %v, want conflict", err)
 	}
 	if called {
 		t.Fatal("short-horizon completion invoked Git apply")
+	}
+}
+
+func TestDeliveryPublicationRechecksAuthorityAfterRevalidation(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_88888888-8888-4888-8888-888888888888"
+	attemptID := "attempt_88888888-8888-4888-8888-888888888888"
+	leaseSet, err := store.AcquireLeaseSet(
+		t.Context(), attemptID,
+		[]persistence.LeaseKey{
+			deliveryLeaseKey("worktree", deliveryID),
+			deliveryLeaseKey("file", "internal/generated"),
+			deliveryLeaseKey("artifact", "evidence"),
+		},
+		"publication-worker", 44*time.Second,
+	)
+	if err != nil {
+		t.Fatalf("acquire publication lease set: %v", err)
+	}
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
+		t.Fatalf("prepare publication: %v", err)
+	}
+	revalidated := false
+	applied := false
+	if _, err := store.CompleteDeliveryPublication(
+		t.Context(), intent, leaseSet,
+		func(context.Context) error {
+			revalidated = true
+			time.Sleep(5 * time.Second)
+			return nil
+		},
+		func(context.Context) error {
+			applied = true
+			return nil
+		},
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("post-revalidation authority error = %v, want conflict", err)
+	}
+	if !revalidated || applied {
+		t.Fatalf("publication callbacks: revalidated=%v applied=%v", revalidated, applied)
 	}
 }
 
@@ -225,6 +293,13 @@ func TestDeliveryPublicationRecoveryAfterLeaseRelease(t *testing.T) {
 	if recovered.State != "published" || recovered.PublishedAt == nil ||
 		recovered.ObservedCommit == nil || *recovered.ObservedCommit != intent.ResultCommit {
 		t.Fatalf("recovered publication = %#v", recovered)
+	}
+	var receipt contracts.DeliveryReceipt
+	if err := json.Unmarshal(intent.ReceiptJSON, &receipt); err != nil {
+		t.Fatal(err)
+	}
+	if !recovered.PublishedAt.Equal(receipt.PublishedAt) {
+		t.Fatalf("recovery timestamp = %v, want %v", recovered.PublishedAt, receipt.PublishedAt)
 	}
 }
 
@@ -327,8 +402,8 @@ func publicationIntentFixture(
 		AuthorID:                  "author", ValidatorID: "validator", LeaseFences: fences,
 		ValidationReportRef: "evidence/validation-report.json#sha256=" + strings.Repeat("1", 64),
 		EvidenceManifestRef: "evidence/manifest.json#sha256=" + strings.Repeat("2", 64),
-		CreatedAt:           time.Unix(1_700_000_000, 0).UTC(),
-		PublishedAt:         time.Unix(1_700_000_000, 0).UTC(),
+		CreatedAt:           time.Unix(1_700_000_000, 123_456_789).UTC(),
+		PublishedAt:         time.Unix(1_700_000_000, 987_654_321).UTC(),
 	}
 	receiptJSON, err := json.Marshal(receipt)
 	if err != nil {

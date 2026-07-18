@@ -40,7 +40,16 @@ journal. The service first persists one immutable `prepared` intent, performs
 an exact `update-ref --no-deref` compare-and-swap while a PostgreSQL transaction
 holds every resource and publication advisory lock, commits the canonical
 receipt as `published` before releasing those locks, and only then releases the
-lease set. The transaction requires at least 40 seconds of live authority for
+lease set. Before preparing and again inside the fenced callback, it reopens
+the physical evidence bundle, pins the opened directory identity, and recomputes
+the complete manifest inventory through the same rooted handle. PostgreSQL
+revalidates the exact lease set and 40-second horizon again after that read and
+immediately before Git mutation.
+Every published return path then rereads the exact ref before release. Newly
+prepared receipts and the journal share a microsecond publication-operation
+timestamp; replay and recovery preserve any earlier receipt's exact timestamp
+precision and RFC3339 offsets. The journal `updated_at` retains the database transition clock. The
+transaction requires at least 40 seconds of live authority for
 the bounded 30-second Git mutation, so expiry or replacement fails before Git
 is invoked. Recovery trusts neither a
 caller assertion nor timing: it rereads the exact direct Git ref. It finalizes
@@ -164,7 +173,10 @@ stale fencing tokens, arbitrary worktree paths, symbolic-link escapes,
 self-validation, mutable validator commands, non-reproducible hashes,
 publication compare-and-swap failures, worktree reuse after contamination, and
 receipt replay with different content. They must also prove journal-before-CAS,
-live-fence locks across CAS, no callback on stale or short-horizon authority,
+live-fence locks across CAS, no mutation on stale or short-horizon authority,
+authority revalidation after the in-fence evidence read,
 receipt-before-release, exact-ref observation, recovery after the Git/SQL crash
-window, repository-path replacement rejection, cross-repository isolation, and
-rollback refusal while publication history exists.
+window, pre-prepare and in-fence persisted-evidence revalidation, concurrent
+completion and recovery ref rechecks, stable operation timestamps, evidence-root
+and repository-path replacement rejection, cross-repository isolation, and rollback refusal while
+publication history exists.

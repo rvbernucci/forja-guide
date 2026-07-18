@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -262,4 +264,188 @@ func verifyEvidenceDirectory(root string, files []evidenceContent) error {
 		return fmt.Errorf("evidence bundle is missing files")
 	}
 	return nil
+}
+
+// verifyPersistedValidationBundle re-reads the immutable evidence inventory
+// from its physical root. In-memory contracts alone cannot authorize a
+// publication after the persisted evidence has changed or disappeared.
+func verifyPersistedValidationBundle(
+	request contracts.DeliveryRequest,
+	bundle ValidationBundle,
+) error {
+	physicalRoot, err := canonicalDirectory(bundle.PhysicalRoot, "persisted validation evidence")
+	if err != nil {
+		return err
+	}
+	if physicalRoot != bundle.PhysicalRoot {
+		return fmt.Errorf("persisted validation evidence root is not canonical")
+	}
+	canonicalReport, err := json.Marshal(bundle.Report)
+	if err != nil || !bytes.Equal(canonicalReport, bundle.ReportJSON) {
+		return fmt.Errorf("persisted validation report bytes are not canonical")
+	}
+	canonicalManifest, err := json.Marshal(bundle.Manifest)
+	if err != nil || !bytes.Equal(canonicalManifest, bundle.ManifestJSON) {
+		return fmt.Errorf("persisted evidence manifest bytes are not canonical")
+	}
+	reportPath, reportDigest, reportBound := strings.Cut(bundle.ReportRef, "#sha256=")
+	manifestPath, manifestDigest, manifestBound := strings.Cut(bundle.ManifestRef, "#sha256=")
+	reportSHA256 := sha256.Sum256(bundle.ReportJSON)
+	manifestSHA256 := sha256.Sum256(bundle.ManifestJSON)
+	if !reportBound || !manifestBound ||
+		reportDigest != fmt.Sprintf("%x", reportSHA256) ||
+		manifestDigest != fmt.Sprintf("%x", manifestSHA256) {
+		return fmt.Errorf("persisted validation references disagree with canonical bytes")
+	}
+	if !pathCoveredByScopes(reportPath, []string{request.EvidenceScope}) ||
+		!pathCoveredByScopes(manifestPath, []string{request.EvidenceScope}) {
+		return fmt.Errorf("persisted validation references are outside the approved evidence scope")
+	}
+
+	expected := make(map[string]contracts.EvidenceEntry, len(bundle.Manifest.Entries))
+	totalBytes := int64(len(bundle.ManifestJSON))
+	for _, entry := range bundle.Manifest.Entries {
+		if _, duplicate := expected[entry.Path]; duplicate || entry.Path == manifestPath {
+			return fmt.Errorf("persisted evidence manifest contains a duplicate path %q", entry.Path)
+		}
+		if entry.SizeBytes < 0 || entry.SizeBytes > maximumValidationEvidenceBytes-totalBytes {
+			return fmt.Errorf("persisted validation evidence exceeds its aggregate budget")
+		}
+		totalBytes += entry.SizeBytes
+		expected[entry.Path] = entry
+	}
+	reportEntry, ok := expected[reportPath]
+	if !ok || reportEntry.SizeBytes != int64(len(bundle.ReportJSON)) ||
+		reportEntry.SHA256 != reportDigest {
+		return fmt.Errorf("persisted validation report is not bound by the evidence manifest")
+	}
+
+	root, err := openPinnedEvidenceRoot(physicalRoot)
+	if err != nil {
+		return err
+	}
+	defer root.Close()
+	return verifyPersistedEvidenceRoot(root, bundle, reportPath, manifestPath, expected)
+}
+
+func openPinnedEvidenceRoot(physicalRoot string) (*os.Root, error) {
+	expectedIdentity, err := os.Lstat(physicalRoot)
+	if err != nil {
+		return nil, fmt.Errorf("stat persisted validation evidence before open: %w", err)
+	}
+	if expectedIdentity.Mode()&os.ModeSymlink != 0 || !expectedIdentity.IsDir() {
+		return nil, fmt.Errorf("persisted validation evidence root must remain a real directory")
+	}
+	root, err := os.OpenRoot(physicalRoot)
+	if err != nil {
+		return nil, fmt.Errorf("open persisted validation evidence: %w", err)
+	}
+	openedIdentity, err := root.Stat(".")
+	if err != nil {
+		_ = root.Close()
+		return nil, fmt.Errorf("stat opened persisted validation evidence: %w", err)
+	}
+	if err := requireSameEvidenceRoot(expectedIdentity, openedIdentity); err != nil {
+		_ = root.Close()
+		return nil, err
+	}
+	return root, nil
+}
+
+func requireSameEvidenceRoot(expected os.FileInfo, opened os.FileInfo) error {
+	if !os.SameFile(expected, opened) {
+		return fmt.Errorf("persisted validation evidence root changed while it was opened")
+	}
+	return nil
+}
+
+func verifyPersistedEvidenceRoot(
+	root *os.Root,
+	bundle ValidationBundle,
+	reportPath string,
+	manifestPath string,
+	expected map[string]contracts.EvidenceEntry,
+) error {
+	seen := make(map[string]struct{}, len(expected)+1)
+	err := fs.WalkDir(root.FS(), ".", func(name string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if name == "." {
+			return nil
+		}
+		logical := path.Clean(name)
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("persisted evidence path %q is a symlink", logical)
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if !entry.Type().IsRegular() {
+			return fmt.Errorf("persisted evidence path %q is not a regular file", logical)
+		}
+		if _, duplicate := seen[logical]; duplicate {
+			return fmt.Errorf("persisted evidence path %q was observed twice", logical)
+		}
+		seen[logical] = struct{}{}
+		if logical == manifestPath {
+			actual, err := readEvidenceFile(root, logical, int64(len(bundle.ManifestJSON)))
+			if err != nil {
+				return err
+			}
+			if !bytes.Equal(actual, bundle.ManifestJSON) {
+				return fmt.Errorf("persisted evidence manifest has different content")
+			}
+			return nil
+		}
+		expectedEntry, ok := expected[logical]
+		if !ok {
+			return fmt.Errorf("unexpected persisted evidence file %q", logical)
+		}
+		actual, err := readEvidenceFile(root, logical, expectedEntry.SizeBytes)
+		if err != nil {
+			return err
+		}
+		digest := sha256.Sum256(actual)
+		if fmt.Sprintf("%x", digest) != expectedEntry.SHA256 {
+			return fmt.Errorf("persisted evidence file %q has a different digest", logical)
+		}
+		if logical == reportPath && !bytes.Equal(actual, bundle.ReportJSON) {
+			return fmt.Errorf("persisted validation report has different content")
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(seen) != len(expected)+1 {
+		return fmt.Errorf("persisted validation evidence is missing files")
+	}
+	if _, ok := seen[manifestPath]; !ok {
+		return fmt.Errorf("persisted validation evidence is missing its manifest")
+	}
+	return nil
+}
+
+func readEvidenceFile(root *os.Root, logicalPath string, expectedSize int64) ([]byte, error) {
+	handle, err := root.Open(filepath.FromSlash(logicalPath))
+	if err != nil {
+		return nil, fmt.Errorf("open persisted evidence file %q: %w", logicalPath, err)
+	}
+	defer handle.Close()
+	info, err := handle.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat persisted evidence file %q: %w", logicalPath, err)
+	}
+	if !info.Mode().IsRegular() || info.Size() != expectedSize {
+		return nil, fmt.Errorf("persisted evidence file %q has a different size or type", logicalPath)
+	}
+	content, err := io.ReadAll(io.LimitReader(handle, expectedSize+1))
+	if err != nil {
+		return nil, fmt.Errorf("read persisted evidence file %q: %w", logicalPath, err)
+	}
+	if int64(len(content)) != expectedSize {
+		return nil, fmt.Errorf("persisted evidence file %q changed while it was read", logicalPath)
+	}
+	return content, nil
 }
