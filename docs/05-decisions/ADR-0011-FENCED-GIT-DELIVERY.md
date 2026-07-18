@@ -51,22 +51,29 @@ timestamp; replay and recovery preserve any earlier receipt's exact timestamp
 precision and RFC3339 offsets. The journal `updated_at` retains the database transition clock. The
 transaction requires at least 40 seconds of live authority for
 the bounded 30-second Git mutation, so expiry or replacement fails before Git
-is invoked. Recovery trusts neither a
+is invoked. The request authorizes at least a 60-second TTL, the publication
+intent binds it into its identity digest, and the adapter requires the persisted
+immutable lease-set TTL and every member duration to equal that hashed
+authority. A renewal must reuse the same TTL. Recovery trusts neither a
 caller assertion nor timing: it rereads the exact direct Git ref. It finalizes
-only when that ref equals the intent's result commit, reports not-applied when
-the approved previous state remains, and records a terminal conflict for every
-other state. Exact release is replay-safe after expiry or an earlier release,
+only when that ref equals the intent's result commit. When the approved previous
+state remains, it reobserves under the publication lock, persists `abandoned`,
+releases the exact lease, and reports not-applied; every other state records a
+terminal conflict. Exact release is replay-safe after expiry or an earlier release,
 but a changed fence is still rejected while authority remains live.
 Migration rollback is available only before this journal contains history.
 After the first prepared or terminal publication row, downgrade fails closed;
 operators preserve receipt authority and use forward repair rather than delete
 audit state to start an older binary.
+Migration 006 snapshots the current exact duration of every active pre-006
+lease set as its immutable renewal authority. Released historical sets receive
+a non-renewable sentinel duration. Its rollback refuses any active lease set.
 
 Delivery request, validation, evidence, and receipt contracts use version
 `1.1`. They carry the canonical public `tenant_<uuidv4>` and `repo_<uuidv4>`
-identities. A single validated persistence boundary removes those prefixes for
-PostgreSQL UUID keys and fenced lease records; public callers never provide raw
-storage authority.
+identities. A validated trusted-internal conversion boundary in the publication
+service removes those prefixes before persistence into PostgreSQL UUID keys and
+fenced lease records; public callers never provide raw storage authority.
 
 Each publication service instance is constructed for exactly one public tenant,
 one public repository, and one operator-configured canonical Git checkout. The

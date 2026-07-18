@@ -2,6 +2,10 @@
 
 Status: In progress
 
+Schema `1.1` and migrations 005-006 form one unreleased Sprint 05 delivery.
+After release, their contract bytes and migration checksums are immutable; any
+later change requires a new contract version or forward migration.
+
 ## Outcome
 
 Convert one approved worker task into a bounded Git commit, reproducible
@@ -66,6 +70,10 @@ contaminated worktree is quarantined and never reused.
 - [x] Renew and release only the exact owner and fencing-token set.
 - [x] Reject overlapping writers, stale fences, partial grants, and lease
   expansion after work starts.
+- [x] Bind the request and publication intent's minimum 60-second lease TTL to
+  the exact persisted lease-set and member duration.
+- [x] Persist the lease set's immutable authorized TTL and reject replay or
+  renewal that attempts to change it.
 
 ### 3. Worktree lifecycle
 
@@ -109,6 +117,8 @@ contaminated worktree is quarantined and never reused.
   concurrent replay, and crash recovery.
 - [x] Reconcile exact prepared attempts after lease expiry without deleting
   quarantined evidence or inferring publication from timing.
+- [x] Reobserve the approved pre-CAS ref under the publication lock, retire the
+  exact intent as `abandoned`, and release its lease so a clean retry can proceed.
 - [x] Reject cross-repository path redirection before journal or Git mutation.
 - [x] Detect replacement of the operator-authorized physical repository path
   before durable publication.

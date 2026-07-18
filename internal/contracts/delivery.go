@@ -22,6 +22,10 @@ var mandatoryBuiltInCheckIDs = []string{
 	"secret-scan",
 }
 
+// MinimumPublicationLeaseTTLMS leaves a bounded evidence-validation window
+// before the mandatory 40-second pre-CAS authority horizon.
+const MinimumPublicationLeaseTTLMS = 60_000
+
 // DeliverySchemaVersion identifies the repository-scoped delivery contract.
 // Version 1.1 adds mandatory tenant and repository identities to every artifact.
 const DeliverySchemaVersion = "1.1"
@@ -93,6 +97,9 @@ func ValidateDeliveryRequest(request DeliveryRequest) error {
 	minimumLease := request.WorkerBudgets.WallClockMS + request.WorkerBudgets.CancellationGraceMS
 	if request.LeaseTTLMS <= minimumLease {
 		return fmt.Errorf("lease TTL must outlive worker and cancellation budgets")
+	}
+	if request.LeaseTTLMS < MinimumPublicationLeaseTTLMS {
+		return fmt.Errorf("lease TTL must provide the publication authority horizon")
 	}
 	if err := validateCanonicalScopes("read scope", request.ReadScopes, true); err != nil {
 		return err

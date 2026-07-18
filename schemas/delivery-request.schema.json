@@ -62,6 +62,6 @@
       "type": "array", "minItems": 1, "maxItems": 64, "uniqueItems": true,
       "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,119}$"}
     },
-    "lease_ttl_ms": {"type": "integer", "minimum": 1000, "maximum": 86400000}
+    "lease_ttl_ms": {"type": "integer", "minimum": 60000, "maximum": 86400000}
   }
 }

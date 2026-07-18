@@ -51,7 +51,7 @@ func (s *Store) PrepareDeliveryPublication(
 	intent persistence.DeliveryPublicationIntent,
 	leaseSet persistence.LeaseSet,
 ) (persistence.DeliveryPublication, error) {
-	keys, proofs, digest, err := s.validatePublicationAuthority(intent, leaseSet)
+	keys, proofs, digest, approvedTTL, err := s.validatePublicationAuthority(intent, leaseSet)
 	if err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
@@ -84,7 +84,9 @@ func (s *Store) PrepareDeliveryPublication(
 			return existing, nil
 		}
 	}
-	if _, err := s.verifyLeaseSetAuthority(ctx, tx, leaseSet, keys, proofs, digest); err != nil {
+	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
+		ctx, tx, leaseSet, keys, proofs, digest, 0, approvedTTL,
+	); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
 	if found {
@@ -98,18 +100,18 @@ func (s *Store) PrepareDeliveryPublication(
 	intentDigest, _ := hex.DecodeString(intent.IntentSHA256)
 	var preparedAt time.Time
 	if err := tx.QueryRow(ctx, `
-		INSERT INTO forja.delivery_publications (
-			tenant_id, repository_id, delivery_id, attempt_id, lease_set_id,
-			publication_ref, publication_previous_commit, result_commit,
+			INSERT INTO forja.delivery_publications (
+				tenant_id, repository_id, delivery_id, attempt_id, lease_set_id, lease_ttl_ms,
+				publication_ref, publication_previous_commit, result_commit,
 			authority_sha256, receipt_sha256, intent_sha256, receipt_bytes,
 			state, prepared_at, updated_at
 		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+				$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
 			'prepared', clock_timestamp(), clock_timestamp()
 		)
 		RETURNING prepared_at`,
 		s.tenantID, s.repositoryID, intent.DeliveryID, intent.AttemptID,
-		intent.LeaseSetID, intent.PublicationRef, intent.PublicationPreviousCommit,
+		intent.LeaseSetID, intent.LeaseTTLMS, intent.PublicationRef, intent.PublicationPreviousCommit,
 		intent.ResultCommit, authorityDigest, receiptDigest, intentDigest,
 		intent.ReceiptJSON,
 	).Scan(&preparedAt); err != nil {
@@ -138,7 +140,7 @@ func (s *Store) CompleteDeliveryPublication(
 	if revalidate == nil || apply == nil {
 		return persistence.DeliveryPublication{}, invalidPublicationError("publication revalidation and apply callbacks are required")
 	}
-	keys, proofs, digest, err := s.validatePublicationAuthority(intent, leaseSet)
+	keys, proofs, digest, approvedTTL, err := s.validatePublicationAuthority(intent, leaseSet)
 	if err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
@@ -177,7 +179,7 @@ func (s *Store) CompleteDeliveryPublication(
 	}
 	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
 		ctx, tx, leaseSet, keys, proofs, digest,
-		minimumPublicationAuthorityTimeRemaining,
+		minimumPublicationAuthorityTimeRemaining, approvedTTL,
 	); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
@@ -202,7 +204,7 @@ func (s *Store) CompleteDeliveryPublication(
 	// evidence read and immediately before the bounded Git compare-and-swap.
 	if _, err := s.verifyLeaseSetAuthorityWithMinimum(
 		ctx, tx, leaseSet, keys, proofs, digest,
-		minimumPublicationAuthorityTimeRemaining,
+		minimumPublicationAuthorityTimeRemaining, approvedTTL,
 	); err != nil {
 		return persistence.DeliveryPublication{}, err
 	}
@@ -257,6 +259,86 @@ func (s *Store) RecoverDeliveryPublication(
 		)
 	}
 	return s.transitionPublicationWithoutLease(ctx, intent, "published", &observedCommit)
+}
+
+// AbandonDeliveryPublication retires an exact prepared attempt only after a
+// trusted observation under the publication lock proves that Git still has the
+// approved pre-CAS state.
+func (s *Store) AbandonDeliveryPublication(
+	ctx context.Context,
+	intent persistence.DeliveryPublicationIntent,
+	observe func(context.Context) (*string, error),
+) (persistence.DeliveryPublication, error) {
+	if observe == nil {
+		return persistence.DeliveryPublication{}, invalidPublicationError("publication observation callback is required")
+	}
+	if err := validatePublicationIntent(intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if err := s.validatePublicationScope(intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return persistence.DeliveryPublication{}, databaseError("postgres.AbandonDeliveryPublication.begin", err)
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	if err := s.lockPublication(ctx, tx, intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	record, found, err := loadDeliveryPublication(
+		ctx, tx, s.tenantID, s.repositoryID,
+		intent.DeliveryID, intent.AttemptID, true,
+	)
+	if err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if !found {
+		return persistence.DeliveryPublication{}, fault.New(
+			fault.CodeNotFound, "postgres.AbandonDeliveryPublication", "publication intent was not prepared",
+		)
+	}
+	if err := exactPublicationIntent(record.Intent, intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if record.State == "published" || record.State == "abandoned" {
+		if err := tx.Commit(ctx); err != nil {
+			return persistence.DeliveryPublication{}, databaseError("postgres.AbandonDeliveryPublication.replay_commit", err)
+		}
+		return record, nil
+	}
+	if record.State != "prepared" {
+		return persistence.DeliveryPublication{}, conflictError(
+			"postgres.AbandonDeliveryPublication", "publication is no longer prepared",
+		)
+	}
+	observed, err := observe(ctx)
+	if err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if !optionalStringEqual(observed, intent.PublicationPreviousCommit) {
+		return persistence.DeliveryPublication{}, conflictError(
+			"postgres.AbandonDeliveryPublication", "Git no longer has the approved pre-publication state",
+		)
+	}
+	var changedAt time.Time
+	if err := tx.QueryRow(ctx, `
+		UPDATE forja.delivery_publications
+		SET state='abandoned', observed_commit=$1, updated_at=clock_timestamp()
+		WHERE tenant_id=$2 AND repository_id=$3
+		  AND delivery_id=$4 AND attempt_id=$5 AND state='prepared'
+		RETURNING updated_at`,
+		observed, s.tenantID, s.repositoryID, intent.DeliveryID, intent.AttemptID,
+	).Scan(&changedAt); err != nil {
+		return persistence.DeliveryPublication{}, databaseError("postgres.AbandonDeliveryPublication.update", err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return persistence.DeliveryPublication{}, databaseError("postgres.AbandonDeliveryPublication.commit", err)
+	}
+	record.State = "abandoned"
+	record.ObservedCommit = cloneOptionalString(observed)
+	record.UpdatedAt = changedAt.UTC()
+	return record, nil
 }
 
 // ConflictDeliveryPublication retires a prepared attempt when the trusted Git
@@ -359,7 +441,6 @@ func (s *Store) transitionPublicationWithoutLease(
 	record.ObservedCommit = cloneOptionalString(observedCommit)
 	record.UpdatedAt = changedAt
 	if state == "published" {
-		publishedAt = publishedAt.UTC()
 		record.PublishedAt = &publishedAt
 	}
 	return record, nil
@@ -368,35 +449,35 @@ func (s *Store) transitionPublicationWithoutLease(
 func (s *Store) validatePublicationAuthority(
 	intent persistence.DeliveryPublicationIntent,
 	leaseSet persistence.LeaseSet,
-) ([]persistence.LeaseKey, []persistence.Lease, []byte, error) {
+) ([]persistence.LeaseKey, []persistence.Lease, []byte, time.Duration, error) {
 	if err := validatePublicationIntent(intent); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	if err := s.validatePublicationScope(intent); err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	if leaseSet.LeaseSetID != intent.LeaseSetID {
-		return nil, nil, nil, invalidPublicationError("lease set ID disagrees with publication intent")
+		return nil, nil, nil, 0, invalidPublicationError("lease set ID disagrees with publication intent")
 	}
 	keys, proofs, digest, err := s.validateLeaseSetProof(leaseSet, time.Millisecond)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, nil, 0, err
 	}
 	var receipt contracts.DeliveryReceipt
 	if err := json.Unmarshal(intent.ReceiptJSON, &receipt); err != nil {
-		return nil, nil, nil, invalidPublicationError("receipt bytes are not valid JSON")
+		return nil, nil, nil, 0, invalidPublicationError("receipt bytes are not valid JSON")
 	}
 	if len(receipt.LeaseFences) != len(proofs) {
-		return nil, nil, nil, invalidPublicationError("receipt lease fences disagree with lease set")
+		return nil, nil, nil, 0, invalidPublicationError("receipt lease fences disagree with lease set")
 	}
 	for index, proof := range proofs {
 		fence := receipt.LeaseFences[index]
 		if fence.ResourceType != proof.ResourceType || fence.ResourceID != proof.ResourceID ||
 			fence.OwnerID != proof.OwnerID || fence.FencingToken != proof.FencingToken {
-			return nil, nil, nil, invalidPublicationError("receipt lease fences disagree with lease set")
+			return nil, nil, nil, 0, invalidPublicationError("receipt lease fences disagree with lease set")
 		}
 	}
-	return keys, proofs, digest, nil
+	return keys, proofs, digest, time.Duration(intent.LeaseTTLMS) * time.Millisecond, nil
 }
 
 func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) error {
@@ -404,6 +485,7 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 		return invalidPublicationError("publication intent has an invalid repository identity")
 	}
 	if intent.LeaseSetID != intent.AttemptID || intent.DeliveryID == "" || intent.AttemptID == "" ||
+		intent.LeaseTTLMS < contracts.MinimumPublicationLeaseTTLMS || intent.LeaseTTLMS > 86_400_000 ||
 		intent.PublicationRef != "refs/forja/deliveries/"+intent.DeliveryID ||
 		!publicationCommitPattern.MatchString(intent.ResultCommit) ||
 		(intent.PublicationPreviousCommit != nil && !publicationCommitPattern.MatchString(*intent.PublicationPreviousCommit)) ||
@@ -446,11 +528,12 @@ func validatePublicationIntent(intent persistence.DeliveryPublicationIntent) err
 		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
+		LeaseTTLMS      int    `json:"lease_ttl_ms"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
 		intent.DeliveryID, intent.TenantID, intent.RepositoryID,
-		intent.AttemptID, intent.LeaseSetID,
+		intent.AttemptID, intent.LeaseSetID, intent.LeaseTTLMS,
 		intent.AuthoritySHA256, intent.ReceiptSHA256,
 	}
 	identityJSON, err := json.Marshal(identityDocument)
@@ -473,7 +556,7 @@ func publicationReceiptTime(intent persistence.DeliveryPublicationIntent) (time.
 		receipt.PublishedAt.Before(receipt.CreatedAt) {
 		return time.Time{}, invalidPublicationError("receipt operation timestamps are inconsistent")
 	}
-	return receipt.PublishedAt.UTC(), nil
+	return receipt.PublishedAt, nil
 }
 
 func (s *Store) validatePublicationScope(intent persistence.DeliveryPublicationIntent) error {
@@ -535,7 +618,7 @@ func loadDeliveryPublication(
 	forUpdate bool,
 ) (persistence.DeliveryPublication, bool, error) {
 	query := `
-		SELECT lease_set_id, publication_ref, publication_previous_commit,
+			SELECT lease_set_id, lease_ttl_ms, publication_ref, publication_previous_commit,
 		       result_commit, encode(authority_sha256, 'hex'),
 		       encode(receipt_sha256, 'hex'), encode(intent_sha256, 'hex'),
 		       receipt_bytes, state, observed_commit, prepared_at,
@@ -551,7 +634,7 @@ func loadDeliveryPublication(
 	err := querier.QueryRow(
 		ctx, query, tenantID, repositoryID, deliveryID, attemptID,
 	).Scan(
-		&record.Intent.LeaseSetID, &record.Intent.PublicationRef,
+		&record.Intent.LeaseSetID, &record.Intent.LeaseTTLMS, &record.Intent.PublicationRef,
 		&record.Intent.PublicationPreviousCommit, &record.Intent.ResultCommit,
 		&record.Intent.AuthoritySHA256, &record.Intent.ReceiptSHA256,
 		&record.Intent.IntentSHA256, &record.Intent.ReceiptJSON,
@@ -587,7 +670,8 @@ func exactPublicationIntent(
 ) error {
 	if stored.DeliveryID != supplied.DeliveryID || stored.TenantID != supplied.TenantID ||
 		stored.RepositoryID != supplied.RepositoryID || stored.AttemptID != supplied.AttemptID ||
-		stored.LeaseSetID != supplied.LeaseSetID || stored.PublicationRef != supplied.PublicationRef ||
+		stored.LeaseSetID != supplied.LeaseSetID || stored.LeaseTTLMS != supplied.LeaseTTLMS ||
+		stored.PublicationRef != supplied.PublicationRef ||
 		!optionalStringEqual(stored.PublicationPreviousCommit, supplied.PublicationPreviousCommit) ||
 		stored.ResultCommit != supplied.ResultCommit || stored.AuthoritySHA256 != supplied.AuthoritySHA256 ||
 		stored.ReceiptSHA256 != supplied.ReceiptSHA256 || stored.IntentSHA256 != supplied.IntentSHA256 ||

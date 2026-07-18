@@ -90,6 +90,13 @@ Each protected commit, validation, receipt, and publication operation checks
 the exact live owner and fencing token. Expiry or replacement fails closed.
 Receipt worktree fences use the delivery ID as their resource ID. File and
 artifact fence IDs are canonical repository-relative scopes.
+Requests authorize a lease TTL of at least 60 seconds, and the publication
+intent binds that value into its identity digest. PostgreSQL requires the
+persisted lease set to retain that immutable duration in `authorized_ttl_us`
+and requires every member to share the same acquisition, renewal, expiry, and
+exact duration (`expires_at - updated_at`). Replay or renewal with a different
+TTL fails closed; authority cannot be expanded and later disguised by renewing
+back to the approved duration.
 
 Hierarchical ancestor leasing is intentionally conservative. It prevents
 `internal/worker` and `internal/worker/file.go` from being written by different
@@ -174,17 +181,22 @@ Publication follows a durable cross-system protocol:
    completion, the service rereads the ref and requires the exact result
    commit. Only then does it release the exact fenced lease set.
 
-An attempt can move from `prepared` only to `published` or `conflict`.
+An attempt can move from `prepared` only to `published`, `conflict`, or
+`abandoned`.
 Replaying a published attempt requires byte-identical intent and a fresh Git
 read at the exact result commit. Recovery may finalize a prepared row without
 a live lease only when that trusted read proves the CAS already happened;
-finding the approved old object reports not-applied, and any other object
-records a terminal conflict. Exact lease release is idempotent, so recovery
+finding the approved old object triggers a second observation under the
+publication lock, transitions the intent to `abandoned`, releases its exact
+lease set, and reports not-applied. Any other object records a terminal
+conflict. Exact lease release is idempotent, so recovery
 also closes a crash after receipt persistence but before release. No recovery
 path deletes quarantine evidence or updates a default branch.
 
-The Git callback is bounded to 30 seconds; publication requires at least 40
-seconds of lease authority both before evidence revalidation and again
+The request-authorized lease duration is at least 60 seconds and is embedded in
+the canonical publication intent, not in the versioned receipt. The Git callback
+is bounded to 30 seconds; publication requires at least 40 seconds of lease
+authority both before evidence revalidation and again
 immediately before invoking Git. Expired, replaced, or short-horizon fences fail
 before Git mutation. Holding the advisory locks over both checks and callbacks
 prevents a compliant concurrent acquirer from replacing authority between fence
@@ -264,8 +276,10 @@ or missing entries fail closed.
   durable.
 - A receipt replay must be byte-equivalent; the same delivery ID cannot publish
   different content.
-- A prepared publication whose ref still has the approved old object remains
-  not-applied; recovery never reports success by inference.
+- A prepared publication whose ref still has the approved old object is
+  reobserved under the publication lock, retired as `abandoned`, and releases
+  its exact lease before recovery reports not-applied. A fresh attempt may then
+  reacquire the delivery fence.
 - A prepared publication whose ref has any unapproved object becomes a durable
   conflict and is never overwritten.
 

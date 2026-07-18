@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
@@ -103,6 +104,12 @@ func TestAtomicLeaseSetLifecycleAndNoExpansion(t *testing.T) {
 			t.Fatal("lease-set replay changed a fencing token")
 		}
 	}
+	if _, err := store.AcquireLeaseSet(
+		t.Context(), "attempt_lifecycle_1", append([]persistence.LeaseKey(nil), keys...),
+		"author-a", 2*time.Minute,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("lease-set TTL replay error = %v, want conflict", err)
+	}
 	expanded := append(append([]persistence.LeaseKey(nil), keys...), deliveryLeaseKey("file", "cmd"))
 	if _, err := store.AcquireLeaseSet(
 		t.Context(), "attempt_lifecycle_1", expanded, "author-a", time.Minute,
@@ -113,7 +120,12 @@ func TestAtomicLeaseSetLifecycleAndNoExpansion(t *testing.T) {
 	forged.Leases = append([]persistence.Lease(nil), set.Leases...)
 	forged.Leases[0].OwnerID = "forged-owner"
 	forged.Leases[0].AcquiredAt = time.Time{}
-	renewed, err := store.RenewLeaseSet(t.Context(), forged, 2*time.Minute)
+	if _, err := store.RenewLeaseSet(
+		t.Context(), forged, 2*time.Minute,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("lease-set TTL expansion error = %v, want conflict", err)
+	}
+	renewed, err := store.RenewLeaseSet(t.Context(), forged, time.Minute)
 	if err != nil {
 		t.Fatalf("renew lease set: %v", err)
 	}
@@ -186,23 +198,12 @@ func TestLeaseSetAllowsSiblingFileAndArtifactScopes(t *testing.T) {
 func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 	pool := migratedPool(t)
 	rollbackToMigrationVersion(t, pool, 4)
-	store := newIntegrationStore(t, pool)
-	set, err := store.AcquireLeaseSet(
-		t.Context(), "delivery_rollback", []persistence.LeaseKey{
-			deliveryLeaseKey("file", "internal/rollback"),
-			deliveryLeaseKey("artifact", "evidence/rollback"),
-			deliveryLeaseKey("worktree", "delivery_rollback"),
-		}, "delivery-writer", time.Minute,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	leaseSetID := "delivery_rollback"
+	seedMigrationFourLeaseSet(t, pool, leaseSetID, true)
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("migration rollback accepted an active file/worktree lease set")
 	}
-	if err := store.ReleaseLeaseSet(t.Context(), set); err != nil {
-		t.Fatalf("release set after rejected rollback: %v", err)
-	}
+	releaseMigrationFourLeaseSet(t, pool, leaseSetID)
 	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback after artifact lease expiration: %v", err)
 	}
@@ -220,16 +221,8 @@ func TestMigrationFourRollbackRequiresExpiredArtifactLeases(t *testing.T) {
 func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 	pool := migratedPool(t)
 	rollbackToMigrationVersion(t, pool, 4)
-	store := newIntegrationStore(t, pool)
-	set, err := store.AcquireLeaseSet(
-		t.Context(), "attempt_rollback_order", []persistence.LeaseKey{
-			deliveryLeaseKey("file", "internal/rollback-order"),
-			deliveryLeaseKey("worktree", "delivery_rollback_order"),
-		}, "delivery-writer", time.Minute,
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
+	leaseSetID := "attempt_rollback_order"
+	seedMigrationFourLeaseSet(t, pool, leaseSetID, false)
 
 	writer, err := pool.Begin(t.Context())
 	if err != nil {
@@ -259,7 +252,7 @@ func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 	if _, err := writer.Exec(t.Context(), `
 		SELECT 1 FROM forja.lease_sets
 		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3
-		FOR UPDATE`, DefaultTenantID, DefaultRepositoryID, set.LeaseSetID); err != nil {
+		FOR UPDATE`, DefaultTenantID, DefaultRepositoryID, leaseSetID); err != nil {
 		t.Fatalf("writer deadlocked behind rollback lease-set locks: %v", err)
 	}
 	if err := writer.Rollback(t.Context()); err != nil {
@@ -271,11 +264,68 @@ func TestMigrationFourRollbackFollowsLeaseWriterLockOrder(t *testing.T) {
 	if !errors.As(rollbackErr, &databaseErr) || databaseErr.Code != "55000" {
 		t.Fatalf("rollback result = %v, want live-set safety refusal without deadlock", rollbackErr)
 	}
-	if err := store.ReleaseLeaseSet(t.Context(), set); err != nil {
-		t.Fatalf("release active set: %v", err)
-	}
+	releaseMigrationFourLeaseSet(t, pool, leaseSetID)
 	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback after ordered writer drain: %v", err)
+	}
+}
+
+func seedMigrationFourLeaseSet(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	leaseSetID string,
+	withArtifact bool,
+) {
+	t.Helper()
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.lease_sets (
+			tenant_id, repository_id, lease_set_id, owner_id, member_digest,
+			state, acquired_at, expires_at, updated_at
+		) VALUES (
+			$1, $2, $3, 'delivery-writer', decode(repeat('ab', 32), 'hex'),
+			'active', clock_timestamp(), clock_timestamp() + interval '1 minute',
+			clock_timestamp()
+		)`, DefaultTenantID, DefaultRepositoryID, leaseSetID); err != nil {
+		t.Fatalf("seed migration 004 lease set: %v", err)
+	}
+	if !withArtifact {
+		return
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.leases (
+			tenant_id, repository_id, resource_type, resource_id, owner_id,
+			fencing_token, acquired_at, expires_at, updated_at
+		) VALUES (
+			$1, $2, 'artifact', 'evidence/rollback', 'delivery-writer',
+			1, clock_timestamp(), clock_timestamp() + interval '1 minute',
+			clock_timestamp()
+		)`, DefaultTenantID, DefaultRepositoryID); err != nil {
+		t.Fatalf("seed migration 004 artifact lease: %v", err)
+	}
+}
+
+func releaseMigrationFourLeaseSet(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	leaseSetID string,
+) {
+	t.Helper()
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.lease_sets
+		SET state='released', expires_at=acquired_at, updated_at=clock_timestamp()
+		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, leaseSetID,
+	); err != nil {
+		t.Fatalf("release migration 004 lease set: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.leases
+		SET expires_at=acquired_at, updated_at=clock_timestamp()
+		WHERE tenant_id=$1 AND repository_id=$2
+		  AND resource_type='artifact' AND owner_id='delivery-writer'`,
+		DefaultTenantID, DefaultRepositoryID,
+	); err != nil {
+		t.Fatalf("expire migration 004 artifact lease: %v", err)
 	}
 }
 

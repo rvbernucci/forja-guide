@@ -104,6 +104,103 @@ func TestPublicationServiceRecoversCrashAfterGitCAS(t *testing.T) {
 	}
 }
 
+func TestPublicationReplayRejectsChangedLeaseTTL(t *testing.T) {
+	stored := persistence.DeliveryPublicationIntent{LeaseTTLMS: contracts.MinimumPublicationLeaseTTLMS}
+	supplied := stored
+	supplied.LeaseTTLMS++
+	if err := requireExactPublicationRecord(
+		persistence.DeliveryPublication{Intent: stored}, supplied,
+	); !errors.Is(err, ErrPublicationConflict) {
+		t.Fatalf("changed lease TTL replay error = %v, want publication conflict", err)
+	}
+}
+
+func TestPublicationServiceAbandonsNotAppliedIntentAndReleasesLease(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	journal := newMemoryPublicationJournal()
+	leases := &recordingLeaseSets{
+		events: &journal.events, releaseErr: fmt.Errorf("simulated release failure"),
+	}
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
+	intent, _, err := service.publicationIntent(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedAt := time.Now().UTC()
+	journal.record = persistence.DeliveryPublication{
+		Intent: intent, State: "prepared", PreparedAt: preparedAt, UpdatedAt: preparedAt,
+	}
+	journal.found = true
+
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); !errors.Is(err, ErrPublicationNotApplied) {
+		t.Fatalf("not-applied recovery error = %v", err)
+	}
+	if journal.record.State != "abandoned" || leases.releaseCalls != 1 ||
+		!slices.Equal(journal.events, []string{"abandon", "release"}) {
+		t.Fatalf("not-applied recovery state=%q events=%q releases=%d",
+			journal.record.State, journal.events, leases.releaseCalls)
+	}
+	leases.releaseErr = nil
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); !errors.Is(err, ErrPublicationNotApplied) {
+		t.Fatalf("not-applied release replay error = %v", err)
+	}
+	if !leases.released || leases.releaseCalls != 2 ||
+		!slices.Equal(journal.events, []string{"abandon", "release", "release"}) {
+		t.Fatalf("not-applied release replay events=%q releases=%d released=%v",
+			journal.events, leases.releaseCalls, leases.released)
+	}
+}
+
+func TestPublicationServiceReobservesRefInsideAbandonmentFence(t *testing.T) {
+	fixture := newPublicationFixture(t)
+	journal := newMemoryPublicationJournal()
+	leases := &recordingLeaseSets{events: &journal.events}
+	service, err := NewPublicationService(fixture.manager, journal, leases, fixture.authority())
+	if err != nil {
+		t.Fatal(err)
+	}
+	publicationAt := fixture.bundle.Report.CreatedAt.Add(time.Second).UTC()
+	intent, _, err := service.publicationIntent(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+		publicationReceiptTimes{CreatedAt: publicationAt, PublishedAt: publicationAt},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	preparedAt := time.Now().UTC()
+	journal.record = persistence.DeliveryPublication{
+		Intent: intent, State: "prepared", PreparedAt: preparedAt, UpdatedAt: preparedAt,
+	}
+	journal.found = true
+	journal.onAbandonObserve = func() {
+		runGitTest(
+			t, fixture.repository, "update-ref", "--no-deref",
+			fixture.request.PublicationRef, fixture.result.ResultCommit,
+			*fixture.request.PublicationPreviousCommit,
+		)
+	}
+
+	if _, err := service.Recover(
+		t.Context(), fixture.request, fixture.result, fixture.bundle, fixture.leaseSet,
+	); err == nil {
+		t.Fatal("abandonment accepted a stale pre-lock Git observation")
+	}
+	if journal.record.State != "prepared" || leases.releaseCalls != 0 {
+		t.Fatalf("stale abandonment state=%q releases=%d", journal.record.State, leases.releaseCalls)
+	}
+}
+
 func TestPublicationServiceRechecksRefAfterRecoveryTransition(t *testing.T) {
 	fixture := newPublicationFixture(t)
 	journal := newMemoryPublicationJournal()
@@ -717,6 +814,7 @@ type memoryPublicationJournal struct {
 	onPrepare                   func()
 	onConcurrentComplete        func()
 	onRecoverComplete           func()
+	onAbandonObserve            func()
 	events                      []string
 }
 
@@ -852,6 +950,40 @@ func (m *memoryPublicationJournal) RecoverDeliveryPublication(
 	if m.onRecoverComplete != nil {
 		m.onRecoverComplete()
 	}
+	return clonePublicationRecord(m.record), nil
+}
+
+func (m *memoryPublicationJournal) AbandonDeliveryPublication(
+	ctx context.Context,
+	intent persistence.DeliveryPublicationIntent,
+	observe func(context.Context) (*string, error),
+) (persistence.DeliveryPublication, error) {
+	if !m.found {
+		return persistence.DeliveryPublication{}, fmt.Errorf("intent is missing")
+	}
+	if err := requireExactPublicationRecord(m.record, intent); err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if m.record.State == "published" || m.record.State == "abandoned" {
+		return clonePublicationRecord(m.record), nil
+	}
+	if m.record.State != "prepared" {
+		return persistence.DeliveryPublication{}, fmt.Errorf("intent is not prepared")
+	}
+	if m.onAbandonObserve != nil {
+		m.onAbandonObserve()
+	}
+	observed, err := observe(ctx)
+	if err != nil {
+		return persistence.DeliveryPublication{}, err
+	}
+	if !optionalCommitEqual(observed, intent.PublicationPreviousCommit) {
+		return persistence.DeliveryPublication{}, fmt.Errorf("observed ref is not the approved previous state")
+	}
+	m.events = append(m.events, "abandon")
+	m.record.State = "abandoned"
+	m.record.ObservedCommit = cloneOptionalString(observed)
+	m.record.UpdatedAt = time.Now().UTC()
 	return clonePublicationRecord(m.record), nil
 }
 

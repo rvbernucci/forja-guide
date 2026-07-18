@@ -139,6 +139,7 @@ type DeliveryPublicationIntent struct {
 	RepositoryID              string
 	AttemptID                 string
 	LeaseSetID                string
+	LeaseTTLMS                int
 	PublicationRef            string
 	PublicationPreviousCommit *string
 	ResultCommit              string
@@ -183,6 +184,11 @@ type DeliveryPublicationRepository interface {
 		context.Context,
 		DeliveryPublicationIntent,
 		string,
+	) (DeliveryPublication, error)
+	AbandonDeliveryPublication(
+		context.Context,
+		DeliveryPublicationIntent,
+		func(context.Context) (*string, error),
 	) (DeliveryPublication, error)
 	ConflictDeliveryPublication(
 		context.Context,

@@ -8,6 +8,7 @@ CREATE TABLE forja.delivery_publications (
         attempt_id ~ '^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
     ),
     lease_set_id text NOT NULL CHECK (char_length(lease_set_id) BETWEEN 1 AND 500),
+    lease_ttl_ms integer NOT NULL CHECK (lease_ttl_ms BETWEEN 60000 AND 86400000),
     publication_ref text NOT NULL CHECK (
         publication_ref = 'refs/forja/deliveries/' || delivery_id
     ),

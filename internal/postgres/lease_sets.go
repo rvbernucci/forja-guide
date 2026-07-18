@@ -51,7 +51,8 @@ func (s *Store) AcquireLeaseSet(
 		return persistence.LeaseSet{}, err
 	}
 	if found {
-		if existing.OwnerID != ownerID || !bytes.Equal(existing.memberDigest, digest) {
+		if existing.OwnerID != ownerID || !bytes.Equal(existing.memberDigest, digest) ||
+			existing.authorizedTTL != ttl {
 			return persistence.LeaseSet{}, conflictError(
 				"postgres.AcquireLeaseSet",
 				"lease set ID is already bound to different authority",
@@ -63,9 +64,15 @@ func (s *Store) AcquireLeaseSet(
 				"expired or released lease set IDs cannot be reused",
 			)
 		}
-		leases, err := s.loadAndVerifyLeaseSetMembers(ctx, tx, leaseSetID, ownerID, normalized, nil)
+		leases, memberUpdatedAt, err := s.loadAndVerifyLeaseSetMembers(ctx, tx, leaseSetID, ownerID, normalized, nil)
 		if err != nil {
 			return persistence.LeaseSet{}, err
+		}
+		if !leaseSetDurationsMatch(existing, leases, memberUpdatedAt) {
+			return persistence.LeaseSet{}, conflictError(
+				"postgres.AcquireLeaseSet",
+				"lease set duration disagrees with its immutable authority",
+			)
 		}
 		result := persistence.LeaseSet{
 			LeaseSetID: leaseSetID,
@@ -83,7 +90,8 @@ func (s *Store) AcquireLeaseSet(
 	var acquiredAt, expiresAt time.Time
 	if err := tx.QueryRow(
 		ctx,
-		"SELECT clock_timestamp(), clock_timestamp() + $1::interval",
+		`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS value)
+		 SELECT value, value + $1::interval FROM stamp`,
 		intervalString(ttl),
 	).Scan(&acquiredAt, &expiresAt); err != nil {
 		return persistence.LeaseSet{}, databaseError("postgres.AcquireLeaseSet.clock", err)
@@ -151,9 +159,10 @@ func (s *Store) AcquireLeaseSet(
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO forja.lease_sets (
 			tenant_id, repository_id, lease_set_id, owner_id, member_digest,
-			state, acquired_at, expires_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $6)`,
+			state, acquired_at, expires_at, updated_at, authorized_ttl_us
+		) VALUES ($1, $2, $3, $4, $5, 'active', $6, $7, $6, $8)`,
 		s.tenantID, s.repositoryID, leaseSetID, ownerID, digest, acquiredAt, expiresAt,
+		ttl.Microseconds(),
 	); err != nil {
 		return persistence.LeaseSet{}, databaseError("postgres.AcquireLeaseSet.insert_set", err)
 	}
@@ -196,14 +205,17 @@ func (s *Store) RenewLeaseSet(
 	if err := s.lockLeaseSetAndMembers(ctx, tx, leaseSet.LeaseSetID, keys); err != nil {
 		return persistence.LeaseSet{}, err
 	}
-	canonical, err := s.verifyLeaseSetAuthority(ctx, tx, leaseSet, keys, proofs, digest)
+	canonical, err := s.verifyLeaseSetAuthorityWithMinimum(
+		ctx, tx, leaseSet, keys, proofs, digest, 0, ttl,
+	)
 	if err != nil {
 		return persistence.LeaseSet{}, err
 	}
 	var databaseNow, expiresAt time.Time
 	if err := tx.QueryRow(
 		ctx,
-		"SELECT clock_timestamp(), clock_timestamp() + $1::interval",
+		`WITH stamp AS MATERIALIZED (SELECT clock_timestamp() AS value)
+		 SELECT value, value + $1::interval FROM stamp`,
 		intervalString(ttl),
 	).Scan(&databaseNow, &expiresAt); err != nil {
 		return persistence.LeaseSet{}, databaseError("postgres.RenewLeaseSet.clock", err)
@@ -297,7 +309,7 @@ func (s *Store) ReleaseLeaseSet(ctx context.Context, leaseSet persistence.LeaseS
 		}
 		return nil
 	}
-	if _, err := s.loadAndVerifyLeaseSetMembers(
+	if _, _, err := s.loadAndVerifyLeaseSetMembers(
 		ctx, tx, leaseSet.LeaseSetID, leaseSet.OwnerID, keys, proofs,
 	); err != nil {
 		return err
@@ -383,9 +395,11 @@ func (s *Store) verifyHistoricalLeaseSetMembers(
 
 type storedLeaseSet struct {
 	persistence.LeaseSet
-	memberDigest []byte
-	state        string
-	databaseNow  time.Time
+	memberDigest  []byte
+	state         string
+	databaseNow   time.Time
+	updatedAt     time.Time
+	authorizedTTL time.Duration
 }
 
 func (s *Store) loadLeaseSetForUpdate(
@@ -394,8 +408,10 @@ func (s *Store) loadLeaseSetForUpdate(
 	leaseSetID string,
 ) (storedLeaseSet, bool, error) {
 	value := storedLeaseSet{}
+	var authorizedTTLUS int64
 	err := tx.QueryRow(ctx, `
-		SELECT owner_id, member_digest, state, acquired_at, expires_at,
+		SELECT owner_id, member_digest, state, acquired_at, expires_at, updated_at,
+		       authorized_ttl_us,
 		       clock_timestamp()
 		FROM forja.lease_sets
 		WHERE tenant_id=$1 AND repository_id=$2 AND lease_set_id=$3
@@ -403,7 +419,8 @@ func (s *Store) loadLeaseSetForUpdate(
 		s.tenantID, s.repositoryID, leaseSetID,
 	).Scan(
 		&value.OwnerID, &value.memberDigest, &value.state,
-		&value.AcquiredAt, &value.ExpiresAt, &value.databaseNow,
+		&value.AcquiredAt, &value.ExpiresAt, &value.updatedAt,
+		&authorizedTTLUS, &value.databaseNow,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return storedLeaseSet{}, false, nil
@@ -412,6 +429,7 @@ func (s *Store) loadLeaseSetForUpdate(
 		return storedLeaseSet{}, false, databaseError("postgres.loadLeaseSetForUpdate", err)
 	}
 	value.LeaseSetID = leaseSetID
+	value.authorizedTTL = time.Duration(authorizedTTLUS) * time.Microsecond
 	return value, true, nil
 }
 
@@ -424,7 +442,7 @@ func (s *Store) verifyLeaseSetAuthority(
 	digest []byte,
 ) (persistence.LeaseSet, error) {
 	return s.verifyLeaseSetAuthorityWithMinimum(
-		ctx, tx, leaseSet, keys, proofs, digest, 0,
+		ctx, tx, leaseSet, keys, proofs, digest, 0, 0,
 	)
 }
 
@@ -436,6 +454,7 @@ func (s *Store) verifyLeaseSetAuthorityWithMinimum(
 	proofs []persistence.Lease,
 	digest []byte,
 	minimumRemaining time.Duration,
+	expectedTTL time.Duration,
 ) (persistence.LeaseSet, error) {
 	stored, found, err := s.loadLeaseSetForUpdate(ctx, tx, leaseSet.LeaseSetID)
 	if err != nil {
@@ -444,16 +463,25 @@ func (s *Store) verifyLeaseSetAuthorityWithMinimum(
 	if minimumRemaining < 0 {
 		return persistence.LeaseSet{}, invalidLeaseSetError("minimum remaining lease duration cannot be negative")
 	}
+	if expectedTTL < 0 {
+		return persistence.LeaseSet{}, invalidLeaseSetError("expected lease duration cannot be negative")
+	}
 	if !found || stored.state != "active" || stored.OwnerID != leaseSet.OwnerID ||
 		!bytes.Equal(stored.memberDigest, digest) ||
-		!stored.ExpiresAt.After(stored.databaseNow.Add(minimumRemaining)) {
+		!stored.ExpiresAt.After(stored.databaseNow.Add(minimumRemaining)) ||
+		stored.authorizedTTL < time.Millisecond || stored.authorizedTTL > 24*time.Hour ||
+		stored.ExpiresAt.Sub(stored.updatedAt) != stored.authorizedTTL ||
+		(expectedTTL > 0 && stored.authorizedTTL != expectedTTL) {
 		return persistence.LeaseSet{}, conflictError("postgres.verifyLeaseSetAuthority", "lease set is missing, stale, or replaced")
 	}
-	leases, err := s.loadAndVerifyLeaseSetMembers(
+	leases, memberUpdatedAt, err := s.loadAndVerifyLeaseSetMembers(
 		ctx, tx, leaseSet.LeaseSetID, leaseSet.OwnerID, keys, proofs,
 	)
 	if err != nil {
 		return persistence.LeaseSet{}, err
+	}
+	if !leaseSetDurationsMatch(stored, leases, memberUpdatedAt) {
+		return persistence.LeaseSet{}, conflictError("postgres.verifyLeaseSetAuthority", "lease set member duration disagrees with authority")
 	}
 	return persistence.LeaseSet{
 		LeaseSetID: leaseSet.LeaseSetID,
@@ -464,6 +492,31 @@ func (s *Store) verifyLeaseSetAuthorityWithMinimum(
 	}, nil
 }
 
+func leaseSetDurationsMatch(
+	stored storedLeaseSet,
+	leases []persistence.Lease,
+	memberUpdatedAt []time.Time,
+) bool {
+	if len(leases) != len(memberUpdatedAt) ||
+		stored.ExpiresAt.Sub(stored.updatedAt) != stored.authorizedTTL {
+		return false
+	}
+	for index, lease := range leases {
+		if !lease.AcquiredAt.Equal(stored.AcquiredAt) ||
+			!lease.ExpiresAt.Equal(stored.ExpiresAt) ||
+			!memberUpdatedAt[index].Equal(stored.updatedAt) ||
+			lease.ExpiresAt.Sub(memberUpdatedAt[index]) != stored.authorizedTTL {
+			return false
+		}
+	}
+	return true
+}
+
+type storedLeaseSetMember struct {
+	lease     persistence.Lease
+	updatedAt time.Time
+}
+
 func (s *Store) loadAndVerifyLeaseSetMembers(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -471,11 +524,12 @@ func (s *Store) loadAndVerifyLeaseSetMembers(
 	ownerID string,
 	keys []persistence.LeaseKey,
 	expectedProofs []persistence.Lease,
-) ([]persistence.Lease, error) {
+) ([]persistence.Lease, []time.Time, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT member.resource_type, member.resource_id, member.fencing_token,
 		       lease.owner_id, lease.fencing_token, lease.acquired_at,
-		       lease.expires_at, lease.expires_at > clock_timestamp()
+		       lease.expires_at, lease.updated_at,
+		       lease.expires_at > clock_timestamp()
 		FROM forja.lease_set_members AS member
 		JOIN forja.leases AS lease
 		  ON lease.tenant_id=member.tenant_id
@@ -488,53 +542,59 @@ func (s *Store) loadAndVerifyLeaseSetMembers(
 		s.tenantID, s.repositoryID, leaseSetID,
 	)
 	if err != nil {
-		return nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.query", err)
+		return nil, nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.query", err)
 	}
 	defer rows.Close()
-	leases := make([]persistence.Lease, 0, len(keys))
+	members := make([]storedLeaseSetMember, 0, len(keys))
 	for rows.Next() {
-		var lease persistence.Lease
+		var member storedLeaseSetMember
 		var memberToken, liveToken int64
 		var liveOwner string
 		var active bool
 		if err := rows.Scan(
-			&lease.ResourceType, &lease.ResourceID, &memberToken,
-			&liveOwner, &liveToken, &lease.AcquiredAt, &lease.ExpiresAt, &active,
+			&member.lease.ResourceType, &member.lease.ResourceID, &memberToken,
+			&liveOwner, &liveToken, &member.lease.AcquiredAt, &member.lease.ExpiresAt,
+			&member.updatedAt, &active,
 		); err != nil {
-			return nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.scan", err)
+			return nil, nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.scan", err)
 		}
-		lease.TenantID = s.tenantID
-		lease.RepositoryID = s.repositoryID
-		lease.OwnerID = liveOwner
-		lease.FencingToken = liveToken
-		lease.AcquiredAt = lease.AcquiredAt.UTC()
-		lease.ExpiresAt = lease.ExpiresAt.UTC()
+		member.lease.TenantID = s.tenantID
+		member.lease.RepositoryID = s.repositoryID
+		member.lease.OwnerID = liveOwner
+		member.lease.FencingToken = liveToken
+		member.lease.AcquiredAt = member.lease.AcquiredAt.UTC()
+		member.lease.ExpiresAt = member.lease.ExpiresAt.UTC()
+		member.updatedAt = member.updatedAt.UTC()
 		if !active || liveOwner != ownerID || liveToken != memberToken {
-			return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set member is stale or replaced")
+			return nil, nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set member is stale or replaced")
 		}
-		leases = append(leases, lease)
+		members = append(members, member)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.rows", err)
+		return nil, nil, databaseError("postgres.loadAndVerifyLeaseSetMembers.rows", err)
 	}
-	if len(leases) != len(keys) {
-		return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership is incomplete")
+	if len(members) != len(keys) {
+		return nil, nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership is incomplete")
 	}
 	// PostgreSQL text ordering follows the database collation, while lease-set
 	// digests and proofs use byte ordering. Canonicalize after loading so
 	// authority checks remain stable across supported database locales.
-	slices.SortFunc(leases, func(left, right persistence.Lease) int {
-		return compareLeaseKeys(left.LeaseKey, right.LeaseKey)
+	slices.SortFunc(members, func(left, right storedLeaseSetMember) int {
+		return compareLeaseKeys(left.lease.LeaseKey, right.lease.LeaseKey)
 	})
+	leases := make([]persistence.Lease, len(members))
+	updatedAt := make([]time.Time, len(members))
 	for index := range keys {
+		leases[index] = members[index].lease
+		updatedAt[index] = members[index].updatedAt
 		if leases[index].LeaseKey != keys[index] {
-			return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership disagrees with authority")
+			return nil, nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set membership disagrees with authority")
 		}
 		if expectedProofs != nil && leases[index].FencingToken != expectedProofs[index].FencingToken {
-			return nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set fencing proof is stale")
+			return nil, nil, conflictError("postgres.loadAndVerifyLeaseSetMembers", "lease set fencing proof is stale")
 		}
 	}
-	return leases, nil
+	return leases, updatedAt, nil
 }
 
 func (s *Store) lockLeaseSetAndMembers(
@@ -578,8 +638,8 @@ func (s *Store) validateLeaseSetInput(
 	if utf8.RuneCountInString(ownerID) < 1 || utf8.RuneCountInString(ownerID) > 500 {
 		return nil, nil, invalidLeaseSetError("owner ID length must be between 1 and 500 characters")
 	}
-	if ttl < time.Millisecond || ttl > 24*time.Hour {
-		return nil, nil, invalidLeaseSetError("lease TTL must be between one millisecond and 24 hours")
+	if ttl < time.Millisecond || ttl > 24*time.Hour || ttl%time.Microsecond != 0 {
+		return nil, nil, invalidLeaseSetError("lease TTL must be a whole number of microseconds between one millisecond and 24 hours")
 	}
 	if len(keys) < 1 || len(keys) > 1024 {
 		return nil, nil, invalidLeaseSetError("lease set must contain between 1 and 1024 resources")

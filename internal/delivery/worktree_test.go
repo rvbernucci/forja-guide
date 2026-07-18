@@ -727,7 +727,7 @@ func deliveryRequest(repository string, root string, base string) contracts.Deli
 			MaxRetries:          2,
 		},
 		MechanicalValidatorIDs: []string{"unit-tests"},
-		LeaseTTLMS:             2_000,
+		LeaseTTLMS:             contracts.MinimumPublicationLeaseTTLMS,
 	}
 }
 

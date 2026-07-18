@@ -148,7 +148,12 @@ func (s *PublicationService) Publish(
 				return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
 			}
 			return s.releasePublishedLease(ctx, receipt, leaseSet, true)
-		case "conflict", "abandoned":
+		case "abandoned":
+			if err := s.leaseSet.ReleaseLeaseSet(ctx, leaseSet); err != nil {
+				return PublicationResult{}, errors.Join(ErrPublicationNotApplied, err)
+			}
+			return PublicationResult{}, ErrPublicationNotApplied
+		case "conflict":
 			return PublicationResult{}, fmt.Errorf("%w: publication attempt is already %s", ErrPublicationConflict, recorded.State)
 		case "prepared":
 		default:
@@ -199,6 +204,12 @@ func (s *PublicationService) Publish(
 			return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
 		}
 		return s.releasePublishedLease(ctx, receipt, leaseSet, true)
+	}
+	if record.State == "abandoned" {
+		if err := s.leaseSet.ReleaseLeaseSet(ctx, leaseSet); err != nil {
+			return PublicationResult{}, errors.Join(ErrPublicationNotApplied, err)
+		}
+		return PublicationResult{}, ErrPublicationNotApplied
 	}
 	if record.State != "prepared" {
 		return PublicationResult{}, fmt.Errorf("publication journal returned unsupported state %q", record.State)
@@ -276,6 +287,12 @@ func (s *PublicationService) Recover(
 	if err := requireExactPublicationRecord(record, intent); err != nil {
 		return PublicationResult{}, err
 	}
+	if record.State == "abandoned" {
+		if err := s.leaseSet.ReleaseLeaseSet(ctx, leaseSet); err != nil {
+			return PublicationResult{}, errors.Join(ErrPublicationNotApplied, err)
+		}
+		return PublicationResult{}, ErrPublicationNotApplied
+	}
 	observed, err := s.observePublicationRef(ctx, request.PublicationRef)
 	if err != nil {
 		return PublicationResult{}, err
@@ -307,7 +324,33 @@ func (s *PublicationService) Recover(
 		return s.releasePublishedLease(ctx, receipt, leaseSet, true)
 	}
 	if optionalCommitEqual(observed, request.PublicationPreviousCommit) {
-		return PublicationResult{}, ErrPublicationNotApplied
+		record, err = s.journal.AbandonDeliveryPublication(
+			ctx, intent,
+			func(observeContext context.Context) (*string, error) {
+				return s.observePublicationRef(observeContext, request.PublicationRef)
+			},
+		)
+		if err != nil {
+			return PublicationResult{}, err
+		}
+		switch record.State {
+		case "published":
+			observed, err = s.observePublicationRef(ctx, request.PublicationRef)
+			if err != nil {
+				return PublicationResult{}, err
+			}
+			if observed == nil || *observed != result.ResultCommit {
+				return PublicationResult{}, fmt.Errorf("%w: durable receipt disagrees with the Git ref", ErrPublicationConflict)
+			}
+			return s.releasePublishedLease(ctx, receipt, leaseSet, true)
+		case "abandoned":
+			if err := s.leaseSet.ReleaseLeaseSet(ctx, leaseSet); err != nil {
+				return PublicationResult{}, errors.Join(ErrPublicationNotApplied, err)
+			}
+			return PublicationResult{}, ErrPublicationNotApplied
+		default:
+			return PublicationResult{}, fmt.Errorf("publication abandonment returned unsupported state %q", record.State)
+		}
 	}
 	if _, conflictErr := s.journal.ConflictDeliveryPublication(ctx, intent, observed); conflictErr != nil {
 		return PublicationResult{}, errors.Join(
@@ -432,11 +475,12 @@ func (s *PublicationService) publicationIntent(
 		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
+		LeaseTTLMS      int    `json:"lease_ttl_ms"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
 		request.DeliveryID, storageTenantID, storageRepositoryID,
-		request.AttemptID, leaseSet.LeaseSetID,
+		request.AttemptID, leaseSet.LeaseSetID, request.LeaseTTLMS,
 		fmt.Sprintf("%x", authorityDigest), fmt.Sprintf("%x", receiptDigest),
 	}
 	identityJSON, err := json.Marshal(identityDocument)
@@ -447,7 +491,8 @@ func (s *PublicationService) publicationIntent(
 	return persistence.DeliveryPublicationIntent{
 		DeliveryID: request.DeliveryID, TenantID: storageTenantID,
 		RepositoryID: storageRepositoryID, AttemptID: request.AttemptID,
-		LeaseSetID: leaseSet.LeaseSetID, PublicationRef: request.PublicationRef,
+		LeaseSetID: leaseSet.LeaseSetID, LeaseTTLMS: request.LeaseTTLMS,
+		PublicationRef:            request.PublicationRef,
 		PublicationPreviousCommit: cloneOptionalString(request.PublicationPreviousCommit),
 		ResultCommit:              result.ResultCommit,
 		AuthoritySHA256:           fmt.Sprintf("%x", authorityDigest),
@@ -631,7 +676,8 @@ func requireExactPublicationRecord(
 	stored := record.Intent
 	if stored.DeliveryID != intent.DeliveryID || stored.TenantID != intent.TenantID ||
 		stored.RepositoryID != intent.RepositoryID || stored.AttemptID != intent.AttemptID ||
-		stored.LeaseSetID != intent.LeaseSetID || stored.PublicationRef != intent.PublicationRef ||
+		stored.LeaseSetID != intent.LeaseSetID || stored.LeaseTTLMS != intent.LeaseTTLMS ||
+		stored.PublicationRef != intent.PublicationRef ||
 		!optionalCommitEqual(stored.PublicationPreviousCommit, intent.PublicationPreviousCommit) ||
 		stored.ResultCommit != intent.ResultCommit || stored.AuthoritySHA256 != intent.AuthoritySHA256 ||
 		stored.ReceiptSHA256 != intent.ReceiptSHA256 || stored.IntentSHA256 != intent.IntentSHA256 ||

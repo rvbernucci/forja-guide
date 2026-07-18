@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
@@ -72,6 +74,10 @@ func TestDeliveryPublicationLifecycleAndExactReplay(t *testing.T) {
 		published.UpdatedAt.Before(*published.PublishedAt) {
 		t.Fatalf("publication timestamps = published %v updated %v receipt %v",
 			published.PublishedAt, published.UpdatedAt, receipt.PublishedAt)
+	}
+	if published.PublishedAt.Format(time.RFC3339Nano) != receipt.PublishedAt.Format(time.RFC3339Nano) {
+		t.Fatalf("publication timestamp representation = %q, want %q",
+			published.PublishedAt.Format(time.RFC3339Nano), receipt.PublishedAt.Format(time.RFC3339Nano))
 	}
 	completedReplay, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
@@ -173,7 +179,7 @@ func TestDeliveryPublicationDoesNotApplyWithShortAuthorityHorizon(t *testing.T) 
 			deliveryLeaseKey("file", "internal/generated"),
 			deliveryLeaseKey("artifact", "evidence"),
 		},
-		"publication-worker", 20*time.Second,
+		"publication-worker", time.Duration(contracts.MinimumPublicationLeaseTTLMS)*time.Millisecond,
 	)
 	if err != nil {
 		t.Fatalf("acquire short publication lease set: %v", err)
@@ -182,6 +188,7 @@ func TestDeliveryPublicationDoesNotApplyWithShortAuthorityHorizon(t *testing.T) 
 	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
 		t.Fatalf("prepare short-horizon completion: %v", err)
 	}
+	agePublicationLeaseSet(t, pool, leaseSet.LeaseSetID, 21*time.Second)
 	called := false
 	if _, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
@@ -213,7 +220,7 @@ func TestDeliveryPublicationRechecksAuthorityAfterRevalidation(t *testing.T) {
 			deliveryLeaseKey("file", "internal/generated"),
 			deliveryLeaseKey("artifact", "evidence"),
 		},
-		"publication-worker", 44*time.Second,
+		"publication-worker", time.Duration(contracts.MinimumPublicationLeaseTTLMS)*time.Millisecond,
 	)
 	if err != nil {
 		t.Fatalf("acquire publication lease set: %v", err)
@@ -222,13 +229,14 @@ func TestDeliveryPublicationRechecksAuthorityAfterRevalidation(t *testing.T) {
 	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
 		t.Fatalf("prepare publication: %v", err)
 	}
+	agePublicationLeaseSet(t, pool, leaseSet.LeaseSetID, 5*time.Second)
 	revalidated := false
 	applied := false
 	if _, err := store.CompleteDeliveryPublication(
 		t.Context(), intent, leaseSet,
 		func(context.Context) error {
 			revalidated = true
-			time.Sleep(5 * time.Second)
+			time.Sleep(16 * time.Second)
 			return nil
 		},
 		func(context.Context) error {
@@ -240,6 +248,93 @@ func TestDeliveryPublicationRechecksAuthorityAfterRevalidation(t *testing.T) {
 	}
 	if !revalidated || applied {
 		t.Fatalf("publication callbacks: revalidated=%v applied=%v", revalidated, applied)
+	}
+}
+
+func TestDeliveryPublicationRejectsLeaseDurationOutsideIntentAuthority(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_99999999-9999-4999-8999-999999999999"
+	attemptID := "attempt_99999999-9999-4999-8999-999999999999"
+	leaseSet, err := store.AcquireLeaseSet(
+		t.Context(), attemptID,
+		[]persistence.LeaseKey{
+			deliveryLeaseKey("worktree", deliveryID),
+			deliveryLeaseKey("file", "internal/generated"),
+			deliveryLeaseKey("artifact", "evidence"),
+		},
+		"publication-worker", 61*time.Second,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	if _, err := store.PrepareDeliveryPublication(
+		t.Context(), intent, leaseSet,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("mismatched lease duration error = %v, want conflict", err)
+	}
+	if _, found, err := store.GetDeliveryPublication(t.Context(), deliveryID, attemptID); err != nil || found {
+		t.Fatalf("mismatched duration persisted intent: found=%v err=%v", found, err)
+	}
+}
+
+func TestDeliveryPublicationRejectsMemberDurationOutsideIntentAuthority(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1"
+	attemptID := "attempt_a1a1a1a1-a1a1-41a1-81a1-a1a1a1a1a1a1"
+	leaseSet := acquirePublicationLeaseSet(t, store, deliveryID, attemptID)
+	intent := publicationIntentFixture(t, leaseSet, deliveryID, attemptID, "authority")
+	tampered := leaseSet.Leases[0]
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.leases
+		SET updated_at=updated_at - interval '1 second'
+		WHERE tenant_id=$1 AND repository_id=$2
+		  AND resource_type=$3 AND resource_id=$4`,
+		DefaultTenantID, DefaultRepositoryID, tampered.ResourceType, tampered.ResourceID,
+	); err != nil {
+		t.Fatalf("tamper publication lease member duration: %v", err)
+	}
+	if _, err := store.PrepareDeliveryPublication(
+		t.Context(), intent, leaseSet,
+	); !isFaultCode(err, fault.CodeConflict) {
+		t.Fatalf("tampered member duration error = %v, want conflict", err)
+	}
+	if _, found, err := store.GetDeliveryPublication(t.Context(), deliveryID, attemptID); err != nil || found {
+		t.Fatalf("tampered member duration persisted intent: found=%v err=%v", found, err)
+	}
+}
+
+func TestDeliveryPublicationAbandonmentAllowsCleanRetry(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	deliveryID := "delivery_abababab-abab-4bab-8bab-abababababab"
+	firstAttempt := "attempt_abababab-abab-4bab-8bab-abababababab"
+	firstLease := acquirePublicationLeaseSet(t, store, deliveryID, firstAttempt)
+	firstIntent := publicationIntentFixture(t, firstLease, deliveryID, firstAttempt, "authority-1")
+	if _, err := store.PrepareDeliveryPublication(t.Context(), firstIntent, firstLease); err != nil {
+		t.Fatal(err)
+	}
+	abandoned, err := store.AbandonDeliveryPublication(
+		t.Context(), firstIntent,
+		func(context.Context) (*string, error) {
+			return firstIntent.PublicationPreviousCommit, nil
+		},
+	)
+	if err != nil || abandoned.State != "abandoned" {
+		t.Fatalf("abandoned publication = %#v err=%v", abandoned, err)
+	}
+	if err := store.ReleaseLeaseSet(t.Context(), firstLease); err != nil {
+		t.Fatal(err)
+	}
+
+	secondAttempt := "attempt_cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd"
+	secondLease := acquirePublicationLeaseSet(t, store, deliveryID, secondAttempt)
+	secondIntent := publicationIntentFixture(t, secondLease, deliveryID, secondAttempt, "authority-2")
+	prepared, err := store.PrepareDeliveryPublication(t.Context(), secondIntent, secondLease)
+	if err != nil || prepared.State != "prepared" {
+		t.Fatalf("clean retry publication = %#v err=%v", prepared, err)
 	}
 }
 
@@ -329,7 +424,7 @@ func TestDeliveryPublicationConflictIsTerminal(t *testing.T) {
 	}
 }
 
-func TestMigrationFiveRollbackRefusesPublicationHistory(t *testing.T) {
+func TestMigrationRollbackPreservesLeaseAndPublicationAuthority(t *testing.T) {
 	pool := migratedPool(t)
 	store := newIntegrationStore(t, pool)
 	leaseSet := acquirePublicationLeaseSet(
@@ -338,6 +433,15 @@ func TestMigrationFiveRollbackRefusesPublicationHistory(t *testing.T) {
 	intent := publicationIntentFixture(t, leaseSet, publicationTestDelivery, publicationTestAttempt, "authority")
 	if _, err := store.PrepareDeliveryPublication(t.Context(), intent, leaseSet); err != nil {
 		t.Fatalf("prepare rollback guard publication: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err == nil {
+		t.Fatal("migration 006 rollback accepted an active lease set")
+	}
+	if err := store.ReleaseLeaseSet(t.Context(), leaseSet); err != nil {
+		t.Fatalf("release rollback-guard lease set: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback migration 006 after release: %v", err)
 	}
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("migration 005 rollback accepted a non-empty publication journal")
@@ -372,6 +476,48 @@ func acquirePublicationLeaseSet(
 	return leaseSet
 }
 
+func agePublicationLeaseSet(
+	t *testing.T,
+	pool *pgxpool.Pool,
+	leaseSetID string,
+	age time.Duration,
+) {
+	t.Helper()
+	approvedTTL := time.Duration(contracts.MinimumPublicationLeaseTTLMS) * time.Millisecond
+	var updatedAt, expiresAt time.Time
+	if err := pool.QueryRow(t.Context(), `
+		WITH stamp AS MATERIALIZED (
+			SELECT clock_timestamp() - $1::interval AS value
+		)
+		SELECT value, value + $2::interval FROM stamp`,
+		intervalString(age), intervalString(approvedTTL),
+	).Scan(&updatedAt, &expiresAt); err != nil {
+		t.Fatalf("calculate aged lease timestamps: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.lease_sets
+		SET updated_at=$1, expires_at=$2
+		WHERE tenant_id=$3 AND repository_id=$4 AND lease_set_id=$5`,
+		updatedAt, expiresAt, DefaultTenantID, DefaultRepositoryID, leaseSetID,
+	); err != nil {
+		t.Fatalf("age lease set: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.leases AS lease
+		SET updated_at=$1, expires_at=$2
+		FROM forja.lease_set_members AS member
+		WHERE member.tenant_id=$3 AND member.repository_id=$4
+		  AND member.lease_set_id=$5
+		  AND lease.tenant_id=member.tenant_id
+		  AND lease.repository_id=member.repository_id
+		  AND lease.resource_type=member.resource_type
+		  AND lease.resource_id=member.resource_id`,
+		updatedAt, expiresAt, DefaultTenantID, DefaultRepositoryID, leaseSetID,
+	); err != nil {
+		t.Fatalf("age lease set members: %v", err)
+	}
+}
+
 func publicationIntentFixture(
 	t *testing.T,
 	leaseSet persistence.LeaseSet,
@@ -391,6 +537,7 @@ func publicationIntentFixture(
 			FencingToken: lease.FencingToken,
 		})
 	}
+	receiptZone := time.FixedZone("receipt-offset", 5*60*60+30*60)
 	receipt := contracts.DeliveryReceipt{
 		DeliveryID: deliveryID, SchemaVersion: contracts.DeliverySchemaVersion, Status: "published",
 		TenantID: "tenant_" + DefaultTenantID, RepositoryID: "repo_" + DefaultRepositoryID,
@@ -402,8 +549,8 @@ func publicationIntentFixture(
 		AuthorID:                  "author", ValidatorID: "validator", LeaseFences: fences,
 		ValidationReportRef: "evidence/validation-report.json#sha256=" + strings.Repeat("1", 64),
 		EvidenceManifestRef: "evidence/manifest.json#sha256=" + strings.Repeat("2", 64),
-		CreatedAt:           time.Unix(1_700_000_000, 123_456_789).UTC(),
-		PublishedAt:         time.Unix(1_700_000_000, 987_654_321).UTC(),
+		CreatedAt:           time.Unix(1_700_000_000, 123_456_789).In(receiptZone),
+		PublishedAt:         time.Unix(1_700_000_000, 987_654_321).In(receiptZone),
 	}
 	receiptJSON, err := json.Marshal(receipt)
 	if err != nil {
@@ -414,6 +561,7 @@ func publicationIntentFixture(
 	intent := persistence.DeliveryPublicationIntent{
 		DeliveryID: deliveryID, TenantID: DefaultTenantID,
 		RepositoryID: DefaultRepositoryID, AttemptID: attemptID, LeaseSetID: leaseSet.LeaseSetID,
+		LeaseTTLMS:     contracts.MinimumPublicationLeaseTTLMS,
 		PublicationRef: receipt.PublicationRef, PublicationPreviousCommit: &previousCommit,
 		ResultCommit: resultCommit, AuthoritySHA256: fmt.Sprintf("%x", authorityDigest),
 		ReceiptSHA256: fmt.Sprintf("%x", receiptDigest), ReceiptJSON: receiptJSON,
@@ -424,11 +572,12 @@ func publicationIntentFixture(
 		RepositoryID    string `json:"repository_id"`
 		AttemptID       string `json:"attempt_id"`
 		LeaseSetID      string `json:"lease_set_id"`
+		LeaseTTLMS      int    `json:"lease_ttl_ms"`
 		AuthoritySHA256 string `json:"authority_sha256"`
 		ReceiptSHA256   string `json:"receipt_sha256"`
 	}{
 		intent.DeliveryID, intent.TenantID, intent.RepositoryID,
-		intent.AttemptID, intent.LeaseSetID,
+		intent.AttemptID, intent.LeaseSetID, intent.LeaseTTLMS,
 		intent.AuthoritySHA256, intent.ReceiptSHA256,
 	})
 	if err != nil {

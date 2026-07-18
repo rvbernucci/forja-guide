@@ -522,7 +522,10 @@ func TestDeliverySemanticValidationFailsClosed(t *testing.T) {
 		"unscoped evidence":        func(value *DeliveryRequest) { value.EvidenceScope = "other/evidence" },
 		"injected publication ref": func(value *DeliveryRequest) { value.PublicationRef += "/other" },
 		"short lease":              func(value *DeliveryRequest) { value.LeaseTTLMS = value.WorkerBudgets.WallClockMS },
-		"path traversal":           func(value *DeliveryRequest) { value.WriteScopes = []string{"../escape"} },
+		"short publication horizon": func(value *DeliveryRequest) {
+			value.LeaseTTLMS = MinimumPublicationLeaseTTLMS - 1
+		},
+		"path traversal": func(value *DeliveryRequest) { value.WriteScopes = []string{"../escape"} },
 		"unclean repository root": func(value *DeliveryRequest) {
 			value.RepositoryPath = "/srv/repos/../sensitive"
 		},
@@ -577,7 +580,7 @@ func validDeliveryRequest() DeliveryRequest {
 			CancellationGraceMS: 100, MaxRetries: 1,
 		},
 		MechanicalValidatorIDs: []string{"go-format", "go-test"},
-		LeaseTTLMS:             5000,
+		LeaseTTLMS:             MinimumPublicationLeaseTTLMS,
 	}
 }
 
