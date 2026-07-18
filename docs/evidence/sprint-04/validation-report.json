@@ -1,0 +1,101 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "validators": [
+    {
+      "name": "protected main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29627817659",
+      "head_sha": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "blocked-report semantics pull request workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29627747790",
+      "head_sha": "e25f6b8bc159ee6877bf3495ac46120cbd457e36"
+    },
+    {
+      "name": "isolated Codex CLI complete Sprint review",
+      "type": "independent",
+      "result": "passed",
+      "model": "gpt-5.6-sol",
+      "reviewed_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+      "reviewed_range_base": "b419628985b8da11fd5e237e63563db7499f399b",
+      "artifact_path": "docs/evidence/sprint-04/reviews/merged-implementation-review.md",
+      "artifact_sha256": "02a96854441e0352ed59af7db52a2e24dfb740e50a0f36fadba2cb82f6d34ef5",
+      "summary": "No discrete actionable issue remained after complete review of worker supervision, contracts, fenced attempt persistence, receipt verification, tests, and documentation."
+    },
+    {
+      "name": "CodeRabbit pull request status context",
+      "type": "automated_status",
+      "result": "completed_without_review_due_to_rate_limit",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/23",
+      "summary": "The required status completed successfully, but the service explicitly reported that no substantive review ran because of a temporary review limit. It is not counted as independent validation."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit after this non-authoritative package is published to main."
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 27,
+    "sources": {
+      "initial_worker_pull_request_review": 11,
+      "post_merge_boundary_review": 5,
+      "receipt_verifier_follow_up": 1,
+      "filesystem_race_review_chain": 4,
+      "precreated_scope_review": 3,
+      "exact_changed_path_review": 1,
+      "failed_worktree_quarantine_review": 1,
+      "blocked_report_semantics_review": 1
+    },
+    "themes": [
+      "process-tree cleanup, event deadlines, and bounded output accounting",
+      "environment sanitization and Codex shell-policy defense in depth",
+      "write-scope symlink races, hidden Git state, and ignored-file mutation",
+      "exact report-to-worktree equality and content-addressed evidence",
+      "fenced attempt lifecycle, idempotent recovery, and receipt verification",
+      "terminal quarantine for failed dirty worktrees",
+      "preservation of validated blocked partial work without weakening quarantine"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "worker cancellation leaves no process in the launched process group",
+      "result": "proven"
+    },
+    {
+      "criterion": "wall and inactivity timeouts produce stable retryable classifications",
+      "result": "proven"
+    },
+    {
+      "criterion": "a restarted supervisor reconciles abandoned attempts before reuse",
+      "result": "proven"
+    },
+    {
+      "criterion": "worker authority is bounded by scopes, budgets, contracts, and fenced persistence",
+      "result": "proven"
+    },
+    {
+      "criterion": "invalid, unreported, or failed mutations cannot become successful work",
+      "result": "proven"
+    }
+  ],
+  "operational_observability": {
+    "result": "passed",
+    "signals": [
+      "structured starting, started, output, and finished events exclude raw process output",
+      "canonical results carry stable status, reason, exit code, duration, usage, and hashes",
+      "attempt lifecycle events and receipts preserve correlation, causation, lease owner, and fencing token",
+      "timeouts, cancellation, invalid reports, budget rejection, and contamination are distinct classifications"
+    ]
+  },
+  "recorded_at": "2026-07-18T02:58:05Z"
+}

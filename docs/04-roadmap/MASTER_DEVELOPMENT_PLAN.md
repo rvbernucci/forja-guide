@@ -1,8 +1,9 @@
 # Master Development Plan
 
 Status: Active. Sprints 00-03 closed. Sprint 04 has a complete implementation
-candidate; evidence publication and immutable closure review remain open.
-Sprint 05 is not yet authorized. Gate A remains achieved.
+and a non-authoritative closure candidate; immutable review of the exact public
+candidate remains open. Sprint 05 is not yet authorized. Gate A remains
+achieved.
 
 ## Objective
 

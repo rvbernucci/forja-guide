@@ -1,0 +1,23 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "status": "recorded",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "metrics": {
+    "tracked_files_before_evidence": 186,
+    "go_files": 63,
+    "go_test_files": 22,
+    "test_and_fuzz_entry_points": 180,
+    "worker_test_and_fuzz_entry_points": 35,
+    "worker_supervisor_statement_coverage_percent": 83.1,
+    "worker_cli_statement_coverage_percent": 64.5,
+    "canonical_json_schemas": 10,
+    "postgres_migration_versions": 3,
+    "reproducible_linux_binaries": 8,
+    "known_reachable_vulnerabilities": 0,
+    "independent_review_findings_resolved": 27,
+    "independent_final_full_range_findings": 0
+  },
+  "official_database_target": "PostgreSQL 18.3",
+  "recorded_at": "2026-07-18T02:58:05Z"
+}

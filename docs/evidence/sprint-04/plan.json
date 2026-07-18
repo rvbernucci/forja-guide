@@ -1,0 +1,27 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "04",
+  "name": "Bounded Worker Supervisor",
+  "status": "completed",
+  "objective": "Execute Codex CLI workers as bounded, cancellable, observable processes while preserving deterministic scheduler, approval, scope, budget, and evidence authority.",
+  "basis_commit": "1ed61f0ba7a5638ae1ca478568addc233fab3702",
+  "scope": [
+    "versioned worker task, report, result, and budget contracts",
+    "generic worker supervisor with a Codex CLI adapter",
+    "sanitized process environments and declared write-scope enforcement",
+    "independent process groups, cancellation, inactivity, wall-clock, output, token, command, and retry budgets",
+    "strict report validation against exact observed Git and ignored-file changes",
+    "content-addressed evidence references and failed-worktree quarantine",
+    "fenced PostgreSQL attempt creation, start, finish, replay, and restart reconciliation",
+    "one-shot operational CLI, structured lifecycle events, fault injection, and reproducible Linux builds"
+  ],
+  "out_of_scope": [
+    "worktree creation, leased delivery, and automated quarantine disposal owned by Sprint 05",
+    "multi-run scheduling and worker-pool placement",
+    "remote container execution and production host confidentiality boundaries",
+    "semantic retrieval, graph projection, and context brokering"
+  ],
+  "author": "codex",
+  "independent_validator": "Protected GitHub Actions and isolated Codex CLI review of the exact public candidate",
+  "completed_at": "2026-07-18T02:58:05Z"
+}
