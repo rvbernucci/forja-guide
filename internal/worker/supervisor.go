@@ -984,9 +984,12 @@ func validateAbsoluteDirectory(path string, label string) error {
 	if !filepath.IsAbs(path) || filepath.Clean(path) != path {
 		return fmt.Errorf("%s path must be absolute and clean", label)
 	}
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return fmt.Errorf("stat %s path: %w", label, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("%s path must not be a symlink", label)
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("%s path must be a directory", label)
@@ -1077,39 +1080,14 @@ func validateEvidenceDirectory(path string, root string) error {
 }
 
 func prepareEvidenceDirectory(path string, root string) error {
-	ancestor := path
-	for {
-		info, err := os.Lstat(ancestor)
-		if err == nil {
-			if info.Mode()&os.ModeSymlink == 0 && !info.IsDir() {
-				return fmt.Errorf("evidence output ancestor must be a directory")
-			}
-			break
-		}
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("inspect evidence output ancestor: %w", err)
-		}
-		parent := filepath.Dir(ancestor)
-		if parent == ancestor {
-			return fmt.Errorf("evidence output has no existing ancestor")
-		}
-		ancestor = parent
+	relative, err := filepath.Rel(root, path)
+	if err != nil || !validScope(relative) || relative == "." {
+		return fmt.Errorf("evidence output must be a proper worktree descendant")
 	}
-	resolvedAncestor, err := filepath.EvalSymlinks(ancestor)
-	if err != nil {
-		return fmt.Errorf("resolve evidence output ancestor: %w", err)
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		return fmt.Errorf("resolve worktree path: %w", err)
-	}
-	if !pathWithin(resolvedAncestor, resolvedRoot) {
-		return fmt.Errorf("evidence output ancestor escapes the worktree")
-	}
-	if err := os.MkdirAll(path, 0o700); err != nil {
+	if err := materializeScopeDirectory(root, relative); err != nil {
 		return fmt.Errorf("create evidence output directory: %w", err)
 	}
-	return validateResolvedChild(path, root)
+	return validateEvidenceDirectory(path, root)
 }
 
 func processExitCode(err error) *int {

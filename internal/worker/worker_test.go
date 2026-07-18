@@ -690,6 +690,28 @@ func TestSupervisorRequiresDeclaredRepositoryBinding(t *testing.T) {
 	}
 }
 
+func TestSupervisorRejectsSymlinkedWorktreeRoot(t *testing.T) {
+	repository := t.TempDir()
+	mustInitGitRepository(t, repository)
+	container := t.TempDir()
+	link := filepath.Join(container, "worktree-link")
+	if err := os.Symlink(repository, link); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(link)
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
+		!strings.Contains(err.Error(), "must not be a symlink") {
+		t.Fatalf("symlinked worktree root error=%v", err)
+	}
+}
+
 func TestSupervisorRejectsUnsupportedReadScope(t *testing.T) {
 	_, err := executeTask(t, processAdapter{mode: "success"}, nil, func(task *contracts.WorkerTask) {
 		task.ReadScopes = []string{"docs"}
@@ -727,8 +749,32 @@ func TestSupervisorRejectsEvidenceSymlinkResolvingToWorktreeRoot(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "proper worktree descendant") {
+		!strings.Contains(err.Error(), "evidence output") {
 		t.Fatalf("root-equivalent evidence symlink error=%v", err)
+	}
+}
+
+func TestSupervisorDoesNotMaterializeEvidenceThroughExternalSymlink(t *testing.T) {
+	repository := t.TempDir()
+	outside := t.TempDir()
+	mustInitGitRepository(t, repository)
+	if err := os.Symlink(outside, filepath.Join(repository, "link")); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	task := workerTaskAt(repository)
+	task.EvidenceOutputDir = filepath.Join(repository, "link", "new")
+	supervisor, err := NewSupervisor(
+		mustRegistry(t), processAdapter{mode: "success"}, nil,
+		[]string{"PATH=" + os.Getenv("PATH")},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := supervisor.Execute(t.Context(), task); err == nil {
+		t.Fatal("evidence path through an external symlink was accepted")
+	}
+	if _, err := os.Stat(filepath.Join(outside, "new")); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("evidence validation mutated external destination: %v", err)
 	}
 }
 
@@ -808,7 +854,7 @@ func TestSupervisorRejectsEvidenceSymlinkBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := supervisor.Execute(t.Context(), task); err == nil ||
-		!strings.Contains(err.Error(), "ancestor escapes") {
+		!strings.Contains(err.Error(), "evidence output") {
 		t.Fatalf("evidence symlink error=%v", err)
 	}
 	if _, err := os.Stat(filepath.Join(outside, "must-not-exist")); !errors.Is(err, os.ErrNotExist) {

@@ -34,7 +34,9 @@ evidence location, attempt ordinal, optional model, and budgets. Paths are
 absolute at the process boundary; declared scopes are clean repository-relative
 paths. Before launch, the supervisor resolves both Git identities and requires
 the worktree root to share the declared repository's canonical common Git
-directory. An unrelated directory cannot acquire worker sandbox authority.
+directory. The repository, worktree, and evidence root entries themselves must
+be real directories rather than symlinks; symlinks in operating-system ancestor
+paths remain compatible. An unrelated directory cannot acquire worker sandbox authority.
 Sprint 04 accepts only `read_scopes: ["."]`: the current Codex sandbox cannot
 enforce narrower confidentiality boundaries. A narrower scope is rejected
 rather than represented as security. Write scopes are mechanically enforced.
@@ -43,7 +45,8 @@ physically resolved before launch. On Linux and macOS, descriptor-relative
 `openat`/`mkdirat` operations with no-follow semantics prevent symlink swaps
 from redirecting creation; unsupported platforms fail closed. Non-directories
 and paths that traverse symlinks away from their declared repository location
-are rejected.
+are rejected. The evidence directory uses the same descriptor-relative
+materialization path.
 
 `max_retries` counts retries after the first attempt. Therefore an
 `attempt_ordinal` greater than `max_retries + 1` is rejected before process
