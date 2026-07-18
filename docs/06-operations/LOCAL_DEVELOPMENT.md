@@ -1,6 +1,6 @@
 # Local Development
 
-Status: Sprint 03 closed; Sprint 04 worker supervisor implementation candidate
+Status: Sprint 03 control surface and Sprint 04 worker supervisor implemented
 
 ## Current Repository
 

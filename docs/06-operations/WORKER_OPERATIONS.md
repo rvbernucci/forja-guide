@@ -1,6 +1,6 @@
 # Worker Operations
 
-Status: Sprint 04 implementation candidate
+Status: Sprint 04 worker operations implemented
 
 ## One-Shot Execution
 

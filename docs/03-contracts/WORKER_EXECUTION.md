@@ -1,6 +1,6 @@
 # Worker Execution Contract
 
-Status: Implemented candidate in Sprint 04
+Status: Implemented in Sprint 04
 
 ## Boundary
 

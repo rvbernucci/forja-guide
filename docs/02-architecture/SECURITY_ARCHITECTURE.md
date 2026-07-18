@@ -1,7 +1,7 @@
 # Security Architecture
 
-Status: MCP and daemon controls implemented; Sprint 04 worker controls are an
-implementation candidate; retrieval controls remain proposed
+Status: MCP, daemon, and Sprint 04 worker controls implemented; retrieval
+controls remain proposed
 
 ## Primary Threats
 
@@ -60,7 +60,7 @@ Implemented through Sprint 03:
   with receipt recovery consuming event-specific evidence;
 - deterministic schema validation and idempotent command replay.
 
-Implemented as a Sprint 04 candidate:
+Implemented in Sprint 04:
 
 - strict worker contracts and full-worktree-only read authorization;
 - sanitized worker and model-command environments;
