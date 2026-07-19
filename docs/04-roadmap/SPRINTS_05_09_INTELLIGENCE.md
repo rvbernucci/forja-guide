@@ -73,8 +73,10 @@ and residual risk.
 **Outcome:** preserve durable work and learning without treating chat history as
 truth.
 
-**Status:** In progress. See the
-[Sprint 07 execution plan](SPRINT_07_ARTIFACTS_MEMORY_PLAN.md).
+**Status:** Closed by the authoritative
+[Sprint 07 receipt](../evidence/sprint-07/close-receipt.json). See the
+[Sprint 07 execution plan](SPRINT_07_ARTIFACTS_MEMORY_PLAN.md) for boundaries
+and residual risk.
 
 ### Scope
 

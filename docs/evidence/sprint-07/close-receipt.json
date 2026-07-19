@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "07",
   "name": "Governed Artifacts, Conversations, and Memory",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -38,8 +38,18 @@
   "supporting_artifacts": [
     "reviews/merged-implementation-review.md",
     "security/govulncheck-v1.6.0.txt",
-    "operations/artifact-restore-drill.txt"
+    "operations/artifact-restore-drill.txt",
+    "docs/evidence/sprint-07/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-19T09:59:25Z"
+  "next_sprint_authorized": "08",
+  "candidate_recorded_at": "2026-07-19T09:59:25Z",
+  "reviewed_candidate_commit": "ce255aa7be7759bb94c2924e5b397694bbc3bc15",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "ce255aa7be7759bb94c2924e5b397694bbc3bc15",
+    "model": "gemini-2.5-pro",
+    "artifact_path": "docs/evidence/sprint-07/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "9d28ea8954718029edd732299bca0c900888eae0ecfd2dd218fe5afba120156c"
+  },
+  "closed_at": "2026-07-19T10:10:44Z"
 }
