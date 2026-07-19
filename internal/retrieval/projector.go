@@ -22,6 +22,12 @@ type ActiveIndexSource interface {
 	GetActiveIndexBundle(context.Context) (indexing.IndexBundle, bool, error)
 }
 
+// ActiveDecisionSource exposes only one canonical decision lookup. Event
+// payloads remain delivery triggers, never decision source material.
+type ActiveDecisionSource interface {
+	GetDecision(context.Context, string) (contracts.Decision, bool, error)
+}
+
 // ProjectionRun reports bounded, non-content operational outcomes. It is
 // suitable for metrics and receipts without leaking prompts, cards, or paths.
 type ProjectionRun struct {
@@ -39,22 +45,25 @@ type ProjectionRun struct {
 type ProjectionWorker struct {
 	Deliveries persistence.ProjectionDeliveryRepository
 	Source     ActiveIndexSource
+	Decisions  ActiveDecisionSource
 	Recorder   persistence.RetrievalPointRepository
 	Writer     PointWriter
 	Deleter    PointDeleter
 	Embedder   Embedder
 	Sparse     SparseEncoder
 
-	ProjectorName   string
-	WorkerID        string
-	Generation      string
-	BatchSize       int
-	ClaimTTL        time.Duration
-	MaxAttempts     int
-	RetryDelay      time.Duration
-	DeliveryTimeout time.Duration
-	Now             func() time.Time
-	Observer        *observability.Observer
+	ProjectorName        string
+	WorkerID             string
+	Generation           string
+	DecisionTenantID     string
+	DecisionRepositoryID string
+	BatchSize            int
+	ClaimTTL             time.Duration
+	MaxAttempts          int
+	RetryDelay           time.Duration
+	DeliveryTimeout      time.Duration
+	Now                  func() time.Time
+	Observer             *observability.Observer
 }
 
 func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionRun, err error) {
@@ -120,6 +129,9 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionR
 }
 
 func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if delivery.AggregateType == "decision" {
+		return worker.projectDecision(ctx, delivery)
+	}
 	// Historical outbox replay is intentional. Only the currently active
 	// activation can project data; every other event is a safe no-op.
 	if delivery.AggregateType != "index_snapshot" {
@@ -167,6 +179,34 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 		if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
 			return false, fmt.Errorf("record retrieval point provenance: %w", err)
 		}
+	}
+	return false, nil
+}
+
+func (worker ProjectionWorker) projectDecision(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if worker.Decisions == nil {
+		return false, fmt.Errorf("canonical decision source is required")
+	}
+	decision, found, err := worker.Decisions.GetDecision(ctx, delivery.AggregateID)
+	if err != nil {
+		return false, fmt.Errorf("load canonical decision: %w", err)
+	}
+	if !found || decision.Status == "pending" {
+		return true, nil
+	}
+	source, err := BuildDecisionSource(worker.DecisionTenantID, worker.DecisionRepositoryID, decision)
+	if err != nil {
+		return false, err
+	}
+	point, err := BuildPoint(ctx, source, worker.Generation, worker.Embedder, worker.Sparse)
+	if err != nil {
+		return false, err
+	}
+	if err := worker.Writer.UpsertPoint(ctx, point); err != nil {
+		return false, err
+	}
+	if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
+		return false, fmt.Errorf("record retrieval point provenance: %w", err)
 	}
 	return false, nil
 }

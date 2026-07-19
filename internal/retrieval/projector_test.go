@@ -60,6 +60,32 @@ func TestProjectionWorkerProjectsCanonicalTestsAsTestFamily(t *testing.T) {
 	}
 }
 
+func TestProjectionWorkerProjectsResolvedDecisionFromCanonicalLookup(t *testing.T) {
+	t.Parallel()
+	decidedAt := time.Date(2026, 7, 19, 16, 0, 0, 0, time.UTC)
+	decidedBy, reason := "operator", "Bounded approval is ready."
+	decision := contracts.Decision{
+		DecisionID: "decision_11111111-2222-4333-8444-555555555555", SchemaVersion: "1.0",
+		SprintID: "sprint_11111111-2222-4333-8444-555555555555", RunID: "run_fixture",
+		Action: "submit_sprint", RiskClass: "low", Status: "approved", Version: 2,
+		RequestedBy: "planner", DecidedBy: &decidedBy, Reason: &reason, DecidedAt: &decidedAt,
+	}
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 72, AggregateType: "decision", AggregateID: decision.DecisionID, EventType: "decision.approved", Attempts: 1, FencingToken: 3,
+	}}}}
+	writer := &recordingPointWriter{}
+	worker := projectionWorker(store, staticIndexSource{}, &recordingPointRecorder{}, writer)
+	worker.Decisions = staticDecisionSource{decision: decision, found: true}
+	worker.DecisionTenantID = retrievalTenantID
+	worker.DecisionRepositoryID = retrievalRepositoryID
+	if _, err := worker.ProcessOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.points) != 1 || writer.points[0].ArtifactFamily != "decision" || writer.points[0].EntityID != decision.DecisionID {
+		t.Fatalf("points=%#v", writer.points)
+	}
+}
+
 func TestProjectionWorkerRetriesAndDoesNotCheckpointFailedWrite(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)
@@ -201,6 +227,16 @@ type staticIndexSource struct {
 	bundle indexing.IndexBundle
 	found  bool
 	err    error
+}
+
+type staticDecisionSource struct {
+	decision contracts.Decision
+	found    bool
+	err      error
+}
+
+func (source staticDecisionSource) GetDecision(context.Context, string) (contracts.Decision, bool, error) {
+	return source.decision, source.found, source.err
 }
 
 func (source staticIndexSource) GetActiveIndexBundle(context.Context) (indexing.IndexBundle, bool, error) {
