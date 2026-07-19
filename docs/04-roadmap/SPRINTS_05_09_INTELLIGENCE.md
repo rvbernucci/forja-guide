@@ -40,8 +40,10 @@ and residual risk.
 **Outcome:** make runtime behavior measurable without relying on terminal
 scrollback.
 
-**Status:** In progress. See the
-[Sprint 06 execution plan](SPRINT_06_OBSERVABILITY_PLAN.md).
+**Status:** Closed by the authoritative
+[Sprint 06 receipt](../evidence/sprint-06/close-receipt.json). See the
+[Sprint 06 execution plan](SPRINT_06_OBSERVABILITY_PLAN.md) for boundaries
+and residual risk.
 
 ### Scope
 
