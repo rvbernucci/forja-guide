@@ -58,8 +58,10 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		t.Fatalf("incomplete delta error=%v", err)
 	}
 	canonicalDeltas := indexPersistenceDeltas(t, first.Bundle, second.Bundle)
-	if len(canonicalDeltas) != 1 || canonicalDeltas[0].ChangeKind != "modified" ||
-		canonicalDeltas[0].PreviousEntityID == nil {
+	if len(canonicalDeltas) != 2 || canonicalDeltas[0].ChangeKind != "modified" ||
+		canonicalDeltas[0].EntityKind != "file" || canonicalDeltas[0].PreviousEntityID == nil ||
+		canonicalDeltas[1].ChangeKind != "reused" || canonicalDeltas[1].EntityKind != "symbol" ||
+		canonicalDeltas[1].PreviousEntityID == nil {
 		t.Fatalf("unexpected canonical delta fixture=%#v", canonicalDeltas)
 	}
 	falseReused := second
@@ -126,6 +128,9 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		UPDATE forja.artifacts SET status='archived', tombstoned_at=clock_timestamp(), updated_at=clock_timestamp()
 		WHERE artifact_id=$1`, *second.Bundle.Snapshot.ArtifactID); err == nil {
 		t.Fatal("live snapshot artifact was not protected")
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 009: %v", err)
 	}
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("migration rollback accepted canonical index history")
@@ -197,8 +202,14 @@ func TestIndexPublicationRejectsCallerControlledRenameAndMalformedPreviousID(t *
 	file.Path = "app/moved.py"
 	file.FileID = contracts.ComputeFileID(*file)
 	file.LineageID = contracts.ComputeFileLineageID(*file)
+	symbol := &target.Bundle.Symbols[0]
+	symbol.FileID = file.FileID
+	symbol.FileLineageID = file.LineageID
+	symbol.SymbolID = contracts.ComputeSymbolID(*symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(*symbol)
+	file.SymbolIDs = []string{symbol.SymbolID}
 	canonical := indexPersistenceDeltas(t, first.Bundle, target.Bundle)
-	if len(canonical) != 2 {
+	if len(canonical) != 4 {
 		t.Fatalf("changed-content move deltas=%#v", canonical)
 	}
 	callerRename := target

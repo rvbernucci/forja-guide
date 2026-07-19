@@ -206,12 +206,12 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 		t.Fatalf("active retrieval memory=%#v found=%v err=%v", retrievalMemory, found, err)
 	}
 	store.memoryBodyReader = integrationMemoryBodyReader{body: []byte("Durable project decision"), evidence: retrievalMemory.Evidence}
-	generation := contracts.RetrievalGenerationID("fixture", "memory-v1", 3, retrieval.SparseEncoderVersion)
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, retrieval.SparseEncoderVersion)
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO forja.retrieval_generations (
 			tenant_id, repository_id, generation_id, collection_alias, collection_name,
 			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
-		) VALUES ($1,$2,$3,'retrieval','retrieval_memory_fixture','fixture','memory-v1',3,$4,'active')`,
+		) VALUES ($1,$2,$3,'retrieval','retrieval_memory_fixture','fixture','v1',3,$4,'active')`,
 		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
 		t.Fatal(err)
 	}

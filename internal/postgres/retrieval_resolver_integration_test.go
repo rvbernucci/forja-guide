@@ -88,12 +88,12 @@ func TestResolveRetrievalTestPointRequiresCanonicalTestFlag(t *testing.T) {
 	if _, err := store.PublishIndexSnapshot(t.Context(), publication, testMetadata("retrieval-test-resolver-index")); err != nil {
 		t.Fatal(err)
 	}
-	generation := contracts.RetrievalGenerationID("fixture", "test-v1", 3, retrieval.SparseEncoderVersion)
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, retrieval.SparseEncoderVersion)
 	if _, err := pool.Exec(t.Context(), `
 		INSERT INTO forja.retrieval_generations (
 			tenant_id, repository_id, generation_id, collection_alias, collection_name,
 			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
-		) VALUES ($1,$2,$3,'retrieval','retrieval_test_fixture','fixture','test-v1',3,$4,'active')`,
+		) VALUES ($1,$2,$3,'retrieval','retrieval_test_fixture','fixture','v1',3,$4,'active')`,
 		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
 		t.Fatal(err)
 	}
@@ -125,11 +125,11 @@ func TestResolveRetrievalTestPointRequiresCanonicalTestFlag(t *testing.T) {
 	if _, err := pool.Exec(t.Context(), `
 		UPDATE forja.index_symbols SET is_test=false
 		WHERE tenant_id=$1 AND repository_id=$2 AND snapshot_id=$3 AND symbol_id=$4`,
-		DefaultTenantID, DefaultRepositoryID, publication.Bundle.Snapshot.SnapshotID, publication.Bundle.Symbols[0].SymbolID); err != nil {
-		t.Fatal(err)
+		DefaultTenantID, DefaultRepositoryID, publication.Bundle.Snapshot.SnapshotID, publication.Bundle.Symbols[0].SymbolID); err == nil {
+		t.Fatal("canonical test flag mutation was accepted")
 	}
-	if resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID); err != nil || len(resolved) != 0 {
-		t.Fatalf("test point without canonical flag resolved=%#v err=%v", resolved, err)
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID); err != nil || len(resolved) != 1 || resolved[0].ArtifactFamily != "test" {
+		t.Fatalf("canonical immutable test point resolved=%#v err=%v", resolved, err)
 	}
 }
 
