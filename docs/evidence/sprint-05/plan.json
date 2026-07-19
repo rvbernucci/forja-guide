@@ -1,0 +1,29 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "05",
+  "name": "Governed Isolated Delivery",
+  "status": "completed",
+  "objective": "Convert one independently approved worker task into a bounded Git commit, reproducible validation evidence, and an atomically published namespaced reference without granting the worker lease, commit, validation, or publication authority.",
+  "basis_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+  "scope": [
+    "attempt-scoped immutable human authorization of the complete delivery request",
+    "atomic hierarchical worktree, file, and artifact lease sets with fencing tokens",
+    "isolated detached Git worktrees and pre-created writable roots",
+    "bounded worker execution over the union of approved write and artifact scopes",
+    "supervisor-owned deterministic commits and clean-checkout independent validation",
+    "journal-before-CAS namespaced publication with immutable delivery receipts",
+    "restart recovery from durable attempts, lease sets, receipts, and publication journals",
+    "fail-closed quarantine, conflict handling, retry isolation, and Git reconciliation markers",
+    "rollback compatibility checks and Sprint 04 binary rehearsal"
+  ],
+  "out_of_scope": [
+    "automatic deletion of quarantined or unverifiably quiescent worktrees",
+    "production confidentiality isolation and network egress control",
+    "artifact object storage and long-term evidence retention",
+    "multi-run worker-pool placement and distributed scheduling",
+    "semantic retrieval, graph projection, and context brokering"
+  ],
+  "author": "codex",
+  "independent_validator": "Protected GitHub Actions and isolated Codex CLI review of the public implementation and exact closure candidate",
+  "completed_at": "2026-07-18T23:49:40Z"
+}

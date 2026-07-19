@@ -1,0 +1,48 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "05",
+  "status": "passed",
+  "basis_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Module verification, vet, unit tests, race tests, reproducible linux/amd64 and linux/arm64 builds, daemon, MCP and worker smoke tests, 36 Python tests, and repository validation passed."
+    },
+    {
+      "name": "final public implementation workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29665750739",
+      "head_sha": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+      "database": "PostgreSQL 18",
+      "summary": "The exact public implementation commit passed repository quality and PostgreSQL durability validation."
+    },
+    {
+      "name": "complete PostgreSQL integration and rollback target",
+      "command": "FORJA_TEST_DATABASE_URL='postgres:///forja_test?host=/tmp' make test-integration",
+      "result": "passed",
+      "coverage": [
+        "atomic hierarchical lease acquisition, renewal, release, replacement, and fencing",
+        "attempt-scoped delivery authorization and outbox reconstruction",
+        "real Git publication and crash recovery after compare-and-swap",
+        "end-to-end approved worker execution and same-delivery retry authorization",
+        "legacy blocked-run projection replay without runtime authority expansion",
+        "Sprint 05 rollback through migrations 006-004 against the Sprint 04 binary",
+        "durable process restart and canonical-state preservation"
+      ]
+    },
+    {
+      "name": "worktree, validation, publication, and recovery suites",
+      "result": "passed",
+      "coverage": [
+        "symlink, hidden-index, ignored-file, out-of-scope, and repository-redirection rejection",
+        "quarantine replay, reconciliation markers, fsync chains, and missing-path inference",
+        "canonical commit, patch, tree, changed-path, report, manifest, and receipt identities",
+        "caller cancellation, heartbeat loss, stale fences, concurrent completion, and lease cleanup",
+        "journal-only recovery after validation evidence loss without a new Git CAS"
+      ]
+    }
+  ],
+  "recorded_at": "2026-07-18T23:49:40Z"
+}

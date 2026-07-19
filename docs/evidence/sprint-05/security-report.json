@@ -1,0 +1,48 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "05",
+  "status": "passed",
+  "basis_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-05/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "b5ae54ddcfa4cb39e85f84ad2d9e43556bd817c480eaab2a71bab63bfc29353b"
+    },
+    {
+      "name": "attempt-scoped human authorization",
+      "result": "passed",
+      "summary": "An independent human hash-pins the complete request only after the exact Run and Attempt exist; retries require distinct attempt-scoped authorization."
+    },
+    {
+      "name": "atomic lease and fencing authority",
+      "result": "passed",
+      "summary": "Worktree, file, and artifact resources are acquired atomically in deterministic order; every mutation revalidates exact scheduler and delivery fences."
+    },
+    {
+      "name": "worker and filesystem boundary",
+      "result": "passed",
+      "summary": "Workers receive only pre-created approved roots and cannot commit, validate, publish, or convert symlink, hidden-index, ignored, or out-of-scope mutations into success."
+    },
+    {
+      "name": "publication and recovery integrity",
+      "result": "passed",
+      "summary": "Publication journals immutable authority before CAS, rechecks leases and evidence inside the fence, publishes only a namespaced ref, and recovers from canonical receipts plus exact Git observations."
+    },
+    {
+      "name": "failure preservation",
+      "result": "passed",
+      "summary": "Dirty, unverifiable, conflicted, or reconciliation-marked attempts retain bytes and authority until fail-closed quarantine or explicit administrative reconciliation completes."
+    }
+  ],
+  "residual_risks": [
+    "Automatic physical deletion of worktrees remains disabled until process quiescence and live-lease absence can be proven; clean and contaminated bytes are conservatively quarantined or retained.",
+    "Worker execution is an integrity boundary, not a production confidentiality sandbox; dedicated disposable hosts and deployment-managed egress controls remain required until Sprint 12.",
+    "A durable publication journal can reconcile after external evidence files disappear, but long-term evidence retention depends on the object store planned for Sprint 07."
+  ],
+  "recorded_at": "2026-07-18T23:49:40Z"
+}

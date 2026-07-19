@@ -1,0 +1,42 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "05",
+  "name": "Governed Isolated Delivery",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "approved_task_to_namespaced_publication": true,
+    "atomic_fenced_delivery_authority": true,
+    "isolated_worker_write_scope": true,
+    "independent_reproducible_validation": true,
+    "journaled_crash_recovery": true,
+    "fail_closed_quarantine_and_conflict_handling": true,
+    "rollback_compatibility_demonstrated": true
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "security/govulncheck-v1.6.0.txt"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-18T23:49:40Z"
+}
