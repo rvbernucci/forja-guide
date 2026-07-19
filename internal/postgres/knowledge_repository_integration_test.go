@@ -303,6 +303,29 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	}
 }
 
+func TestKnowledgeRepositoryMissingConversationIsNotFound(t *testing.T) {
+	store := newIntegrationStore(t, migratedPool(t))
+	conversationID := "conversation_40000000-0000-4000-8000-000000000099"
+
+	if _, err := store.CloseConversation(t.Context(), persistence.CloseConversationCommand{
+		ConversationID:     conversationID,
+		ExpectedVersion:    1,
+		TranscriptArtifact: "artifact_missing_conversation_transcript",
+		TranscriptManifest: "manifest_40000000-0000-4000-8000-000000000098",
+	}, testMetadata("knowledge-close-missing-conversation")); !fault.IsCode(err, fault.CodeNotFound) {
+		t.Fatalf("close missing conversation error = %v, want not found", err)
+	}
+
+	if _, err := store.TombstoneConversation(
+		t.Context(),
+		conversationID,
+		1,
+		testMetadata("knowledge-tombstone-missing-conversation"),
+	); !fault.IsCode(err, fault.CodeNotFound) {
+		t.Fatalf("tombstone missing conversation error = %v, want not found", err)
+	}
+}
+
 func TestKnowledgeRepositoryRejectsCrossTenantArtifactReference(t *testing.T) {
 	pool := migratedPool(t)
 	first := newIntegrationStore(t, pool)

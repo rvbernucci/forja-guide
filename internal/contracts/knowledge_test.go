@@ -187,6 +187,20 @@ func TestKnowledgeSemanticValidationFailsClosed(t *testing.T) {
 			t.Fatal("bundle traversal passed")
 		}
 	})
+	t.Run("bundle bare parent traversal", func(t *testing.T) {
+		manifest := ArtifactBundleManifest{
+			ManifestID: "manifest_00000000-0000-4000-8000-000000000010", SchemaVersion: KnowledgeSchemaVersion,
+			TenantID: testTenantID, RepositoryID: testRepositoryID, Family: "evidence",
+			Entries: []ArtifactBundleEntry{{
+				LogicalPath: "..", ArtifactID: testArtifactID,
+				ContentHash: testDigest, SizeBytes: 1, MediaType: "text/plain",
+			}},
+			TotalSizeBytes: 1, SourceRefs: []string{"fixture"}, CreatedBy: "validator", CreatedAt: now,
+		}
+		if err := ValidateArtifactBundleManifest(manifest); err == nil {
+			t.Fatal("bundle bare parent traversal passed")
+		}
+	})
 	t.Run("bundle source reference bounds", func(t *testing.T) {
 		manifest := ArtifactBundleManifest{
 			ManifestID: "manifest_00000000-0000-4000-8000-000000000010", SchemaVersion: KnowledgeSchemaVersion,

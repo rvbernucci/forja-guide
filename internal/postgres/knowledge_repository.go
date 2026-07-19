@@ -349,6 +349,9 @@ func (s *Store) CloseConversation(
 	}
 	conversation, _, err := loadConversation(ctx, tx, s.tenantID, s.repositoryID, command.ConversationID, true)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contracts.Conversation{}, fault.New(fault.CodeNotFound, "postgres.CloseConversation", "conversation was not found")
+		}
 		return contracts.Conversation{}, databaseError("postgres.CloseConversation.load", err)
 	}
 	if conversation.Status != "active" || conversation.Version != command.ExpectedVersion {
@@ -529,6 +532,9 @@ func (s *Store) TombstoneConversation(
 	}
 	conversation, _, err := loadConversation(ctx, tx, s.tenantID, s.repositoryID, conversationID, true)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return contracts.Conversation{}, fault.New(fault.CodeNotFound, "postgres.TombstoneConversation", "conversation was not found")
+		}
 		return contracts.Conversation{}, databaseError("postgres.TombstoneConversation.load", err)
 	}
 	if conversation.Status == "tombstoned" || conversation.Version != expectedVersion {

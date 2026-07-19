@@ -394,7 +394,7 @@ func ValidateArtifactBundleManifest(value ArtifactBundleManifest) error {
 	for index, entry := range value.Entries {
 		cleaned := path.Clean(entry.LogicalPath)
 		if entry.LogicalPath == "" || len(entry.LogicalPath) > 4096 || cleaned != entry.LogicalPath || path.IsAbs(entry.LogicalPath) ||
-			entry.LogicalPath == "." || strings.HasPrefix(entry.LogicalPath, "../") ||
+			entry.LogicalPath == "." || entry.LogicalPath == ".." || strings.HasPrefix(entry.LogicalPath, "../") ||
 			(index > 0 && strings.Compare(previousPath, entry.LogicalPath) >= 0) ||
 			!artifactIDPattern.MatchString(entry.ArtifactID) || !contentHashPattern.MatchString(entry.ContentHash) ||
 			entry.SizeBytes < 0 || entry.SizeBytes > MaximumArtifactObjectBytes ||
