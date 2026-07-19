@@ -151,7 +151,7 @@ documentation evidence.
   generation.
 - [ ] Keep query text, vectors, entity names, paths, and payload bodies out of
   logs, metrics, and traces.
-- [ ] Publish a version-pinned local Qdrant profile and a recovery runbook.
+- [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
 - [ ] Prove safe shutdown, bounded deadlines, retry, dead-letter repair, and
   full rebuild after deleting the derived collection.
 

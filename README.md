@@ -101,6 +101,9 @@ affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the
 corresponding stable point IDs. A failed derived delete remains fail-closed:
 the still-present vector cannot resolve through canonical authority.
 
+The pinned local Qdrant profile and canonical rebuild procedure are documented
+in [`docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md`](docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md).
+
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
 ## Architecture
