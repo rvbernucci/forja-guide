@@ -115,6 +115,21 @@ class ObservabilityAssetsTests(unittest.TestCase):
         self.assertIn("<<<\"$metrics_payload\"", script)
         self.assertNotRegex(script, r"curl[^\n]*?/metrics\s*\|\s*grep -q")
 
+    def test_stack_smoke_uses_an_isolated_compose_project(self) -> None:
+        script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertRegex(
+            script,
+            r'compose_project="forja-observability-smoke-\$\$-\$RANDOM"',
+        )
+        self.assertIn('--project-name "$compose_project"', script)
+        self.assertIn('"${compose_command[@]}" up -d', script)
+        self.assertIn(
+            '"${compose_command[@]}" down --volumes --remove-orphans', script
+        )
+        self.assertNotRegex(script, r"docker compose -f \"\$compose\"")
+
     def test_unstructured_stderr_is_not_ingested_as_json_logs(self) -> None:
         script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(
             encoding="utf-8"
