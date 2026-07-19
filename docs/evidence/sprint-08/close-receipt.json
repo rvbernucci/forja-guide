@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "08",
   "name": "Deterministic Repository Indexing",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -37,8 +37,18 @@
   "supporting_artifacts": [
     "reviews/merged-implementation-review.md",
     "security/govulncheck-v1.6.0.txt",
-    "operations/index-command-drill.txt"
+    "operations/index-command-drill.txt",
+    "docs/evidence/sprint-08/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-19T13:52:01Z"
+  "next_sprint_authorized": "09",
+  "candidate_recorded_at": "2026-07-19T13:52:01Z",
+  "reviewed_candidate_commit": "01a93aa400fad0c169d06258198717f5a8a831b5",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "01a93aa400fad0c169d06258198717f5a8a831b5",
+    "model": "gpt-5.6-sol",
+    "artifact_path": "docs/evidence/sprint-08/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "f006487d15b8b7273914d0173f71b13f9c41f4d152d39da0357a538b9da2b627"
+  },
+  "closed_at": "2026-07-19T15:03:11Z"
 }
