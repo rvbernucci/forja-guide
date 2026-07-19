@@ -1,6 +1,6 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-05 closed. Sprint 06 is in progress. Gates A and B
+Status: Active. Sprints 00-06 closed. Sprint 07 is authorized. Gates A and B
 are achieved.
 
 ## Objective

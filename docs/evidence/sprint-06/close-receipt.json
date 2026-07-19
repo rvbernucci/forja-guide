@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "06",
   "name": "Fail-Soft Observability",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -36,8 +36,18 @@
   ],
   "supporting_artifacts": [
     "reviews/merged-implementation-review.md",
-    "security/govulncheck-v1.6.0.txt"
+    "security/govulncheck-v1.6.0.txt",
+    "docs/evidence/sprint-06/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-19T04:00:12Z"
+  "next_sprint_authorized": "07",
+  "candidate_recorded_at": "2026-07-19T04:00:12Z",
+  "reviewed_candidate_commit": "c71dc0c23c7c7bf480ad0655fc6a7a1900cd49db",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "c71dc0c23c7c7bf480ad0655fc6a7a1900cd49db",
+    "model": "gpt-5.6-sol",
+    "artifact_path": "docs/evidence/sprint-06/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "9b9c25038a9056e51ca1528f4c381f6b63edebc954bc64fce7b2857300c86699"
+  },
+  "closed_at": "2026-07-19T04:32:53Z"
 }
