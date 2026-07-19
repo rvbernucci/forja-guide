@@ -1,0 +1,50 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "status": "passed",
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-06/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
+    },
+    {
+      "name": "content-free telemetry boundary",
+      "result": "passed",
+      "summary": "Only bounded route names, closed enums, irreversible correlation hashes, canonical trace identifiers, and approved resource attributes can be exported; raw task, output, SQL, credential, error, baggage, and tracestate content are excluded."
+    },
+    {
+      "name": "fail-soft authority isolation",
+      "result": "passed",
+      "summary": "Telemetry exporters, collectors, dashboards, and alerts are disposable derived views; failures cannot authorize work, mutate PostgreSQL, or roll back a valid canonical transition."
+    },
+    {
+      "name": "bounded local exposure",
+      "result": "passed",
+      "summary": "Daemon metrics and development observability endpoints bind to host loopback, metric gathers are serialized, and PostgreSQL snapshots use bounded timeouts and content-free counts."
+    },
+    {
+      "name": "pinned and isolated observability stack",
+      "result": "passed",
+      "summary": "Every image is version-pinned, Alloy positions persist in a dedicated volume, and each destructive smoke rehearsal uses a unique Compose project."
+    },
+    {
+      "name": "tenant and cardinality boundaries",
+      "result": "passed",
+      "summary": "Operational SQL remains tenant and repository scoped; Prometheus and Loki indexed labels exclude tenant, repository, run, task, attempt, correlation, and causation identifiers."
+    }
+  ],
+  "residual_risks": [
+    "Telemetry data and Alloy checkpoints are intentionally disposable operational metadata rather than durable evidence.",
+    "The bundled observability stack is a loopback-only development profile, not a hardened production deployment.",
+    "Unstructured stderr remains potentially sensitive and requires deployment-owned retention and deletion outside the ingested JSONL stream.",
+    "Durable large artifacts and long-term evidence retention remain Sprint 07 responsibilities.",
+    "A public scheduler or MCP command for the complete delivery pipeline remains outside Sprint 06."
+  ],
+  "recorded_at": "2026-07-19T04:00:12Z"
+}

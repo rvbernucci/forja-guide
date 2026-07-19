@@ -1,0 +1,56 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "status": "passed",
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Module verification, vet, unit tests, race tests, reproducible linux/amd64 and linux/arm64 builds, daemon, MCP and worker smoke tests, 45 Python tests, and repository validation passed."
+    },
+    {
+      "name": "exact final public implementation workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29672454155",
+      "head_sha": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+      "database": "PostgreSQL 18",
+      "summary": "The exact public implementation passed repository quality, PostgreSQL durability, and the complete observability stack rehearsal on a clean Linux Docker host."
+    },
+    {
+      "name": "complete PostgreSQL integration and rollback suite",
+      "command": "FORJA_TEST_DATABASE_URL='postgres:///forja_test?host=/tmp' make test-integration",
+      "result": "passed",
+      "coverage": [
+        "backup and restore",
+        "bounded read-only operational snapshots",
+        "real Git publication and crash recovery",
+        "approved real-worker execution and same-delivery retry authorization",
+        "Sprint 05 schema rollback rehearsal against the Sprint 04 binary",
+        "durable process restart and canonical-state preservation"
+      ]
+    },
+    {
+      "name": "observability behavior and trust-boundary suites",
+      "result": "passed",
+      "coverage": [
+        "connected HTTP, MCP, scheduler, worker, validation, delivery, and PostgreSQL traces",
+        "trace continuity through cancellation-detached cleanup and recovery",
+        "bounded traceparent-only ingress without tracestate or baggage",
+        "stable failure taxonomy and closed metric labels",
+        "secret-fixture exclusion from span, metric, log, dashboard, and alert content",
+        "serialized metric gathering and bounded operational queries",
+        "exporter outage without canonical-state mutation",
+        "persistent Alloy positions and isolated Compose teardown"
+      ]
+    },
+    {
+      "name": "Sprint 05 rollback target rehearsal",
+      "result": "passed",
+      "rollback_target": "480e6ebe2d480c2cf5a371e53207b398311d26ab",
+      "summary": "The authoritative Sprint 05 close commit built every command, passed the kernel smoke test, and retained all six PostgreSQL migration versions."
+    }
+  ],
+  "recorded_at": "2026-07-19T04:00:12Z"
+}

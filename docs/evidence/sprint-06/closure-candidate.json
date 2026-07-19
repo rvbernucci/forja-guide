@@ -1,0 +1,43 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "name": "Fail-Soft Observability",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "connected_command_to_publication_trace": true,
+    "stable_failure_taxonomy": true,
+    "content_free_export_boundary": true,
+    "closed_cardinality_metrics_and_logs": true,
+    "fail_soft_canonical_state_isolation": true,
+    "bounded_operational_alerting": true,
+    "clean_host_stack_rehearsal": true,
+    "rollback_compatibility_demonstrated": true
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "security/govulncheck-v1.6.0.txt"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-19T04:00:12Z"
+}

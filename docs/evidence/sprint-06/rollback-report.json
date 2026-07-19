@@ -1,0 +1,33 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "status": "passed",
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "strategy": "Stop the local observability stack and trace exporters, disable telemetry through deployment environment, deploy the authoritative Sprint 05 close commit, and preserve PostgreSQL plus Git evidence unchanged. Remove disposable telemetry volumes only after every sidecar is stopped. Sprint 06 adds no database migration, so canonical data requires no downgrade.",
+  "rollback_target": "480e6ebe2d480c2cf5a371e53207b398311d26ab",
+  "tests": [
+    {
+      "name": "authoritative Sprint 05 target rehearsal",
+      "result": "passed",
+      "summary": "The exact rollback target built all four commands, passed the kernel smoke test, and retained the six existing migration versions."
+    },
+    {
+      "name": "canonical schema compatibility",
+      "result": "passed",
+      "summary": "Sprint 06 introduces no migration and does not persist telemetry authority, so the Sprint 05 binary reads the unchanged canonical schema."
+    },
+    {
+      "name": "telemetry-sidecar teardown",
+      "result": "passed",
+      "summary": "The clean-host workflow starts and removes the complete version-pinned stack under an isolated Compose project without altering canonical state or normal development volumes."
+    },
+    {
+      "name": "exporter outage behavior",
+      "result": "passed",
+      "summary": "Exporter and collector failures remain classified telemetry failures and do not fail valid runtime operations."
+    }
+  ],
+  "data_migration_required": false,
+  "runtime_state_impact": "Rollback discards only derived traces, metrics, logs, dashboards, alerts, and file-tail checkpoints. PostgreSQL events, receipts, projections, leases, attempts, and Git evidence remain authoritative and unchanged.",
+  "recorded_at": "2026-07-19T04:00:12Z"
+}

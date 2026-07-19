@@ -1,0 +1,87 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "validators": [
+    {
+      "name": "protected exact-main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29672454155",
+      "head_sha": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+      "database": "PostgreSQL 18"
+    },
+    {
+      "name": "final ingress and rehearsal hardening pull-request workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29672325435",
+      "head_sha": "a720998068cfa21ea36d5d4fd2760f5e8402e4a6"
+    },
+    {
+      "name": "isolated Codex CLI implementation review chain",
+      "type": "independent",
+      "result": "findings_resolved",
+      "model": "gpt-5.6-sol",
+      "reviewed_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+      "reviewed_range_base": "480e6ebe2d480c2cf5a371e53207b398311d26ab",
+      "artifact_path": "docs/evidence/sprint-06/reviews/merged-implementation-review.md",
+      "artifact_sha256": "b462ea2c765bdada9d6d3ae3fec85faa854484cbd6150cf6edcddc04dfb9c073",
+      "summary": "Iterative whole-range and focused reviews resolved eight post-publication findings; the exact final public implementation review reported no actionable correctness issue."
+    },
+    {
+      "name": "CodeRabbit final hardening pull-request status",
+      "type": "automated_status",
+      "result": "passed",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/39",
+      "summary": "The automated review completed successfully and reported no blocking issue. Independent validation remains the isolated Codex CLI review."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit after this non-authoritative package is published to main."
+    }
+  ],
+  "resolved_review_findings": {
+    "post_publication_count": 8,
+    "themes": [
+      "bounded concurrent metric gathering",
+      "fresh-lease stuck-run detection",
+      "reachable and persistent Alloy runtime state",
+      "instrumented completed-publication recovery",
+      "trace continuity through detached cleanup",
+      "traceparent-only content-free ingress",
+      "isolated destructive Compose rehearsal",
+      "complete clean-host observability validation"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "one synthetic task has a connected command-to-publication trace",
+      "result": "proven"
+    },
+    {
+      "criterion": "every terminal failure maps to one stable bounded class",
+      "result": "proven"
+    },
+    {
+      "criterion": "secret fixtures and caller-controlled trace metadata do not enter exported signals",
+      "result": "proven"
+    },
+    {
+      "criterion": "metrics and logs use bounded labels without canonical identifiers",
+      "result": "proven"
+    },
+    {
+      "criterion": "telemetry failure cannot alter or roll back canonical state",
+      "result": "proven"
+    },
+    {
+      "criterion": "alerts distinguish declared operational failure modes",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-19T04:00:12Z"
+}
