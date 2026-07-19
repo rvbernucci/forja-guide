@@ -3,8 +3,21 @@ package retrieval
 import (
 	"fmt"
 	"math"
+	"regexp"
 	"sort"
 )
+
+var evaluationContentHashPattern = regexp.MustCompile(`^sha256:[a-f0-9]{64}$`)
+
+// RequiredRetrievalBaselines are the fixed policy families that every
+// controlled retrieval comparison must retain. The comparison reports metrics;
+// it deliberately does not choose a winner or mutate any serving policy.
+var RequiredRetrievalBaselines = []string{
+	"lexical_only",
+	"dense_only",
+	"rrf_unweighted",
+	"rrf_weighted",
+}
 
 // EvaluationCase contains only the stable entity identities expected for one
 // offline retrieval evaluation. Query bodies, cards, and private holdout
@@ -22,6 +35,24 @@ type EvaluationCase struct {
 type EvaluationOutcome struct {
 	CaseID            string   `json:"case_id"`
 	AcceptedEntityIDs []string `json:"accepted_entity_ids"`
+}
+
+// EvaluationVariant captures one complete accepted-entity sequence for a
+// frozen policy. PolicyHash binds the result to the exact ranking policy rather
+// than treating a human-readable baseline name as sufficient evidence.
+type EvaluationVariant struct {
+	Name       string              `json:"name"`
+	PolicyHash string              `json:"policy_hash"`
+	Outcomes   []EvaluationOutcome `json:"outcomes"`
+}
+
+// RankingComparison is a deterministic metric record for one required
+// baseline. A caller may use tuning results to propose a policy, but holdout,
+// OOD, and adversarial outputs must remain reporting evidence only.
+type RankingComparison struct {
+	Name       string         `json:"name"`
+	PolicyHash string         `json:"policy_hash"`
+	Metrics    RankingMetrics `json:"metrics"`
 }
 
 // RankingMetrics reports macro-averaged ranking quality at a fixed bounded K.
@@ -115,6 +146,39 @@ func ScoreRankings(cases []EvaluationCase, outcomes []EvaluationOutcome, k int) 
 		metrics.NDCGAtK /= float64(positiveCases)
 	}
 	return metrics, nil
+}
+
+// CompareRequiredRankings scores the fixed lexical, dense, unweighted-RRF,
+// and weighted-RRF baseline set against exactly one corpus. It rejects missing,
+// duplicate, renamed, or unbound variants so a report cannot silently omit a
+// weaker baseline. The returned order is stable and never depends on metrics.
+func CompareRequiredRankings(cases []EvaluationCase, variants []EvaluationVariant, k int) ([]RankingComparison, error) {
+	if len(variants) != len(RequiredRetrievalBaselines) {
+		return nil, fmt.Errorf("retrieval comparison must contain every required baseline")
+	}
+	byName := make(map[string]EvaluationVariant, len(variants))
+	for _, variant := range variants {
+		if !evaluationContentHashPattern.MatchString(variant.PolicyHash) || variant.Name == "" || len(variant.Name) > 100 {
+			return nil, fmt.Errorf("retrieval evaluation variant is invalid")
+		}
+		if _, exists := byName[variant.Name]; exists {
+			return nil, fmt.Errorf("retrieval evaluation variants must be unique")
+		}
+		byName[variant.Name] = variant
+	}
+	result := make([]RankingComparison, 0, len(RequiredRetrievalBaselines))
+	for _, name := range RequiredRetrievalBaselines {
+		variant, found := byName[name]
+		if !found {
+			return nil, fmt.Errorf("required retrieval baseline %q is missing", name)
+		}
+		metrics, err := ScoreRankings(cases, variant.Outcomes, k)
+		if err != nil {
+			return nil, fmt.Errorf("score retrieval baseline %s: %w", name, err)
+		}
+		result = append(result, RankingComparison{Name: name, PolicyHash: variant.PolicyHash, Metrics: metrics})
+	}
+	return result, nil
 }
 
 func validateEvaluationCase(evaluationCase EvaluationCase) error {

@@ -87,3 +87,9 @@ dense-only, unweighted RRF, and the configured weighted RRF. Reports must keep
 all failed/degraded runs and demonstrate zero accepted results for every stale
 and unauthorized safety case. Quality claims require a separate holdout run;
 the public fixture only verifies evaluator behavior.
+
+`CompareRequiredRankings` enforces that exact four-variant set and emits its
+metric records in a stable baseline order. Each variant carries the SHA-256 of
+its policy. It is intentionally a reporter, not an optimizer: only a controlled
+`tuning` split may inform a proposed policy change, while holdout, OOD, and
+adversarial comparisons remain non-selection evidence.

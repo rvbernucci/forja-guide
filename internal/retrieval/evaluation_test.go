@@ -5,6 +5,7 @@ import (
 	"math"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -45,6 +46,41 @@ func TestScoreRankingsRejectsMissingDuplicateAndInvalidOutcomes(t *testing.T) {
 	}
 	if _, err := ScoreRankings(cases, []EvaluationOutcome{{CaseID: "other", AcceptedEntityIDs: []string{"symbol_one"}}}, 1); err == nil {
 		t.Fatal("unknown outcome accepted")
+	}
+}
+
+func TestCompareRequiredRankingsKeepsEveryBaselineInStableOrder(t *testing.T) {
+	cases := []EvaluationCase{
+		{CaseID: "positive", RequiredEntityIDs: []string{"symbol_one"}},
+		{CaseID: "safety", ExpectedNoAccepted: true},
+	}
+	perfect := []EvaluationOutcome{
+		{CaseID: "positive", AcceptedEntityIDs: []string{"symbol_one"}},
+		{CaseID: "safety", AcceptedEntityIDs: []string{}},
+	}
+	missed := []EvaluationOutcome{
+		{CaseID: "positive", AcceptedEntityIDs: []string{"noise"}},
+		{CaseID: "safety", AcceptedEntityIDs: []string{"leak"}},
+	}
+	variants := []EvaluationVariant{
+		{Name: "rrf_weighted", PolicyHash: testEvaluationHash("d"), Outcomes: perfect},
+		{Name: "dense_only", PolicyHash: testEvaluationHash("b"), Outcomes: missed},
+		{Name: "lexical_only", PolicyHash: testEvaluationHash("a"), Outcomes: perfect},
+		{Name: "rrf_unweighted", PolicyHash: testEvaluationHash("c"), Outcomes: perfect},
+	}
+	comparisons, err := CompareRequiredRankings(cases, variants, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(comparisons) != 4 || comparisons[0].Name != "lexical_only" || comparisons[1].Name != "dense_only" || comparisons[1].Metrics.RecallAtK != 0 || comparisons[3].Name != "rrf_weighted" {
+		t.Fatalf("comparisons=%#v", comparisons)
+	}
+	if _, err := CompareRequiredRankings(cases, variants[:3], 2); err == nil {
+		t.Fatal("missing baseline accepted")
+	}
+	variants[3].Name = "dense_only"
+	if _, err := CompareRequiredRankings(cases, variants, 2); err == nil {
+		t.Fatal("duplicate baseline accepted")
 	}
 }
 
@@ -101,4 +137,8 @@ func TestPublicEvaluationCorpusIsScoreableAndContainsSafetyCases(t *testing.T) {
 
 func approximately(left, right float64) bool {
 	return math.Abs(left-right) < 0.000001
+}
+
+func testEvaluationHash(character string) string {
+	return "sha256:" + strings.Repeat(character, 64)
 }
