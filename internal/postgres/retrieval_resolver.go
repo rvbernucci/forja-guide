@@ -3,17 +3,23 @@ package postgres
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
+	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/retrieval"
 )
 
 // ResolveRetrievalPoint reauthorizes a Qdrant candidate against the active
 // canonical index. Symbol and test cards resolve only through the indexed
-// symbol source; a test card additionally requires the canonical test flag.
+// symbol source; decisions are re-derived from their current canonical row.
 // Unsupported families return no match rather than being trusted from derived
 // projection metadata.
 func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, error) {
+	if candidates, found, err := s.resolveDecisionRetrievalPoint(ctx, pointID); err != nil || found {
+		return candidates, err
+	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT point.point_id, point.generation_id,
 		       'tenant_' || point.tenant_id::text, 'repo_' || point.repository_id::text,
@@ -62,4 +68,38 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		return nil, databaseError("postgres.ResolveRetrievalPoint.rows", err)
 	}
 	return result, nil
+}
+
+func (s *Store) resolveDecisionRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, bool, error) {
+	var generation, entityID, storedHash, status, authorityClass string
+	var stale bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
+		FROM forja.retrieval_projection_points
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='decision'`,
+		s.tenantID, s.repositoryID, pointID,
+	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, true, databaseError("postgres.ResolveRetrievalPoint.decisionPoint", err)
+	}
+	decision, found, err := s.GetDecision(ctx, entityID)
+	if err != nil {
+		return nil, true, err
+	}
+	if !found || status != "active" || authorityClass != "canonical" || stale {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	source, err := retrieval.BuildDecisionSource("tenant_"+s.tenantID, "repo_"+s.repositoryID, decision)
+	if err != nil || storedHash != source.SourceHash || pointID != contracts.RetrievalPointID(generation, decision.DecisionID, source.SourceHash) {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	return []retrieval.CanonicalCandidate{{
+		PointID: pointID, CollectionGeneration: generation,
+		TenantID: "tenant_" + s.tenantID, RepositoryID: "repo_" + s.repositoryID,
+		EntityID: decision.DecisionID, ArtifactFamily: "decision", SourceHash: source.SourceHash,
+		Status: "active", AuthorityClass: "canonical", ProofRefs: source.ProofRefs,
+	}}, true, nil
 }
