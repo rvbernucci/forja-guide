@@ -394,6 +394,9 @@ func (s *Store) CloseConversation(
 	if err := json.Unmarshal(sourceRefsJSON, &sourceRefs); err != nil {
 		return contracts.Conversation{}, fault.Wrap(fault.CodeInternal, "postgres.CloseConversation", "decode transcript source refs", err)
 	}
+	if len(sourceRefs) != len(requiredSourceRefs) {
+		return contracts.Conversation{}, fault.New(fault.CodeInvalidArgument, "postgres.CloseConversation", "transcript manifest source references are not exact")
+	}
 	for _, required := range requiredSourceRefs {
 		if !slices.Contains(sourceRefs, required) {
 			return contracts.Conversation{}, fault.New(fault.CodeInvalidArgument, "postgres.CloseConversation", "transcript manifest is not bound to the exact final conversation history")

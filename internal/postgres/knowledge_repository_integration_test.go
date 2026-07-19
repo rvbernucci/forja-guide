@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -468,7 +469,7 @@ func TestConversationCloseRejectsForgedTranscriptBody(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	refs, _, err := conversationTranscriptBinding(
+	refs, canonicalTranscript, err := conversationTranscriptBinding(
 		t.Context(), tx, DefaultTenantID, DefaultRepositoryID, conversationID, 2,
 	)
 	if err != nil {
@@ -500,6 +501,33 @@ func TestConversationCloseRejectsForgedTranscriptBody(t *testing.T) {
 		TranscriptArtifact: forged.ArtifactID, TranscriptManifest: manifest.ManifestID,
 	}, testMetadata("forged-transcript-close")); !fault.IsCode(err, fault.CodeInvalidArgument) {
 		t.Fatalf("forged transcript close error=%v", err)
+	}
+	exact := publishKnowledgeArtifactWithMediaType(
+		t, store, "artifact_exact_transcript_oversized_manifest",
+		"40000000-0000-4000-8000-000000000126", string(canonicalTranscript),
+		"conversation", "application/json",
+	)
+	oversizedRefs := append(
+		append([]string(nil), refs...),
+		"message_inventory:sha256:"+strings.Repeat("0", 64),
+	)
+	oversizedManifest, err := store.CreateArtifactBundleManifest(t.Context(), contracts.ArtifactBundleManifest{
+		ManifestID: "manifest_40000000-0000-4000-8000-000000000127",
+		Family:     "conversation_transcript",
+		Entries: []contracts.ArtifactBundleEntry{{
+			LogicalPath: "conversation/transcript.json", ArtifactID: exact.ArtifactID,
+			ContentHash: exact.ContentHash, SizeBytes: *exact.SizeBytes, MediaType: exact.MediaType,
+		}},
+		TotalSizeBytes: *exact.SizeBytes, SourceRefs: oversizedRefs, CreatedBy: "integration-suite",
+	}, testMetadata("oversized-transcript-manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CloseConversation(t.Context(), persistence.CloseConversationCommand{
+		ConversationID: conversationID, ExpectedVersion: 2,
+		TranscriptArtifact: exact.ArtifactID, TranscriptManifest: oversizedManifest.ManifestID,
+	}, testMetadata("oversized-transcript-close")); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("oversized transcript manifest close error=%v", err)
 	}
 }
 

@@ -68,7 +68,8 @@ columns.
   transcript artifact itself must be the canonical JSON inventory whose full
   SHA-256, size, and `application/json` media type are recomputed at close.
   Appending a message after publication makes the transcript stale and
-  unclosable; caller-supplied source references cannot bless arbitrary bytes.
+  unclosable; the source-reference set must also equal the required set exactly,
+  so caller-supplied references cannot bless arbitrary bytes or extra history.
 - Tombstoning hides the conversation from ordinary reads and emits a deletion
   projection event; it does not rewrite message history.
 
