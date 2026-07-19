@@ -15,12 +15,12 @@ func TestScoreRankingsComputesMacroQualityAndSafetyCases(t *testing.T) {
 	cases := []EvaluationCase{
 		{CaseID: "lexical", RequiredEntityIDs: []string{"symbol_login", "test_login"}},
 		{CaseID: "semantic", RequiredEntityIDs: []string{"decision_auth"}},
-		{CaseID: "stale", ExpectedNoAccepted: true},
+		{CaseID: "stale", ExpectedNoAccepted: true, SafetyClass: EvaluationSafetyClassStale},
 	}
 	metrics, err := ScoreRankings(cases, []EvaluationOutcome{
-		{CaseID: "lexical", AcceptedEntityIDs: []string{"symbol_login", "noise", "test_login"}},
-		{CaseID: "semantic", AcceptedEntityIDs: []string{"noise", "decision_auth"}},
-		{CaseID: "stale", AcceptedEntityIDs: []string{}},
+		{CaseID: "lexical", AcceptedEntityIDs: []string{"symbol_login", "noise", "test_login"}, LatencyMilliseconds: 4, ProjectionLagEvents: 1},
+		{CaseID: "semantic", AcceptedEntityIDs: []string{"noise", "decision_auth"}, LatencyMilliseconds: 10, ProjectionLagEvents: 2},
+		{CaseID: "stale", AcceptedEntityIDs: []string{}, LatencyMilliseconds: 6, ProjectionLagEvents: 3},
 	}, 3)
 	if err != nil {
 		t.Fatal(err)
@@ -33,6 +33,14 @@ func TestScoreRankingsComputesMacroQualityAndSafetyCases(t *testing.T) {
 	}
 	if metrics.NDCGAtK <= 0 || metrics.NDCGAtK >= 1 {
 		t.Fatalf("nDCG=%f", metrics.NDCGAtK)
+	}
+	if metrics.AcceptedEntityCount != 5 || metrics.ResolvedEntityCount != 3 ||
+		!approximately(metrics.EntityResolutionAccuracy, 0.6) ||
+		metrics.StaleRejectionCases != 1 || metrics.StaleRejectionPass != 1 ||
+		!approximately(metrics.MeanLatencyMilliseconds, 20.0/3.0) ||
+		metrics.P95LatencyMilliseconds != 10 || metrics.MaxLatencyMilliseconds != 10 ||
+		!approximately(metrics.MeanProjectionLagEvents, 2) || metrics.MaxProjectionLagEvents != 3 {
+		t.Fatalf("extended metrics=%#v", metrics)
 	}
 }
 
@@ -51,14 +59,15 @@ func TestScoreRankingsRejectsMissingDuplicateAndInvalidOutcomes(t *testing.T) {
 
 func TestScoreRankingsReportsSafetyFailureWithoutDiscardingTheCase(t *testing.T) {
 	metrics, err := ScoreRankings(
-		[]EvaluationCase{{CaseID: "cross_tenant", ExpectedNoAccepted: true}},
+		[]EvaluationCase{{CaseID: "cross_tenant", ExpectedNoAccepted: true, SafetyClass: EvaluationSafetyClassCrossTenant}},
 		[]EvaluationOutcome{{CaseID: "cross_tenant", AcceptedEntityIDs: []string{"leaked_entity"}}},
 		10,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if metrics.ExpectedNoAcceptedCases != 1 || metrics.ExpectedNoAcceptedPass != 0 {
+	if metrics.ExpectedNoAcceptedCases != 1 || metrics.ExpectedNoAcceptedPass != 0 ||
+		metrics.CrossTenantRejectionCases != 1 || metrics.CrossTenantRejectionPass != 0 {
 		t.Fatalf("metrics=%#v", metrics)
 	}
 }
@@ -66,7 +75,7 @@ func TestScoreRankingsReportsSafetyFailureWithoutDiscardingTheCase(t *testing.T)
 func TestCompareRequiredRankingsKeepsEveryBaselineInStableOrder(t *testing.T) {
 	cases := []EvaluationCase{
 		{CaseID: "positive", RequiredEntityIDs: []string{"symbol_one"}},
-		{CaseID: "safety", ExpectedNoAccepted: true},
+		{CaseID: "safety", ExpectedNoAccepted: true, SafetyClass: EvaluationSafetyClassUnauthorized},
 	}
 	perfect := []EvaluationOutcome{
 		{CaseID: "positive", AcceptedEntityIDs: []string{"symbol_one"}},
@@ -95,6 +104,19 @@ func TestCompareRequiredRankingsKeepsEveryBaselineInStableOrder(t *testing.T) {
 	variants[3].Name = "dense_only"
 	if _, err := CompareRequiredRankings(cases, variants, 2); err == nil {
 		t.Fatal("duplicate baseline accepted")
+	}
+}
+
+func TestScoreRankingsRejectsMissingOrInvalidSafetyAndOperationalFields(t *testing.T) {
+	valid := []EvaluationCase{{CaseID: "positive", RequiredEntityIDs: []string{"symbol_one"}}}
+	if _, err := ScoreRankings([]EvaluationCase{{CaseID: "safety", ExpectedNoAccepted: true}}, []EvaluationOutcome{{CaseID: "safety"}}, 1); err == nil {
+		t.Fatal("safety case without class accepted")
+	}
+	if _, err := ScoreRankings(valid, []EvaluationOutcome{{CaseID: "positive", LatencyMilliseconds: 30_001}}, 1); err == nil {
+		t.Fatal("over-budget latency accepted")
+	}
+	if _, err := ScoreRankings(valid, []EvaluationOutcome{{CaseID: "positive", ProjectionLagEvents: -1}}, 1); err == nil {
+		t.Fatal("negative projection lag accepted")
 	}
 }
 

@@ -19,6 +19,22 @@ var RequiredRetrievalBaselines = []string{
 	"rrf_weighted",
 }
 
+const (
+	// EvaluationSafetyClassStale identifies a query whose source boundary is no
+	// longer current. It must never yield an accepted canonical entity.
+	EvaluationSafetyClassStale = "stale"
+	// EvaluationSafetyClassCrossTenant identifies a tenant-isolation probe.
+	EvaluationSafetyClassCrossTenant = "cross_tenant"
+	// EvaluationSafetyClassUnauthorized identifies a scope or authority probe.
+	EvaluationSafetyClassUnauthorized = "unauthorized"
+	// EvaluationSafetyClassMalformed identifies a malformed or untrusted
+	// candidate/payload probe.
+	EvaluationSafetyClassMalformed = "malformed"
+	// EvaluationSafetyClassScopeBypass identifies an attempted path, language,
+	// or artifact-family scope bypass.
+	EvaluationSafetyClassScopeBypass = "scope_bypass"
+)
+
 // EvaluationCase contains only the stable entity identities expected for one
 // offline retrieval evaluation. Query bodies, cards, and private holdout
 // answers stay in the evaluation corpus and are intentionally not part of the
@@ -27,6 +43,7 @@ type EvaluationCase struct {
 	CaseID             string   `json:"case_id"`
 	RequiredEntityIDs  []string `json:"required_entity_ids,omitempty"`
 	ExpectedNoAccepted bool     `json:"expected_no_accepted,omitempty"`
+	SafetyClass        string   `json:"safety_class,omitempty"`
 }
 
 // EvaluationOutcome is the canonically accepted entity sequence captured from
@@ -35,6 +52,11 @@ type EvaluationCase struct {
 type EvaluationOutcome struct {
 	CaseID            string   `json:"case_id"`
 	AcceptedEntityIDs []string `json:"accepted_entity_ids"`
+	// LatencyMilliseconds and ProjectionLagEvents are scalar capture metadata.
+	// They intentionally exclude query text, vectors, entity names, and Qdrant
+	// payloads so a private evaluation can retain performance evidence safely.
+	LatencyMilliseconds int64 `json:"latency_milliseconds,omitempty"`
+	ProjectionLagEvents int64 `json:"projection_lag_events,omitempty"`
 }
 
 // EvaluationVariant captures one complete accepted-entity sequence for a
@@ -60,13 +82,27 @@ type RankingComparison struct {
 // which measures whether the selected context is relevant without penalizing a
 // governed result for intentionally returning fewer than K safe candidates.
 type RankingMetrics struct {
-	Cases                   int     `json:"cases"`
-	RecallAtK               float64 `json:"recall_at_k"`
-	PrecisionAtK            float64 `json:"precision_at_k"`
-	MeanReciprocalRank      float64 `json:"mean_reciprocal_rank"`
-	NDCGAtK                 float64 `json:"ndcg_at_k"`
-	ExpectedNoAcceptedCases int     `json:"expected_no_accepted_cases"`
-	ExpectedNoAcceptedPass  int     `json:"expected_no_accepted_pass"`
+	Cases                      int     `json:"cases"`
+	RecallAtK                  float64 `json:"recall_at_k"`
+	PrecisionAtK               float64 `json:"precision_at_k"`
+	MeanReciprocalRank         float64 `json:"mean_reciprocal_rank"`
+	NDCGAtK                    float64 `json:"ndcg_at_k"`
+	AcceptedEntityCount        int     `json:"accepted_entity_count"`
+	ResolvedEntityCount        int     `json:"resolved_entity_count"`
+	EntityResolutionAccuracy   float64 `json:"entity_resolution_accuracy"`
+	ExpectedNoAcceptedCases    int     `json:"expected_no_accepted_cases"`
+	ExpectedNoAcceptedPass     int     `json:"expected_no_accepted_pass"`
+	StaleRejectionCases        int     `json:"stale_rejection_cases"`
+	StaleRejectionPass         int     `json:"stale_rejection_pass"`
+	CrossTenantRejectionCases  int     `json:"cross_tenant_rejection_cases"`
+	CrossTenantRejectionPass   int     `json:"cross_tenant_rejection_pass"`
+	UnauthorizedRejectionCases int     `json:"unauthorized_rejection_cases"`
+	UnauthorizedRejectionPass  int     `json:"unauthorized_rejection_pass"`
+	MeanLatencyMilliseconds    float64 `json:"mean_latency_milliseconds"`
+	P95LatencyMilliseconds     int64   `json:"p95_latency_milliseconds"`
+	MaxLatencyMilliseconds     int64   `json:"max_latency_milliseconds"`
+	MeanProjectionLagEvents    float64 `json:"mean_projection_lag_events"`
+	MaxProjectionLagEvents     int64   `json:"max_projection_lag_events"`
 }
 
 // ScoreRankings validates a complete, unique offline result set and computes
@@ -87,21 +123,36 @@ func ScoreRankings(cases []EvaluationCase, outcomes []EvaluationOutcome, k int) 
 		expected[evaluationCase.CaseID] = evaluationCase
 	}
 	metrics := RankingMetrics{Cases: len(cases)}
+	latencies := make([]int64, 0, len(outcomes))
+	var totalLatency, totalProjectionLag int64
 	seenOutcomes := make(map[string]struct{}, len(outcomes))
 	for _, outcome := range outcomes {
 		evaluationCase, found := expected[outcome.CaseID]
-		if !found || outcome.CaseID == "" || len(outcome.AcceptedEntityIDs) > 1_000 || !uniqueNonEmpty(outcome.AcceptedEntityIDs) {
+		if !found || outcome.CaseID == "" || len(outcome.AcceptedEntityIDs) > 1_000 ||
+			!uniqueNonEmpty(outcome.AcceptedEntityIDs) || outcome.LatencyMilliseconds < 0 ||
+			outcome.LatencyMilliseconds > 30_000 || outcome.ProjectionLagEvents < 0 ||
+			outcome.ProjectionLagEvents > 1_000_000 {
 			return RankingMetrics{}, fmt.Errorf("retrieval evaluation outcome is invalid")
 		}
 		if _, exists := seenOutcomes[outcome.CaseID]; exists {
 			return RankingMetrics{}, fmt.Errorf("retrieval evaluation outcomes must be unique")
 		}
 		seenOutcomes[outcome.CaseID] = struct{}{}
+		latencies = append(latencies, outcome.LatencyMilliseconds)
+		totalLatency += outcome.LatencyMilliseconds
+		totalProjectionLag += outcome.ProjectionLagEvents
+		if outcome.LatencyMilliseconds > metrics.MaxLatencyMilliseconds {
+			metrics.MaxLatencyMilliseconds = outcome.LatencyMilliseconds
+		}
+		if outcome.ProjectionLagEvents > metrics.MaxProjectionLagEvents {
+			metrics.MaxProjectionLagEvents = outcome.ProjectionLagEvents
+		}
 		if evaluationCase.ExpectedNoAccepted {
 			metrics.ExpectedNoAcceptedCases++
 			if len(outcome.AcceptedEntityIDs) == 0 {
 				metrics.ExpectedNoAcceptedPass++
 			}
+			recordSafetyClass(&metrics, evaluationCase.SafetyClass, len(outcome.AcceptedEntityIDs) == 0)
 			continue
 		}
 		relevant := stringSet(evaluationCase.RequiredEntityIDs)
@@ -110,10 +161,12 @@ func ScoreRankings(cases []EvaluationCase, outcomes []EvaluationOutcome, k int) 
 		firstRank := 0
 		dcg := 0.0
 		for index := 0; index < limit; index++ {
+			metrics.AcceptedEntityCount++
 			if _, ok := relevant[outcome.AcceptedEntityIDs[index]]; !ok {
 				continue
 			}
 			hits++
+			metrics.ResolvedEntityCount++
 			if firstRank == 0 {
 				firstRank = index + 1
 			}
@@ -145,6 +198,17 @@ func ScoreRankings(cases []EvaluationCase, outcomes []EvaluationOutcome, k int) 
 		metrics.MeanReciprocalRank /= float64(positiveCases)
 		metrics.NDCGAtK /= float64(positiveCases)
 	}
+	if metrics.AcceptedEntityCount == 0 {
+		// No accepted entity cannot be an invalid resolution. Recall and
+		// precision retain the availability signal for that degenerate case.
+		metrics.EntityResolutionAccuracy = 1
+	} else {
+		metrics.EntityResolutionAccuracy = float64(metrics.ResolvedEntityCount) / float64(metrics.AcceptedEntityCount)
+	}
+	metrics.MeanLatencyMilliseconds = float64(totalLatency) / float64(metrics.Cases)
+	metrics.MeanProjectionLagEvents = float64(totalProjectionLag) / float64(metrics.Cases)
+	sort.Slice(latencies, func(left, right int) bool { return latencies[left] < latencies[right] })
+	metrics.P95LatencyMilliseconds = latencies[percentileIndex(len(latencies), 0.95)]
 	return metrics, nil
 }
 
@@ -188,7 +252,53 @@ func validateEvaluationCase(evaluationCase EvaluationCase) error {
 	if evaluationCase.ExpectedNoAccepted == (len(evaluationCase.RequiredEntityIDs) != 0) {
 		return fmt.Errorf("retrieval evaluation expectation is invalid")
 	}
+	if evaluationCase.ExpectedNoAccepted {
+		if !validEvaluationSafetyClass(evaluationCase.SafetyClass) {
+			return fmt.Errorf("retrieval evaluation safety class is invalid")
+		}
+	} else if evaluationCase.SafetyClass != "" {
+		return fmt.Errorf("positive retrieval evaluation case cannot have a safety class")
+	}
 	return nil
+}
+
+func recordSafetyClass(metrics *RankingMetrics, safetyClass string, passed bool) {
+	switch safetyClass {
+	case EvaluationSafetyClassStale:
+		metrics.StaleRejectionCases++
+		if passed {
+			metrics.StaleRejectionPass++
+		}
+	case EvaluationSafetyClassCrossTenant:
+		metrics.CrossTenantRejectionCases++
+		if passed {
+			metrics.CrossTenantRejectionPass++
+		}
+	case EvaluationSafetyClassUnauthorized:
+		metrics.UnauthorizedRejectionCases++
+		if passed {
+			metrics.UnauthorizedRejectionPass++
+		}
+	}
+}
+
+func validEvaluationSafetyClass(value string) bool {
+	switch value {
+	case EvaluationSafetyClassStale, EvaluationSafetyClassCrossTenant,
+		EvaluationSafetyClassUnauthorized, EvaluationSafetyClassMalformed,
+		EvaluationSafetyClassScopeBypass:
+		return true
+	default:
+		return false
+	}
+}
+
+func percentileIndex(length int, percentile float64) int {
+	if length < 1 {
+		return 0
+	}
+	index := int(math.Ceil(percentile*float64(length))) - 1
+	return min(max(index, 0), length-1)
 }
 
 func uniqueNonEmpty(values []string) bool {

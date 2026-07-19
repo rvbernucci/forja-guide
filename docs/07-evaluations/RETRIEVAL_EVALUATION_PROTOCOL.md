@@ -37,11 +37,16 @@ backup, and retention policy.
 Each corpus uses
 [`schemas/retrieval-evaluation-corpus.schema.json`](../../schemas/retrieval-evaluation-corpus.schema.json).
 A positive case has one or more `required_entity_ids`; a safety case has only
-`expected_no_accepted: true`. Case IDs must be unique inside a corpus.
+`expected_no_accepted: true` and exactly one `safety_class`: `stale`,
+`cross_tenant`, `unauthorized`, `malformed`, or `scope_bypass`. Case IDs must
+be unique inside a corpus.
 
 Capture each evaluated run separately as `EvaluationOutcome` values: only the
-ordered, canonically accepted entity IDs are scored. Rejected Qdrant payloads
-are never credited as retrieved context.
+ordered, canonically accepted entity IDs are scored. Every outcome also records
+its bounded `latency_milliseconds` and `projection_lag_events`. These are
+scalar measurements only; query text, cards, vectors, payloads, provider
+responses, and private labels stay out of the capture. Rejected Qdrant
+payloads are never credited as retrieved context.
 
 `forja-retrieval-eval` is a bounded offline CLI for that scoring step. It has
 no network, database, environment-secret, or model-provider configuration.
@@ -106,6 +111,15 @@ K:
 - nDCG@K measures the ordering of all required entities.
 - `expected_no_accepted_pass / expected_no_accepted_cases` measures the safety
   subset for stale, cross-tenant, and other mandatory-rejection cases.
+- `entity_resolution_accuracy` is the ratio of accepted entity positions at K
+  that match the expected canonical identities. It is reported with its raw
+  accepted and resolved counts so an empty answer cannot conceal poor recall.
+- Stale, cross-tenant, and unauthorized rejection counts are reported
+  separately. `malformed` and `scope_bypass` still contribute to the aggregate
+  safety result while retaining their case-level class in the private corpus.
+- Mean, p95, and maximum per-case latency plus mean and maximum projection lag
+  are reported for every baseline. The outcome schema rejects values beyond
+  the runtime's 30-second command bound.
 
 Every report must record corpus ID, corpus SHA-256, split, code commit,
 embedding descriptor, sparse encoder version, policy hash, K, sample count,

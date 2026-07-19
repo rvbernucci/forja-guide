@@ -57,6 +57,8 @@ Measure:
 - recall of required files, symbols, tests, and documents;
 - precision of selected context;
 - entity resolution accuracy;
+- stale, cross-tenant, and unauthorized rejection separately;
+- p95 retrieval latency and projection freshness;
 - graph path validity;
 - citation and source-hash correctness;
 - stale projection detection;

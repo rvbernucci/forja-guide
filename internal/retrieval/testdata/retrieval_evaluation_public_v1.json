@@ -13,11 +13,13 @@
     },
     {
       "case_id": "stale_source_rejected",
-      "expected_no_accepted": true
+      "expected_no_accepted": true,
+      "safety_class": "stale"
     },
     {
       "case_id": "cross_tenant_rejected",
-      "expected_no_accepted": true
+      "expected_no_accepted": true,
+      "safety_class": "cross_tenant"
     }
   ]
 }

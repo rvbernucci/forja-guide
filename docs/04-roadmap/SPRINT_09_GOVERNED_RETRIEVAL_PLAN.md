@@ -229,6 +229,11 @@ It cannot authorize Sprint 10.
   capture and an immutable four-baseline comparison. The public synthetic
   comparison verifies that lexical-only and dense-only can retain distinct
   quality profiles while every public stale and cross-tenant case is rejected.
+  Its capture contract now requires per-case bounded latency and projection
+  lag, records accepted-versus-resolved entity counts, and reports stale,
+  cross-tenant, and unauthorized rejection evidence separately. This makes the
+  remaining private evaluation capable of measuring every listed Sprint 09
+  retrieval criterion without exposing its corpus to the runtime.
 - `govulncheck@v1.6.0 ./...` found no reachable Go vulnerabilities in the
   local implementation tree.
 - The public fixture remains a contract smoke test only. No tuning, holdout,

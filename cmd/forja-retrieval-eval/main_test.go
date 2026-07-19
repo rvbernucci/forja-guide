@@ -22,14 +22,14 @@ func TestRunScoresValidatedCorpusAndWritesAtomicReport(t *testing.T) {
   "schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"public",
   "cases":[
     {"case_id":"positive","required_entity_ids":["symbol_one"]},
-    {"case_id":"safety","expected_no_accepted":true}
+    {"case_id":"safety","expected_no_accepted":true,"safety_class":"stale"}
   ]
 }`)
 	writeEvaluationFixture(t, outcomesPath, `{
   "schema_version":"1.0","corpus_id":"retrieval_eval_fixture",
   "outcomes":[
-    {"case_id":"positive","accepted_entity_ids":["symbol_one"]},
-    {"case_id":"safety","accepted_entity_ids":[]}
+    {"case_id":"positive","accepted_entity_ids":["symbol_one"],"latency_milliseconds":1,"projection_lag_events":0},
+    {"case_id":"safety","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0}
   ]
 }`)
 	var stdout, stderr bytes.Buffer
@@ -45,7 +45,7 @@ func TestRunScoresValidatedCorpusAndWritesAtomicReport(t *testing.T) {
 	if err := json.Unmarshal(data, &report); err != nil {
 		t.Fatal(err)
 	}
-	if report.CorpusID != "retrieval_eval_fixture" || report.SampleCount != 2 || report.Metrics.ExpectedNoAcceptedPass != 1 || report.Metrics.RecallAtK != 1 || report.Embedding.Dimensions != 3 {
+	if report.CorpusID != "retrieval_eval_fixture" || report.SampleCount != 2 || report.Metrics.ExpectedNoAcceptedPass != 1 || report.Metrics.StaleRejectionPass != 1 || report.Metrics.EntityResolutionAccuracy != 1 || report.Metrics.RecallAtK != 1 || report.Embedding.Dimensions != 3 {
 		t.Fatalf("report=%#v", report)
 	}
 }
@@ -55,8 +55,8 @@ func TestRunRejectsMismatchedCorpusAndInvalidRequiredMetadata(t *testing.T) {
 	directory := t.TempDir()
 	corpusPath := filepath.Join(directory, "corpus.json")
 	outcomesPath := filepath.Join(directory, "outcomes.json")
-	writeEvaluationFixture(t, corpusPath, `{"schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"public","cases":[{"case_id":"safety","expected_no_accepted":true}]}`)
-	writeEvaluationFixture(t, outcomesPath, `{"schema_version":"1.0","corpus_id":"retrieval_eval_other","outcomes":[{"case_id":"safety","accepted_entity_ids":[]}]}`)
+	writeEvaluationFixture(t, corpusPath, `{"schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"public","cases":[{"case_id":"safety","expected_no_accepted":true,"safety_class":"unauthorized"}]}`)
+	writeEvaluationFixture(t, outcomesPath, `{"schema_version":"1.0","corpus_id":"retrieval_eval_other","outcomes":[{"case_id":"safety","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0}]}`)
 	arguments := evaluationArguments(corpusPath, outcomesPath, "-")
 	if err := run(context.Background(), arguments, &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "does not match") {
 		t.Fatalf("mismatched corpus error=%v", err)
@@ -64,6 +64,24 @@ func TestRunRejectsMismatchedCorpusAndInvalidRequiredMetadata(t *testing.T) {
 	arguments[len(arguments)-1] = "not-a-hash"
 	if err := run(context.Background(), arguments, &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "policy hash") {
 		t.Fatalf("invalid metadata error=%v", err)
+	}
+}
+
+func TestRunRejectsOutcomeWithoutOperationalMeasurements(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	corpusPath := filepath.Join(directory, "corpus.json")
+	outcomesPath := filepath.Join(directory, "outcomes.json")
+	writeEvaluationFixture(t, corpusPath, `{
+  "schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"tuning",
+  "cases":[{"case_id":"positive","required_entity_ids":["symbol_one"]}]
+}`)
+	writeEvaluationFixture(t, outcomesPath, `{
+  "schema_version":"1.0","corpus_id":"retrieval_eval_fixture",
+  "outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]}]
+}`)
+	if err := run(context.Background(), evaluationArguments(corpusPath, outcomesPath, "-"), &bytes.Buffer{}, &bytes.Buffer{}); err == nil || !strings.Contains(err.Error(), "latency_milliseconds") {
+		t.Fatalf("missing measurement error=%v", err)
 	}
 }
 
@@ -77,16 +95,16 @@ func TestRunComparesEveryRequiredBaselineWithoutSelectingOne(t *testing.T) {
   "schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"tuning",
   "cases":[
     {"case_id":"positive","required_entity_ids":["symbol_one"]},
-    {"case_id":"safety","expected_no_accepted":true}
+    {"case_id":"safety","expected_no_accepted":true,"safety_class":"cross_tenant"}
   ]
 }`)
 	writeEvaluationFixture(t, comparisonPath, `{
   "schema_version":"1.0","corpus_id":"retrieval_eval_fixture",
   "variants":[
-    {"name":"lexical_only","policy_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]},
-    {"name":"dense_only","policy_hash":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","outcomes":[{"case_id":"positive","accepted_entity_ids":[]},{"case_id":"safety","accepted_entity_ids":["leak"]}]},
-    {"name":"rrf_unweighted","policy_hash":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]},
-    {"name":"rrf_weighted","policy_hash":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]}
+    {"name":"lexical_only","policy_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"],"latency_milliseconds":1,"projection_lag_events":0},{"case_id":"safety","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0}]},
+    {"name":"dense_only","policy_hash":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","outcomes":[{"case_id":"positive","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0},{"case_id":"safety","accepted_entity_ids":["leak"],"latency_milliseconds":1,"projection_lag_events":0}]},
+    {"name":"rrf_unweighted","policy_hash":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"],"latency_milliseconds":1,"projection_lag_events":0},{"case_id":"safety","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0}]},
+    {"name":"rrf_weighted","policy_hash":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"],"latency_milliseconds":1,"projection_lag_events":0},{"case_id":"safety","accepted_entity_ids":[],"latency_milliseconds":1,"projection_lag_events":0}]}
   ]
 }`)
 	arguments := comparisonArguments(corpusPath, comparisonPath, reportPath)
