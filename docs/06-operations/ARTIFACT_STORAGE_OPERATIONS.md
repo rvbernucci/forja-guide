@@ -98,6 +98,12 @@ Missing or mismatched bodies fail the restore. Do not downgrade an active
 artifact, rewrite a hash, or delete a reference merely to make verification
 green.
 
+The release rehearsal uses `scripts/rehearse_sprint07_rollback.sh`. It proves
+that the exact closed Sprint 06 binary starts against migration 006 after an
+unused migration 007 is removed. Migration 007 refuses rollback once artifact,
+conversation, memory, event, or receipt authority exists; that case requires a
+forward repair and preservation of every provider body.
+
 ## Credential Rotation
 
 1. Provision a new least-privilege credential or workload identity with

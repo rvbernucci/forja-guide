@@ -130,6 +130,122 @@ func TestSprint05RollbackRunsSprint04BinaryAgainstDowngradedSchema(t *testing.T)
 	schemaDowngraded = false
 }
 
+func TestSprint07RollbackRunsSprint06BinaryAgainstDowngradedSchema(t *testing.T) {
+	binary := os.Getenv("FORJA_TEST_SPRINT06_BINARY")
+	if binary == "" {
+		t.Skip("FORJA_TEST_SPRINT06_BINARY is not set")
+	}
+	if info, err := os.Stat(binary); err != nil || info.IsDir() {
+		t.Fatalf("Sprint 06 binary is unavailable: info=%v err=%v", info, err)
+	}
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("migrate current schema before Sprint 07 rollback: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 007: %v", err)
+	}
+	var migrationCount int
+	if err := pool.QueryRow(
+		t.Context(), "SELECT count(*) FROM forja.schema_migrations",
+	).Scan(&migrationCount); err != nil {
+		t.Fatal(err)
+	}
+	if migrationCount != 6 {
+		t.Fatalf("downgraded migration count = %d, want 6", migrationCount)
+	}
+	schemaDowngraded := true
+	t.Cleanup(func() {
+		if !schemaDowngraded {
+			return
+		}
+		cleanupContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := Migrate(cleanupContext, pool); err != nil {
+			t.Errorf("restore current schema after Sprint 07 rollback rehearsal: %v", err)
+		}
+	})
+
+	stdout, err := os.CreateTemp(t.TempDir(), "sprint06-stdout-*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stdout.Close()
+	stderr, err := os.CreateTemp(t.TempDir(), "sprint06-stderr-*.log")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stderr.Close()
+	command := exec.Command(
+		binary,
+		"--listen", "127.0.0.1:0",
+		"--environment", "sprint07-rollback-rehearsal",
+		"--shutdown-timeout", "2s",
+		"--database-auto-migrate=false",
+	)
+	command.Stdout = stdout
+	command.Stderr = stderr
+	command.Env = append(
+		os.Environ(),
+		"FORJA_DATABASE_URL="+integrationDatabaseURL(t),
+		"FORJA_HTTP_BEARER_TOKEN=forja-sprint07-rollback-rehearsal-token",
+		"FORJA_HTTP_ACTOR_TYPE=system",
+		"FORJA_HTTP_ACTOR_ID=sprint07-rollback-rehearsal",
+	)
+	if err := command.Start(); err != nil {
+		t.Fatalf("start Sprint 06 binary: %v", err)
+	}
+	processDone := make(chan struct{})
+	var processErr error
+	go func() {
+		processErr = command.Wait()
+		close(processDone)
+	}()
+	stopped := false
+	t.Cleanup(func() {
+		if stopped || command.Process == nil {
+			return
+		}
+		_ = command.Process.Signal(syscall.SIGTERM)
+		select {
+		case <-processDone:
+		case <-time.After(3 * time.Second):
+			_ = command.Process.Kill()
+			<-processDone
+		}
+	})
+
+	endpoint := waitForSprint04Readiness(
+		t, stdout.Name(), stderr.Name(), processDone, &processErr,
+	)
+	client := &http.Client{Timeout: 2 * time.Second}
+	response, err := client.Get(endpoint + "/readyz") // #nosec G107 -- parsed loopback test endpoint.
+	if err != nil {
+		t.Fatalf("probe Sprint 06 rollback daemon: %v", err)
+	}
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("Sprint 06 readiness status = %d", response.StatusCode)
+	}
+	if err := command.Process.Signal(syscall.SIGTERM); err != nil {
+		t.Fatalf("stop Sprint 06 rollback daemon: %v", err)
+	}
+	select {
+	case <-processDone:
+		stopped = true
+		if processErr != nil {
+			t.Fatalf("Sprint 06 rollback daemon exit: %v", processErr)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Sprint 06 rollback daemon did not stop within its bounded deadline")
+	}
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatalf("reapply current schema after Sprint 07 rollback rehearsal: %v", err)
+	}
+	schemaDowngraded = false
+}
+
 func TestSprint05RollbackRefusesPersistedDeliveryAuthorization(t *testing.T) {
 	for _, test := range []struct {
 		name   string

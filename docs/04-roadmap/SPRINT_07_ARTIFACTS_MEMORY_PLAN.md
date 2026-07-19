@@ -127,7 +127,7 @@ gate.
   references fail closed.
 - [x] Prove chat cannot promote itself into durable memory.
 - [x] Prove tombstones precede purge and derived deletion requests.
-- [ ] Rehearse rollback to the authoritative Sprint 06 commit.
+- [x] Rehearse rollback to the authoritative Sprint 06 commit.
 - [ ] Run race, integration, security, and independent full-range reviews.
 - [ ] Publish a fail-closed Sprint 07 candidate and close it through the
   two-phase protocol.
