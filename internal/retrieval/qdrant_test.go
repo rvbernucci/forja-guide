@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -9,6 +10,16 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
+
+type recordingQdrantUpserter struct {
+	request *qdrant.UpsertPoints
+	err     error
+}
+
+func (client *recordingQdrantUpserter) Upsert(_ context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
+	client.request = request
+	return &qdrant.UpdateResult{}, client.err
+}
 
 func TestQdrantCollectionPlanIsStrictAndIndexed(t *testing.T) {
 	plan, err := BuildQdrantCollectionPlan(
@@ -97,6 +108,29 @@ func TestQdrantEndpointRequiresTLSAndSecretBeyondLoopback(t *testing.T) {
 	config, err = (QdrantEndpoint{Host: "qdrant.internal", Port: 6334, UseTLS: true, APIKey: "secret"}).ClientConfig()
 	if err != nil || !config.UseTLS || config.APIKey != "secret" {
 		t.Fatalf("TLS config=%#v err=%v", config, err)
+	}
+}
+
+func TestQdrantPointWriterWaitsForIdempotentAcknowledgement(t *testing.T) {
+	point, err := BuildPoint(
+		context.Background(), validCardSource(),
+		contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion),
+		fixtureEmbedder{}, HashingSparseEncoder{},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &recordingQdrantUpserter{}
+	writer := QdrantPointWriter{Client: client, CollectionName: "forja_retrieval_v1"}
+	if err := writer.UpsertPoint(context.Background(), point); err != nil {
+		t.Fatal(err)
+	}
+	if client.request == nil || !client.request.GetWait() || len(client.request.GetPoints()) != 1 || client.request.GetPoints()[0].GetPayload()["point_id"].GetStringValue() != point.PointID {
+		t.Fatalf("upsert request=%#v", client.request)
+	}
+	client.err = errors.New("unavailable")
+	if err := writer.UpsertPoint(context.Background(), point); err == nil {
+		t.Fatal("Qdrant error was accepted")
 	}
 }
 

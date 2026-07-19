@@ -87,10 +87,11 @@ reuses an adapter only when its descriptor and every owned source file remain
 exact. A two-commit command drill proves selective adapter reuse and validates
 the resulting events, outbox records, and receipts. Sprint 09 now adds strict
 retrieval contracts, deterministic symbol cards and sparse lexical vectors,
-independent fenced projection delivery, Qdrant protocol plans with mandatory
-pre-ranking filters, and a fail-closed canonical-resolution boundary. The live
-Qdrant projection worker, collection alias lifecycle, evaluation harness, and
-Neo4j remain pending.
+independent fenced projection delivery, a Qdrant point writer with mandatory
+pre-ranking filters, and a fail-closed canonical-resolution boundary. The
+symbol projector writes Qdrant first, records canonical point provenance in
+PostgreSQL, and only then acknowledges its fenced delivery. Live Qdrant
+collection/alias lifecycle, the evaluation harness, and Neo4j remain pending.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 

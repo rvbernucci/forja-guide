@@ -103,12 +103,15 @@ documentation evidence.
 
 ### 3. Qdrant adapter and collection lifecycle
 
-- [ ] Use the version-pinned official Qdrant Go client.
+- [x] Use the version-pinned official Qdrant Go client.
 - [x] Create protocol plans for named dense and sparse vectors plus indexed
   filter payloads; live collection lifecycle wiring remains pending.
-- [ ] Require TLS for non-loopback endpoints and obtain API keys only from an
+- [x] Require TLS for non-loopback endpoints and obtain API keys only from an
   environment or operator secret boundary.
-- [ ] Upsert and delete points idempotently from stable IDs and source hashes.
+- [x] Upsert points idempotently from stable IDs and source hashes. The writer
+  waits for Qdrant acknowledgement before its PostgreSQL delivery can advance.
+- [ ] Project delete/tombstone state and physically delete retired points only
+  after its canonical lifecycle receipt is durable.
 - [ ] Verify collection generation, alias target, vector dimensions, and
   payload schema before accepting projection work.
 - [ ] Implement build, verify, atomic alias switch, observation, and rollback
@@ -121,10 +124,10 @@ documentation evidence.
 - [x] Fuse bounded dense and sparse rankings with explainable weighted
   reciprocal rank fusion.
 - [x] Define and test the fail-closed canonical resolver boundary for identity,
-  source hash, source commit, lifecycle, scope, and duplicate checks; the
-  PostgreSQL-backed resolver implementation remains pending.
-- [ ] Resolve every candidate against canonical PostgreSQL identity, source
-  hash, source commit, lifecycle, and repository authority.
+  source hash, source commit, lifecycle, scope, and duplicate checks.
+- [x] Resolve symbol candidates against canonical PostgreSQL identity, source
+  hash, source commit, lifecycle, and repository authority. Other card
+  families remain absent until their canonical adapters exist.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
 - [ ] Return alternatives for genuine ambiguity rather than inventing a link.

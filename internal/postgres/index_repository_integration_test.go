@@ -580,8 +580,11 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 			Snapshot: snapshot, Files: []contracts.FileCard{file},
 			Symbols: []contracts.SymbolCard{symbol}, Relations: []contracts.RelationEvidence{},
 		},
-		AdapterRuns:   []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
-		Deltas:        []persistence.IndexDelta{{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID}},
+		AdapterRuns: []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
+		Deltas: []persistence.IndexDelta{
+			{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID},
+			{Ordinal: 1, ChangeKind: "added", EntityKind: "symbol", EntityID: symbol.SymbolID},
+		},
 		Invalidations: []persistence.IndexInvalidation{},
 	}
 }

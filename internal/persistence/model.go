@@ -363,6 +363,14 @@ type ProjectionDeliveryRepository interface {
 	FailProjectionDelivery(context.Context, string, int64, string, int64, error, time.Time, int) error
 }
 
+// RetrievalPointRepository records the canonical provenance of a successfully
+// written derived point. The record is deliberately separate from the vector
+// write: a failed canonical receipt leaves the vector untrusted and therefore
+// unavailable to governed retrieval until the projector retries it.
+type RetrievalPointRepository interface {
+	RecordRetrievalProjectionPoint(context.Context, contracts.RetrievalPoint, int64) error
+}
+
 // ProjectionRepository rebuilds derived state from immutable canonical events.
 type ProjectionRepository interface {
 	RebuildRunProjection(context.Context, string) error

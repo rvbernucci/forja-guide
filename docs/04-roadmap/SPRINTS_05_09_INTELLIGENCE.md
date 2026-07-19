@@ -143,8 +143,9 @@ preserving authority and access boundaries.
 
 ### Scope
 
-- [x] Define versioned Qdrant collection protocol plans, named vectors, and
-  mandatory payload indexes. Live aliases remain pending.
+- [x] Define versioned Qdrant collection protocol plans, named vectors,
+  mandatory payload indexes, TLS/secret endpoint policy, and an idempotent
+  official-client point writer. Live aliases remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
   The deterministic symbol-card adapter and generic card contract are complete.
 - [x] Implement the dense/sparse request contracts and deterministic sparse
@@ -152,12 +153,13 @@ preserving authority and access boundaries.
 - [x] Apply tenant, repository, status, authority, stale, language, and kind
   filters before ranking.
 - [x] Implement weighted reciprocal rank fusion.
-- [x] Implement and test canonical-resolution and ambiguity-handling policy.
-  The PostgreSQL resolver adapter remains pending.
+- [x] Implement and test canonical-resolution and ambiguity-handling policy,
+  including the PostgreSQL resolver adapter for active canonical symbols.
 - [x] Record embedding model, version, dimensions, source hash, and generation
   timestamp.
 - [x] Implement independent, fenced per-projector outbox delivery and backlog
-  replay. The Qdrant upsert/delete projector remains pending.
+  replay. The symbol Qdrant upsert projector records PostgreSQL provenance
+  before acknowledging delivery; delete/tombstone projection remains pending.
 - [ ] Add collection migration and blue-green re-embedding strategy.
 - [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
 
