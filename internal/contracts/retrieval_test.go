@@ -142,14 +142,44 @@ func TestValidateRetrievalQueryFailsClosed(t *testing.T) {
 		"missing allowed paths": func(query *RetrievalQuery) { query.Scope.AllowedPaths = nil },
 		"path traversal":        func(query *RetrievalQuery) { query.Scope.AllowedPaths = []string{"../private"} },
 		"unbounded fusion":      func(query *RetrievalQuery) { query.Policy.DenseLimit = 201 },
-		"zero sparse weight":    func(query *RetrievalQuery) { query.Policy.SparseWeight = 0 },
-		"invalid tenant":        func(query *RetrievalQuery) { query.TenantID = "tenant_wrong" },
+		"both rank paths disabled": func(query *RetrievalQuery) {
+			query.Policy.DenseWeight = 0
+			query.Policy.SparseWeight = 0
+		},
+		"invalid tenant": func(query *RetrievalQuery) { query.TenantID = "tenant_wrong" },
 	} {
 		t.Run(name, func(t *testing.T) {
 			query := validRetrievalQuery()
 			mutate(&query)
 			if err := ValidateRetrievalQuery(query); err == nil {
 				t.Fatal("expected query validation failure")
+			}
+		})
+	}
+}
+
+func TestValidateRetrievalQueryAllowsOneExplicitBaselineRankPath(t *testing.T) {
+	t.Parallel()
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, mutate := range map[string]func(*RetrievalQuery){
+		"lexical only": func(query *RetrievalQuery) { query.Policy.DenseWeight = 0 },
+		"dense only":   func(query *RetrievalQuery) { query.Policy.SparseWeight = 0 },
+	} {
+		t.Run(name, func(t *testing.T) {
+			query := validRetrievalQuery()
+			mutate(&query)
+			if err := ValidateRetrievalQuery(query); err != nil {
+				t.Fatalf("baseline query rejected: %v", err)
+			}
+			encoded, err := json.Marshal(query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := registry.ValidateJSON("retrieval-query.schema.json", encoded); err != nil {
+				t.Fatalf("baseline query rejected by schema: %v", err)
 			}
 		})
 	}
@@ -212,6 +242,21 @@ func TestFuseRetrievalRanksIsWeightedAndStable(t *testing.T) {
 	}
 	if _, err := FuseRetrievalRanks([]RetrievalPoint{alpha, alpha}, nil, policy); err == nil {
 		t.Fatal("duplicate rank-list point accepted")
+	}
+}
+
+func TestFuseRetrievalRanksExcludesDisabledPath(t *testing.T) {
+	t.Parallel()
+	policy := validRetrievalQuery().Policy
+	policy.DenseWeight = 0
+	alpha := validRetrievalPoint(t, "symbol_alpha", "sha256:"+strings.Repeat("a", 64), "alpha")
+	beta := validRetrievalPoint(t, "symbol_beta", "sha256:"+strings.Repeat("b", 64), "beta")
+	actual, err := FuseRetrievalRanks([]RetrievalPoint{alpha}, []RetrievalPoint{beta}, policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(actual) != 1 || actual[0].EntityID != beta.EntityID || actual[0].DenseRank != nil || actual[0].SparseRank == nil || actual[0].FusedScore <= 0 {
+		t.Fatalf("disabled dense path contributed to fused result: %#v", actual)
 	}
 }
 

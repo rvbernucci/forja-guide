@@ -63,6 +63,58 @@ func TestQueryServiceDegradesWhenQdrantIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestQueryServiceRunsLexicalOnlyWithoutEmbedding(t *testing.T) {
+	t.Parallel()
+	point, err := BuildPoint(t.Context(), validCardSource(), contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion), fixtureEmbedder{}, HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := QdrantPoint(point)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := governedQuery()
+	query.Policy.DenseWeight = 0
+	generation := point.CollectionGeneration
+	query.ExpectedGeneration = &generation
+	canonical := CanonicalCandidate{PointID: point.PointID, CollectionGeneration: point.CollectionGeneration, TenantID: point.TenantID, RepositoryID: point.RepositoryID, EntityID: point.EntityID, ArtifactFamily: point.ArtifactFamily, SourceCommit: point.SourceCommit, SourceHash: point.SourceHash, Status: "active", AuthorityClass: point.AuthorityClass, RepositoryPath: point.RepositoryPath, ProofRefs: point.ProofRefs}
+	client := &recordingQdrantQueryClient{sparse: []*qdrant.ScoredPoint{{Payload: wire.Payload}}}
+	service := QueryService{Client: client, CollectionName: "forja_retrieval_v1", Embedder: failingEmbedder{}, Sparse: HashingSparseEncoder{}, Resolver: staticResolver{point.PointID: {canonical}}}
+	result, err := service.Search(t.Context(), query)
+	if err != nil || result.Status != "complete" || len(result.Accepted) != 1 || result.Receipt.DenseCandidates != 0 || result.Receipt.SparseCandidates != 1 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if len(client.requests) != 1 || client.requests[0].GetUsing() != SparseVectorName {
+		t.Fatalf("lexical baseline requests=%#v", client.requests)
+	}
+}
+
+func TestQueryServiceRunsDenseOnlyWithoutSparseEncoding(t *testing.T) {
+	t.Parallel()
+	point, err := BuildPoint(t.Context(), validCardSource(), contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion), fixtureEmbedder{}, HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := QdrantPoint(point)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := governedQuery()
+	query.Policy.SparseWeight = 0
+	generation := point.CollectionGeneration
+	query.ExpectedGeneration = &generation
+	canonical := CanonicalCandidate{PointID: point.PointID, CollectionGeneration: point.CollectionGeneration, TenantID: point.TenantID, RepositoryID: point.RepositoryID, EntityID: point.EntityID, ArtifactFamily: point.ArtifactFamily, SourceCommit: point.SourceCommit, SourceHash: point.SourceHash, Status: "active", AuthorityClass: point.AuthorityClass, RepositoryPath: point.RepositoryPath, ProofRefs: point.ProofRefs}
+	client := &recordingQdrantQueryClient{dense: []*qdrant.ScoredPoint{{Payload: wire.Payload}}}
+	service := QueryService{Client: client, CollectionName: "forja_retrieval_v1", Embedder: fixtureEmbedder{}, Sparse: failingSparseEncoder{}, Resolver: staticResolver{point.PointID: {canonical}}}
+	result, err := service.Search(t.Context(), query)
+	if err != nil || result.Status != "complete" || len(result.Accepted) != 1 || result.Receipt.DenseCandidates != 1 || result.Receipt.SparseCandidates != 0 {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+	if len(client.requests) != 1 || client.requests[0].GetUsing() != DenseVectorName {
+		t.Fatalf("dense baseline requests=%#v", client.requests)
+	}
+}
+
 func TestQueryServiceBoundsAStalledQdrantCall(t *testing.T) {
 	t.Parallel()
 	query := governedQuery()
@@ -151,6 +203,20 @@ type recordingQdrantQueryClient struct {
 }
 
 type blockingQdrantQueryClient struct{}
+
+type failingEmbedder struct{ fixtureEmbedder }
+
+func (failingEmbedder) Embed(context.Context, string) ([]float64, error) {
+	return nil, errors.New("embedding should be disabled")
+}
+
+type failingSparseEncoder struct{}
+
+func (failingSparseEncoder) Version() string { return SparseEncoderVersion }
+
+func (failingSparseEncoder) Encode(string) (contracts.SparseVector, error) {
+	return contracts.SparseVector{}, errors.New("sparse encoding should be disabled")
+}
 
 func (blockingQdrantQueryClient) Query(ctx context.Context, _ *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error) {
 	<-ctx.Done()

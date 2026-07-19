@@ -87,6 +87,13 @@ hash. The CLI validates the whole set and writes a report in that fixed order.
 It reports evidence only: selecting a policy remains permitted exclusively on
 the controlled tuning split.
 
+`lexical_only` is a governed query policy with `dense_weight: 0` and a positive
+`sparse_weight`; `dense_only` uses the inverse. A disabled route is not merely
+given a negligible score: the runtime does not invoke its encoder, provider, or
+Qdrant rank query, and it cannot contribute a candidate to the fused result.
+`rrf_unweighted` uses equal positive weights and `rrf_weighted` uses the
+candidate serving weights. Both weights being zero is invalid.
+
 ## Metrics
 
 `ScoreRankings` computes deterministic macro averages at an explicit bounded

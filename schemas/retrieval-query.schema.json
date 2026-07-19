@@ -58,8 +58,8 @@
         "limit": {"type": "integer", "minimum": 1, "maximum": 100},
         "dense_limit": {"type": "integer", "minimum": 1, "maximum": 200},
         "sparse_limit": {"type": "integer", "minimum": 1, "maximum": 200},
-        "dense_weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
-        "sparse_weight": {"type": "number", "exclusiveMinimum": 0, "maximum": 10},
+        "dense_weight": {"type": "number", "minimum": 0, "maximum": 10},
+        "sparse_weight": {"type": "number", "minimum": 0, "maximum": 10},
         "rrf_k": {"type": "integer", "minimum": 1, "maximum": 1000}
       }
     },

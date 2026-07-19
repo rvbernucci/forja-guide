@@ -509,9 +509,10 @@ func retrievalFiltersIncludeRepositoryGlobalFamily(filters RetrievalFilters) boo
 func validateRetrievalPolicy(policy RetrievalPolicy) error {
 	if policy.Limit < 1 || policy.Limit > 100 || policy.DenseLimit < policy.Limit || policy.DenseLimit > 200 ||
 		policy.SparseLimit < policy.Limit || policy.SparseLimit > 200 || policy.RRFK < 1 || policy.RRFK > 1000 ||
-		policy.DenseWeight <= 0 || policy.DenseWeight > 10 || policy.SparseWeight <= 0 || policy.SparseWeight > 10 ||
+		policy.DenseWeight < 0 || policy.DenseWeight > 10 || policy.SparseWeight < 0 || policy.SparseWeight > 10 ||
 		math.IsNaN(policy.DenseWeight) || math.IsInf(policy.DenseWeight, 0) ||
-		math.IsNaN(policy.SparseWeight) || math.IsInf(policy.SparseWeight, 0) {
+		math.IsNaN(policy.SparseWeight) || math.IsInf(policy.SparseWeight, 0) ||
+		(policy.DenseWeight == 0 && policy.SparseWeight == 0) {
 		return fmt.Errorf("retrieval policy is invalid")
 	}
 	return nil
@@ -626,6 +627,9 @@ func FuseRetrievalRanks(dense, sparse []RetrievalPoint, policy RetrievalPolicy) 
 	}
 	scores := make(map[string]*scored, len(dense)+len(sparse))
 	apply := func(points []RetrievalPoint, weight float64, isDense bool) error {
+		if weight == 0 {
+			return nil
+		}
 		seen := make(map[string]struct{}, len(points))
 		for index, point := range points {
 			if err := ValidateRetrievalPoint(point); err != nil {

@@ -41,7 +41,8 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	if err := contracts.ValidateRetrievalQuery(query); err != nil {
 		return contracts.RetrievalResult{}, err
 	}
-	if service.Client == nil || service.Embedder == nil || service.Sparse == nil || service.Resolver == nil || !qdrantCollectionNamePattern.MatchString(service.CollectionName) {
+	if service.Client == nil || service.Embedder == nil || service.Resolver == nil ||
+		(query.Policy.SparseWeight > 0 && service.Sparse == nil) || !qdrantCollectionNamePattern.MatchString(service.CollectionName) {
 		return contracts.RetrievalResult{}, fmt.Errorf("governed retrieval service is not configured")
 	}
 	if service.QueryTimeout < 0 || service.QueryTimeout > 30*time.Second {
@@ -54,39 +55,44 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	if descriptor.SparseEncoderVersion != service.Sparse.Version() || query.ExpectedGeneration == nil || *query.ExpectedGeneration != contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion) {
 		return contracts.RetrievalResult{}, fmt.Errorf("retrieval query does not bind the configured embedding generation")
 	}
-	dense, err := service.Embedder.Embed(ctx, query.Query)
-	if err != nil || !validDenseQuery(dense, descriptor.Dimensions) {
-		if err == nil {
-			err = fmt.Errorf("embedding dimensions or values are invalid")
+	var denseCandidates, sparseCandidates []contracts.RetrievalCandidate
+	if query.Policy.DenseWeight > 0 {
+		dense, embedErr := service.Embedder.Embed(ctx, query.Query)
+		if embedErr != nil || !validDenseQuery(dense, descriptor.Dimensions) {
+			if embedErr == nil {
+				embedErr = fmt.Errorf("embedding dimensions or values are invalid")
+			}
+			return contracts.RetrievalResult{}, fmt.Errorf("embed retrieval query: %w", embedErr)
 		}
-		return contracts.RetrievalResult{}, fmt.Errorf("embed retrieval query: %w", err)
+		denseRequest, buildErr := BuildQdrantQueryRequest(service.CollectionName, query, dense, contracts.SparseVector{}, DenseVectorName)
+		if buildErr != nil {
+			return contracts.RetrievalResult{}, buildErr
+		}
+		densePoints, queryErr := service.Client.Query(ctx, denseRequest)
+		if queryErr != nil {
+			result = degradedResult(query, "qdrant_dense_unavailable")
+			service.recordQueryStats(ctx, result)
+			return result, nil
+		}
+		denseCandidates = qdrantCandidates(densePoints, query.Policy.DenseLimit)
 	}
-	sparse, err := service.Sparse.Encode(query.Query)
-	if err != nil {
-		return contracts.RetrievalResult{}, fmt.Errorf("encode sparse retrieval query: %w", err)
+	if query.Policy.SparseWeight > 0 {
+		sparse, sparseErr := service.Sparse.Encode(query.Query)
+		if sparseErr != nil {
+			return contracts.RetrievalResult{}, fmt.Errorf("encode sparse retrieval query: %w", sparseErr)
+		}
+		sparseRequest, buildErr := BuildQdrantQueryRequest(service.CollectionName, query, nil, sparse, SparseVectorName)
+		if buildErr != nil {
+			return contracts.RetrievalResult{}, buildErr
+		}
+		sparsePoints, queryErr := service.Client.Query(ctx, sparseRequest)
+		if queryErr != nil {
+			result = degradedResult(query, "qdrant_sparse_unavailable")
+			service.recordQueryStats(ctx, result)
+			return result, nil
+		}
+		sparseCandidates = qdrantCandidates(sparsePoints, query.Policy.SparseLimit)
 	}
-	denseRequest, err := BuildQdrantQueryRequest(service.CollectionName, query, dense, sparse, DenseVectorName)
-	if err != nil {
-		return contracts.RetrievalResult{}, err
-	}
-	sparseRequest, err := BuildQdrantQueryRequest(service.CollectionName, query, dense, sparse, SparseVectorName)
-	if err != nil {
-		return contracts.RetrievalResult{}, err
-	}
-	densePoints, err := service.Client.Query(ctx, denseRequest)
-	if err != nil {
-		result = degradedResult(query, "qdrant_dense_unavailable")
-		service.recordQueryStats(ctx, result)
-		return result, nil
-	}
-	sparsePoints, err := service.Client.Query(ctx, sparseRequest)
-	if err != nil {
-		result = degradedResult(query, "qdrant_sparse_unavailable")
-		service.recordQueryStats(ctx, result)
-		return result, nil
-	}
-	denseCandidates := qdrantCandidates(densePoints, query.Policy.DenseLimit)
-	sparseCandidates := qdrantCandidates(sparsePoints, query.Policy.SparseLimit)
 	fused, malformed := fuseCandidateRanks(denseCandidates, sparseCandidates, query.Policy)
 	accepted, rejected, ambiguities, err := ResolveRankedCandidates(ctx, query, fused, service.Resolver)
 	if err != nil {
@@ -184,6 +190,9 @@ func fuseCandidateRanks(dense, sparse []contracts.RetrievalCandidate, policy con
 	entries := make(map[string]*scored, len(dense)+len(sparse))
 	rejections := []contracts.RetrievalRejection{}
 	apply := func(values []contracts.RetrievalCandidate, weight float64, isDense bool) {
+		if weight == 0 {
+			return
+		}
 		seen := make(map[string]struct{}, len(values))
 		for index, candidate := range values {
 			if candidate.PointID == "" {
