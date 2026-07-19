@@ -105,7 +105,9 @@ documentation evidence.
 
 - [x] Use the version-pinned official Qdrant Go client.
 - [x] Create protocol plans for named dense and sparse vectors plus indexed
-  filter payloads; live collection lifecycle wiring remains pending.
+  filter payloads. The operator adapter creates physical collections, applies
+  required indexes, and switches one alias atomically; verification and
+  rollback wiring remain pending.
 - [x] Require TLS for non-loopback endpoints and obtain API keys only from an
   environment or operator secret boundary.
 - [x] Upsert points idempotently from stable IDs and source hashes. The writer

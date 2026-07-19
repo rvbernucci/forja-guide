@@ -144,8 +144,9 @@ preserving authority and access boundaries.
 ### Scope
 
 - [x] Define versioned Qdrant collection protocol plans, named vectors,
-  mandatory payload indexes, TLS/secret endpoint policy, and an idempotent
-  official-client point writer. Live aliases remain pending.
+  mandatory payload indexes, TLS/secret endpoint policy, an idempotent
+  official-client point writer, and explicit collection/alias operator calls.
+  Collection verification and rollback remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
   The deterministic symbol-card adapter and generic card contract are complete.
 - [x] Implement the dense/sparse request contracts and deterministic sparse

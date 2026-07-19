@@ -90,8 +90,10 @@ retrieval contracts, deterministic symbol cards and sparse lexical vectors,
 independent fenced projection delivery, a Qdrant point writer with mandatory
 pre-ranking filters, and a fail-closed canonical-resolution boundary. The
 symbol projector writes Qdrant first, records canonical point provenance in
-PostgreSQL, and only then acknowledges its fenced delivery. Live Qdrant
-collection/alias lifecycle, the evaluation harness, and Neo4j remain pending.
+PostgreSQL, and only then acknowledges its fenced delivery. The operator
+adapter can create physical collections, apply required payload indexes, and
+atomically switch a verified alias; full collection verification, rebuild,
+rollback, the evaluation harness, and Neo4j remain pending.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 

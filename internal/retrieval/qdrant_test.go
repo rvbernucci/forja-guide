@@ -16,6 +16,37 @@ type recordingQdrantUpserter struct {
 	err     error
 }
 
+type recordingQdrantCollectionClient struct {
+	exists         bool
+	created        []*qdrant.CreateCollection
+	indexes        []*qdrant.CreateFieldIndexCollection
+	existsErr      error
+	createErr      error
+	createIndexErr error
+}
+
+func (client *recordingQdrantCollectionClient) CollectionExists(context.Context, string) (bool, error) {
+	return client.exists, client.existsErr
+}
+func (client *recordingQdrantCollectionClient) CreateCollection(_ context.Context, create *qdrant.CreateCollection) error {
+	client.created = append(client.created, create)
+	return client.createErr
+}
+func (client *recordingQdrantCollectionClient) CreateFieldIndex(_ context.Context, index *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error) {
+	client.indexes = append(client.indexes, index)
+	return &qdrant.UpdateResult{}, client.createIndexErr
+}
+
+type recordingQdrantAliasClient struct {
+	actions []*qdrant.AliasOperations
+	err     error
+}
+
+func (client *recordingQdrantAliasClient) UpdateAliases(_ context.Context, actions []*qdrant.AliasOperations) error {
+	client.actions = actions
+	return client.err
+}
+
 func (client *recordingQdrantUpserter) Upsert(_ context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
 	client.request = request
 	return &qdrant.UpdateResult{}, client.err
@@ -131,6 +162,46 @@ func TestQdrantPointWriterWaitsForIdempotentAcknowledgement(t *testing.T) {
 	client.err = errors.New("unavailable")
 	if err := writer.UpsertPoint(context.Background(), point); err == nil {
 		t.Fatal("Qdrant error was accepted")
+	}
+}
+
+func TestEnsureQdrantCollectionCreatesPhysicalStoreAndAllMandatoryIndexes(t *testing.T) {
+	plan, err := BuildQdrantCollectionPlan("forja_retrieval_v1", 3, contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &recordingQdrantCollectionClient{}
+	if err := EnsureQdrantCollection(context.Background(), client, plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.created) != 1 || len(client.indexes) != len(plan.PayloadIndex) {
+		t.Fatalf("created=%d indexes=%d", len(client.created), len(client.indexes))
+	}
+	client.exists = true
+	client.created = nil
+	if err := EnsureQdrantCollection(context.Background(), client, plan); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.created) != 0 {
+		t.Fatal("existing collection was recreated")
+	}
+	client.createIndexErr = errors.New("index unavailable")
+	if err := EnsureQdrantCollection(context.Background(), client, plan); err == nil {
+		t.Fatal("payload index failure was accepted")
+	}
+}
+
+func TestSwitchQdrantAliasUsesOneAtomicReplacementAction(t *testing.T) {
+	client := &recordingQdrantAliasClient{}
+	if err := SwitchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green"); err != nil {
+		t.Fatal(err)
+	}
+	if len(client.actions) != 1 || client.actions[0].GetCreateAlias().GetAliasName() != "forja_retrieval" || client.actions[0].GetCreateAlias().GetCollectionName() != "forja_retrieval_green" {
+		t.Fatalf("alias actions=%#v", client.actions)
+	}
+	client.err = errors.New("unavailable")
+	if err := SwitchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green"); err == nil {
+		t.Fatal("alias failure was accepted")
 	}
 }
 

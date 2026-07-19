@@ -53,6 +53,62 @@ type QdrantPointWriter struct {
 	CollectionName string
 }
 
+// QdrantCollectionClient is the lifecycle subset of the official client. The
+// operator is intentionally separate from the projector so collection changes
+// remain explicit, operator-authorized actions rather than worker side effects.
+type QdrantCollectionClient interface {
+	CollectionExists(context.Context, string) (bool, error)
+	CreateCollection(context.Context, *qdrant.CreateCollection) error
+	CreateFieldIndex(context.Context, *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error)
+}
+
+// QdrantAliasClient applies Qdrant's atomic alias operation set. A caller must
+// verify the green collection before choosing to switch the stable alias.
+type QdrantAliasClient interface {
+	UpdateAliases(context.Context, []*qdrant.AliasOperations) error
+}
+
+// EnsureQdrantCollection creates the physical collection if absent and ensures
+// the mandatory payload indexes before any projector is permitted to ingest
+// points. It does not switch a serving alias or silently alter an existing
+// collection's vector contract.
+func EnsureQdrantCollection(ctx context.Context, client QdrantCollectionClient, plan QdrantCollectionPlan) error {
+	if client == nil || plan.Create == nil || !qdrantCollectionNamePattern.MatchString(plan.Create.CollectionName) {
+		return fmt.Errorf("Qdrant collection plan is invalid")
+	}
+	exists, err := client.CollectionExists(ctx, plan.Create.CollectionName)
+	if err != nil {
+		return fmt.Errorf("check Qdrant collection: %w", err)
+	}
+	if !exists {
+		if err := client.CreateCollection(ctx, plan.Create); err != nil {
+			return fmt.Errorf("create Qdrant collection: %w", err)
+		}
+	}
+	for _, index := range plan.PayloadIndex {
+		if index == nil || index.CollectionName != plan.Create.CollectionName || index.FieldName == "" {
+			return fmt.Errorf("Qdrant payload index plan is invalid")
+		}
+		if _, err := client.CreateFieldIndex(ctx, index); err != nil {
+			return fmt.Errorf("create Qdrant payload index %s: %w", index.FieldName, err)
+		}
+	}
+	return nil
+}
+
+// SwitchQdrantAlias atomically directs one stable alias to a verified physical
+// generation. Qdrant executes all actions as one request; the caller supplies
+// one replacement action so a failed request preserves the previous target.
+func SwitchQdrantAlias(ctx context.Context, client QdrantAliasClient, aliasName, collectionName string) error {
+	if client == nil || !qdrantCollectionNamePattern.MatchString(aliasName) || !qdrantCollectionNamePattern.MatchString(collectionName) {
+		return fmt.Errorf("Qdrant alias switch is invalid")
+	}
+	if err := client.UpdateAliases(ctx, []*qdrant.AliasOperations{qdrant.NewAliasCreate(aliasName, collectionName)}); err != nil {
+		return fmt.Errorf("switch Qdrant alias: %w", err)
+	}
+	return nil
+}
+
 func (writer QdrantPointWriter) UpsertPoint(ctx context.Context, point contracts.RetrievalPoint) error {
 	if writer.Client == nil || !qdrantCollectionNamePattern.MatchString(writer.CollectionName) {
 		return fmt.Errorf("Qdrant point writer is not configured")
