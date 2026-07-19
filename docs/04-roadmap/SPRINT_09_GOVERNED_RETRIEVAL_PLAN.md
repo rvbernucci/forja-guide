@@ -122,9 +122,11 @@ documentation evidence.
 - [x] Verify the serving alias target after cutover and before a guarded
   rollback. PostgreSQL records registration, activation, draining, and safe
   retirement of generations.
-- [ ] Execute a live Qdrant blue-green build, verify, atomic alias switch,
-  observation window, and rollback rehearsal. The current implementation and
-  fake-client tests cover the operator protocol; Docker is unavailable locally.
+- [x] Execute a live Qdrant blue-green build, verify, atomic alias switch,
+  observation window, and rollback rehearsal. The opt-in integration test
+  creates two physical Qdrant generations, verifies both alias targets,
+  rolls back with compare-before-switch protection, and deletes its temporary
+  state.
 
 ### 4. Governed hybrid retrieval
 
@@ -159,14 +161,16 @@ documentation evidence.
 - [x] Keep query text, vectors, entity names, paths, and payload bodies out of
   retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
-- [ ] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
+- [x] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
   deleting the derived collection. Search and each projection delivery now have
   bounded 5-second/15-second defaults (maximum 30 seconds) with timeout tests;
   cooperative shutdown leaves an in-flight delivery unacknowledged for lease
   recovery rather than writing through a cancelled context; fenced retry,
   dead-letter repair, and canonical fail-closed ledger reset/replay are covered
-  by PostgreSQL 18 integration tests. A live Qdrant deletion/rebuild and
-  shutdown drill remain pending.
+  by PostgreSQL integration tests. The opt-in live drill deletes a real Qdrant
+  collection, resets canonical provenance and the delivery ledger, recreates
+  the collection, and proves replay restores a governed PostgreSQL-resolved
+  result.
 
 ### 6. Evaluation and closure
 
@@ -191,8 +195,8 @@ documentation evidence.
 - Qdrant protocol tests proving mandatory filters on both retrieval paths.
 - PostgreSQL concurrency tests for registration, fan-out, claims, fencing,
   contiguous checkpoints, replay, and dead letters.
-- Real Qdrant integration tests for collection creation, payload indexes,
-  upsert, delete, query, alias swap, rollback, and rebuild.
+- Opt-in real Qdrant integration tests for collection creation, payload
+  indexes, upsert, delete, query, alias swap, rollback, and rebuild.
 - Cross-tenant, cross-repository, stale-commit, hash-mismatch, tombstone,
   malformed-payload, timeout, and provider-failure tests.
 - A retrieval evaluation report with dataset and policy hashes.

@@ -147,8 +147,8 @@ preserving authority and access boundaries.
   mandatory payload indexes, TLS/secret endpoint policy, an idempotent
   official-client point writer, explicit collection/alias operator calls, and
   physical generation/vector/index verification. Alias observation and guarded
-  rollback are implemented; durable blue-green generation activation and a
-  live Qdrant integration exercise remain pending.
+  rollback are implemented. Opt-in live integration now covers physical
+  blue-green cutover, guarded rollback, collection deletion, and replay.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
   The deterministic symbol/test-card adapters and generic card contract are
   complete; decision, memory, and incident await their owning canonical

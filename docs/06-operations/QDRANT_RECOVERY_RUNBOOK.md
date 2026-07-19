@@ -26,6 +26,30 @@ The pinned `qdrant/qdrant:v1.18.2-unprivileged` image is the Sprint 09 local
 compatibility target. Review the official [Qdrant upgrade guidance](https://qdrant.tech/documentation/operations/upgrades/)
 and SDK compatibility before changing it.
 
+## Live Rehearsal
+
+The repository includes opt-in integration tests that create and delete real
+Qdrant collections. They never read a key from a command argument: supply the
+loopback endpoint and development key through the environment. The second test
+also needs an isolated disposable PostgreSQL database through
+`FORJA_TEST_DATABASE_URL`.
+
+```bash
+export FORJA_QDRANT_LIVE=1
+export FORJA_QDRANT_HOST=127.0.0.1
+export FORJA_QDRANT_GRPC_PORT=6334
+export FORJA_QDRANT_API_KEY='development-only-secret'
+
+go test ./internal/retrieval -run '^TestLiveQdrantBlueGreenQueryAndDelete$' -count=1
+FORJA_TEST_DATABASE_URL='postgresql://user@127.0.0.1:5432/forja_test?sslmode=disable' \
+  go test ./internal/postgres -run '^TestLiveQdrantDeletionResetAndReplay$' -count=1
+```
+
+Run only against a disposable loopback Qdrant/PostgreSQL pair. The drill
+creates unique temporary collections, removes them during cleanup, and resets
+the PostgreSQL `forja` schema. A non-loopback deployment requires TLS and its
+normal secret-management boundary; do not use this development command there.
+
 ## Rebuild From Canonical State
 
 1. Stop new retrieval projection workers. Do not stop PostgreSQL or alter the
