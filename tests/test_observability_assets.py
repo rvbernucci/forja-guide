@@ -111,6 +111,9 @@ class ObservabilityAssetsTests(unittest.TestCase):
         self.assertGreaterEqual(len(match.group(1).encode("utf-8")), 32)
         self.assertIn("observability stack diagnostics", script)
         self.assertIn("http://127.0.0.1:12345/-/ready", script)
+        self.assertIn('metrics_payload="$(curl ', script)
+        self.assertIn("<<<\"$metrics_payload\"", script)
+        self.assertNotRegex(script, r"curl[^\n]*?/metrics\s*\|\s*grep -q")
 
     def test_unstructured_stderr_is_not_ingested_as_json_logs(self) -> None:
         script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(
