@@ -16,6 +16,16 @@ OBS = ROOT / "deploy" / "observability"
 
 
 class ObservabilityAssetsTests(unittest.TestCase):
+    @staticmethod
+    def _service_block(compose: str, service: str) -> str:
+        match = re.search(
+            rf"(?ms)^  {re.escape(service)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            compose,
+        )
+        if match is None:
+            raise AssertionError(f"service {service!r} is missing")
+        return match.group("body")
+
     def test_compose_uses_exact_images_and_loopback_ports(self) -> None:
         expected = {
             "otel/opentelemetry-collector-contrib:0.153.0",
@@ -46,11 +56,12 @@ class ObservabilityAssetsTests(unittest.TestCase):
             self.assertGreaterEqual(compose.count("network_mode: host"), 2)
             self.assertIn("--web.listen-address=127.0.0.1:9090", compose)
             self.assertIn("GF_SERVER_HTTP_ADDR: 127.0.0.1", compose)
+            alloy = self._service_block(compose, "alloy")
             self.assertIn(
-                "--server.http.listen-addr=0.0.0.0:12345", compose
+                "--server.http.listen-addr=0.0.0.0:12345", alloy
             )
-            self.assertIn("--storage.path=/var/lib/alloy/data", compose)
-            self.assertIn("alloy-data:/var/lib/alloy/data", compose)
+            self.assertIn("--storage.path=/var/lib/alloy/data", alloy)
+            self.assertIn("alloy-data:/var/lib/alloy/data", alloy)
             self.assertIn('targets: ["127.0.0.1:8080"]', prometheus)
             self.assertIn('targets: ["127.0.0.1:9464"]', prometheus)
             self.assertNotIn("host.docker.internal", compose + prometheus)
