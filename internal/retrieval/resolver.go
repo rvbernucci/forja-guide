@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -44,18 +45,19 @@ func ResolveRankedCandidates(
 	query contracts.RetrievalQuery,
 	ranked []contracts.RetrievalCandidate,
 	resolver CanonicalResolver,
-) ([]contracts.RetrievalCandidate, []contracts.RetrievalRejection, error) {
+) ([]contracts.RetrievalCandidate, []contracts.RetrievalRejection, []contracts.RetrievalAmbiguity, error) {
 	if err := contracts.ValidateRetrievalQuery(query); err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if resolver == nil {
-		return nil, nil, fmt.Errorf("canonical retrieval resolver is required")
+		return nil, nil, nil, fmt.Errorf("canonical retrieval resolver is required")
 	}
 	if len(ranked) > query.Policy.DenseLimit+query.Policy.SparseLimit {
-		return nil, nil, fmt.Errorf("ranked candidate list exceeds retrieval policy")
+		return nil, nil, nil, fmt.Errorf("ranked candidate list exceeds retrieval policy")
 	}
 	accepted := make([]contracts.RetrievalCandidate, 0, min(len(ranked), query.Policy.Limit))
 	rejections := make([]contracts.RetrievalRejection, 0, len(ranked))
+	ambiguities := make([]contracts.RetrievalAmbiguity, 0, len(ranked))
 	seenEntity := make(map[string]struct{}, len(ranked))
 	for _, candidate := range ranked {
 		if err := validateRankedCandidate(candidate); err != nil {
@@ -64,13 +66,16 @@ func ResolveRankedCandidates(
 		}
 		resolved, err := resolver.ResolveRetrievalPoint(ctx, candidate.PointID)
 		if err != nil {
-			return nil, nil, fmt.Errorf("resolve retrieval point %s: %w", candidate.PointID, err)
+			return nil, nil, nil, fmt.Errorf("resolve retrieval point %s: %w", candidate.PointID, err)
 		}
 		if len(resolved) == 0 {
 			rejections = append(rejections, contracts.RetrievalRejection{PointID: candidate.PointID, Reason: "missing_canonical_entity"})
 			continue
 		}
 		if len(resolved) != 1 {
+			if alternatives := authorizedAlternatives(query, candidate.PointID, resolved); len(alternatives) > 1 {
+				ambiguities = append(ambiguities, contracts.RetrievalAmbiguity{PointID: candidate.PointID, AlternativeEntityIDs: alternatives})
+			}
 			rejections = append(rejections, contracts.RetrievalRejection{PointID: candidate.PointID, Reason: "ambiguous_identity"})
 			continue
 		}
@@ -95,7 +100,35 @@ func ResolveRankedCandidates(
 			break
 		}
 	}
-	return accepted, rejections, nil
+	return accepted, rejections, ambiguities, nil
+}
+
+// authorizedAlternatives exposes only identities that independently satisfy
+// every scope and lifecycle constraint. An ambiguity without two such choices
+// remains a rejection only, avoiding disclosure from a malformed resolver.
+func authorizedAlternatives(query contracts.RetrievalQuery, pointID string, candidates []CanonicalCandidate) []string {
+	seen := make(map[string]struct{}, len(candidates))
+	for _, candidate := range candidates {
+		if candidate.PointID != pointID || candidate.TenantID != query.TenantID || candidate.RepositoryID != query.RepositoryID ||
+			(query.ExpectedGeneration != nil && candidate.CollectionGeneration != *query.ExpectedGeneration) ||
+			candidate.Status != "active" || candidate.Stale || candidate.SourceCommit == nil || *candidate.SourceCommit != query.Scope.SourceCommit ||
+			!contains(query.Filters.ArtifactFamilies, candidate.ArtifactFamily) || !contains(query.Filters.AuthorityClasses, candidate.AuthorityClass) ||
+			(len(query.Filters.Languages) > 0 && (candidate.Language == nil || !contains(query.Filters.Languages, *candidate.Language))) ||
+			(len(query.Filters.SymbolKinds) > 0 && (candidate.SymbolKind == nil || !contains(query.Filters.SymbolKinds, *candidate.SymbolKind))) ||
+			!pathInScope(candidate.RepositoryPath, query.Scope) || !contracts.IsRetrievalEntityID(candidate.EntityID) {
+			continue
+		}
+		seen[candidate.EntityID] = struct{}{}
+	}
+	result := make([]string, 0, min(len(seen), 16))
+	for entityID := range seen {
+		result = append(result, entityID)
+	}
+	sort.Strings(result)
+	if len(result) > 16 {
+		return result[:16]
+	}
+	return result
 }
 
 func validateRankedCandidate(candidate contracts.RetrievalCandidate) error {

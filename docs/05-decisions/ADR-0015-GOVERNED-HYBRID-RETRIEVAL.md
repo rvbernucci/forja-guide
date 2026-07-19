@@ -26,8 +26,10 @@ checkpoints.
    and kind filters to every dense and sparse query before ranking.
 5. Fuse the two bounded rank lists in Forja with weighted reciprocal rank
    fusion. The policy and every component rank remain visible in the receipt.
-6. Resolve every candidate against current PostgreSQL state. Missing,
-   ambiguous, stale, unauthorized, or hash-mismatched candidates are rejected.
+6. Resolve every candidate against current PostgreSQL state. Missing, stale,
+   unauthorized, or hash-mismatched candidates are rejected. An ambiguity is
+   rejected as context but may return bounded, scope-authorized canonical
+   entity-ID alternatives without cards, hashes, paths, or vector payloads.
 7. Add independent per-projector delivery state, leases, retries, dead letters,
    and contiguous checkpoints derived from canonical outbox history.
 8. Re-embedding uses blue-green collection generations and an atomic alias

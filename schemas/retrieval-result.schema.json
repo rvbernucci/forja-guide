@@ -33,6 +33,20 @@
         }
       }
     },
+    "ambiguities": {
+      "type": "array", "maxItems": 400,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["point_id", "alternative_entity_ids"],
+        "properties": {
+          "point_id": {"type": "string", "pattern": "^retrieval_[a-f0-9]{64}$"},
+          "alternative_entity_ids": {
+            "type": "array", "minItems": 2, "maxItems": 16, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^(?:symbol|file|artifact|memory|decision|test|incident)_[A-Za-z0-9_-]{1,200}$"}
+          }
+        }
+      }
+    },
     "gaps": {
       "type": "array", "maxItems": 64, "uniqueItems": true,
       "items": {"type": "string", "minLength": 1, "maxLength": 512}

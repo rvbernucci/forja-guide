@@ -139,7 +139,8 @@ documentation evidence.
   families remain absent until their canonical adapters exist.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
-- [ ] Return alternatives for genuine ambiguity rather than inventing a link.
+- [x] Return bounded, scope-authorized canonical entity-ID alternatives for a
+  genuine ambiguity while rejecting every ambiguous result as context.
 - [x] Degrade to explicit bounded gaps when either Qdrant rank path or the
   canonical resolver is unavailable. Canonical exact-lookup fallback remains
   a future optional availability optimization.

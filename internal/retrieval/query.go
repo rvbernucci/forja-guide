@@ -80,7 +80,7 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	denseCandidates := qdrantCandidates(densePoints, query.Policy.DenseLimit)
 	sparseCandidates := qdrantCandidates(sparsePoints, query.Policy.SparseLimit)
 	fused, malformed := fuseCandidateRanks(denseCandidates, sparseCandidates, query.Policy)
-	accepted, rejected, err := ResolveRankedCandidates(ctx, query, fused, service.Resolver)
+	accepted, rejected, ambiguities, err := ResolveRankedCandidates(ctx, query, fused, service.Resolver)
 	if err != nil {
 		result = degradedResult(query, "canonical_resolver_unavailable")
 		service.recordQueryStats(ctx, result)
@@ -91,7 +91,8 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 		RequestID: query.RequestID, SchemaVersion: contracts.RetrievalSchemaVersion,
 		Status: "complete", ProjectionFreshness: "fresh", CollectionGeneration: query.ExpectedGeneration,
 		Accepted: accepted, Rejections: rejected,
-		Receipt: receipt(query, len(denseCandidates), len(sparseCandidates), len(fused), len(accepted), len(rejected)),
+		Ambiguities: ambiguities,
+		Receipt:     receipt(query, len(denseCandidates), len(sparseCandidates), len(fused), len(accepted), len(rejected)),
 	}
 	if err := contracts.ValidateRetrievalResult(query, result); err != nil {
 		return contracts.RetrievalResult{}, fmt.Errorf("validate governed retrieval result: %w", err)

@@ -132,6 +132,14 @@ type RetrievalRejection struct {
 	Reason  string `json:"reason"`
 }
 
+// RetrievalAmbiguity exposes bounded alternative canonical identities without
+// treating any ambiguous result as authorized context. It contains no card
+// text, path, source hash, provider payload, or similarity score.
+type RetrievalAmbiguity struct {
+	PointID              string   `json:"point_id"`
+	AlternativeEntityIDs []string `json:"alternative_entity_ids"`
+}
+
 // RetrievalReceipt keeps retrieval policy effects auditable without query bodies.
 type RetrievalReceipt struct {
 	DenseCandidates    int    `json:"dense_candidates"`
@@ -151,6 +159,7 @@ type RetrievalResult struct {
 	CollectionGeneration *string              `json:"collection_generation,omitempty"`
 	Accepted             []RetrievalCandidate `json:"accepted"`
 	Rejections           []RetrievalRejection `json:"rejections"`
+	Ambiguities          []RetrievalAmbiguity `json:"ambiguities,omitempty"`
 	Gaps                 []string             `json:"gaps,omitempty"`
 	Receipt              RetrievalReceipt     `json:"receipt"`
 }
@@ -195,6 +204,12 @@ func RetrievalPointID(generation, entityID, sourceHash string) string {
 // It does not establish canonical authority; callers must still resolve it.
 func IsRetrievalPointID(value string) bool {
 	return retrievalPointIDPattern.MatchString(value)
+}
+
+// IsRetrievalEntityID reports the public structural form of a canonical
+// retrieval entity identity. Authority still requires canonical resolution.
+func IsRetrievalEntityID(value string) bool {
+	return retrievalEntityIDPattern.MatchString(value)
 }
 
 // CardTextHash returns the required content hash for a deterministic retrieval card.
@@ -320,7 +335,7 @@ func ValidateRetrievalResult(query RetrievalQuery, result RetrievalResult) error
 	if result.CollectionGeneration != nil && !retrievalGenerationIDPattern.MatchString(*result.CollectionGeneration) {
 		return fmt.Errorf("retrieval result collection generation is invalid")
 	}
-	if len(result.Accepted) > query.Policy.Limit || len(result.Rejections) > 400 || len(result.Gaps) > 64 {
+	if len(result.Accepted) > query.Policy.Limit || len(result.Rejections) > 400 || len(result.Ambiguities) > 400 || len(result.Gaps) > 64 {
 		return fmt.Errorf("retrieval result exceeds bounded output")
 	}
 	if result.Receipt.DenseCandidates > query.Policy.DenseLimit ||
@@ -344,15 +359,46 @@ func ValidateRetrievalResult(query RetrievalQuery, result RetrievalResult) error
 		}
 		seenEntities[candidate.EntityID] = struct{}{}
 	}
+	ambiguousRejections := make(map[string]struct{}, len(result.Rejections))
 	for _, rejection := range result.Rejections {
 		if !retrievalPointIDPattern.MatchString(rejection.PointID) || !validRejectionReason(rejection.Reason) {
 			return fmt.Errorf("retrieval rejection is invalid")
 		}
+		if rejection.Reason == "ambiguous_identity" {
+			ambiguousRejections[rejection.PointID] = struct{}{}
+		}
+	}
+	seenAmbiguities := make(map[string]struct{}, len(result.Ambiguities))
+	for _, ambiguity := range result.Ambiguities {
+		if !retrievalPointIDPattern.MatchString(ambiguity.PointID) || len(ambiguity.AlternativeEntityIDs) < 2 || len(ambiguity.AlternativeEntityIDs) > 16 || !sort.StringsAreSorted(ambiguity.AlternativeEntityIDs) || !uniqueRetrievalEntityIDs(ambiguity.AlternativeEntityIDs) {
+			return fmt.Errorf("retrieval ambiguity is invalid")
+		}
+		if _, found := ambiguousRejections[ambiguity.PointID]; !found {
+			return fmt.Errorf("retrieval ambiguity lacks an ambiguous rejection")
+		}
+		if _, found := seenAmbiguities[ambiguity.PointID]; found {
+			return fmt.Errorf("retrieval ambiguity duplicates a point")
+		}
+		seenAmbiguities[ambiguity.PointID] = struct{}{}
 	}
 	if err := validateUniqueBoundedStrings(result.Gaps, 64, 512, "retrieval gaps"); err != nil {
 		return err
 	}
 	return nil
+}
+
+func uniqueRetrievalEntityIDs(values []string) bool {
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		if !retrievalEntityIDPattern.MatchString(value) {
+			return false
+		}
+		if _, exists := seen[value]; exists {
+			return false
+		}
+		seen[value] = struct{}{}
+	}
+	return true
 }
 
 func validateEmbedding(dense []float64, sparse SparseVector, descriptor EmbeddingDescriptor) error {

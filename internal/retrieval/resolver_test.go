@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestResolveRankedCandidatesReauthorizesEveryVectorResult(t *testing.T) {
 	ranked := []contracts.RetrievalCandidate{
 		rankedCandidate(first), rankedCandidate(second),
 	}
-	accepted, rejected, err := ResolveRankedCandidates(context.Background(), query, ranked, staticResolver{
+	accepted, rejected, ambiguities, err := ResolveRankedCandidates(context.Background(), query, ranked, staticResolver{
 		first.PointID: {first}, second.PointID: {second},
 	})
 	if err != nil {
@@ -24,8 +25,8 @@ func TestResolveRankedCandidatesReauthorizesEveryVectorResult(t *testing.T) {
 	if len(accepted) != 1 || accepted[0].EntityID != first.EntityID {
 		t.Fatalf("accepted=%#v", accepted)
 	}
-	if len(rejected) != 1 || rejected[0].Reason != "unauthorized_scope" {
-		t.Fatalf("rejected=%#v", rejected)
+	if len(rejected) != 1 || rejected[0].Reason != "unauthorized_scope" || len(ambiguities) != 0 {
+		t.Fatalf("rejected=%#v ambiguities=%#v", rejected, ambiguities)
 	}
 }
 
@@ -34,16 +35,37 @@ func TestResolveRankedCandidatesRejectsPayloadAndIdentityDrift(t *testing.T) {
 	canonical := canonicalCandidate("retrieval_"+strings.Repeat("3", 64), "symbol_login", "sha256:"+strings.Repeat("c", 64), "internal/http/login.go")
 	drifted := rankedCandidate(canonical)
 	drifted.SourceHash = "sha256:" + strings.Repeat("d", 64)
-	accepted, rejected, err := ResolveRankedCandidates(context.Background(), query, []contracts.RetrievalCandidate{drifted}, staticResolver{
+	accepted, rejected, ambiguities, err := ResolveRankedCandidates(context.Background(), query, []contracts.RetrievalCandidate{drifted}, staticResolver{
 		canonical.PointID: {canonical},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(accepted) != 0 || len(rejected) != 1 || rejected[0].Reason != "source_hash_mismatch" {
-		t.Fatalf("accepted=%#v rejected=%#v", accepted, rejected)
+	if len(accepted) != 0 || len(rejected) != 1 || rejected[0].Reason != "source_hash_mismatch" || len(ambiguities) != 0 {
+		t.Fatalf("accepted=%#v rejected=%#v ambiguities=%#v", accepted, rejected, ambiguities)
 	}
 }
+
+func TestResolveRankedCandidatesExposesOnlyAuthorizedAmbiguousAlternatives(t *testing.T) {
+	query := governedQuery()
+	first := canonicalCandidate("retrieval_"+strings.Repeat("4", 64), "symbol_login", "sha256:"+strings.Repeat("e", 64), "internal/http/login.go")
+	second := first
+	second.EntityID = "symbol_login_v2"
+	private := first
+	private.EntityID = "symbol_private"
+	private.RepositoryPath = stringPointer("internal/private/token.go")
+	accepted, rejected, ambiguities, err := ResolveRankedCandidates(context.Background(), query, []contracts.RetrievalCandidate{rankedCandidate(first)}, staticResolver{
+		first.PointID: {first, second, private},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(accepted) != 0 || len(rejected) != 1 || rejected[0].Reason != "ambiguous_identity" || len(ambiguities) != 1 || !slices.Equal(ambiguities[0].AlternativeEntityIDs, []string{"symbol_login", "symbol_login_v2"}) {
+		t.Fatalf("accepted=%#v rejected=%#v ambiguities=%#v", accepted, rejected, ambiguities)
+	}
+}
+
+func stringPointer(value string) *string { return &value }
 
 type staticResolver map[string][]CanonicalCandidate
 

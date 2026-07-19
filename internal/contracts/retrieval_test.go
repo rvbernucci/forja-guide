@@ -124,6 +124,45 @@ func TestValidateRetrievalQueryFailsClosed(t *testing.T) {
 	}
 }
 
+func TestValidateRetrievalResultAllowsOnlyBoundedSortedAmbiguities(t *testing.T) {
+	query := validRetrievalQuery()
+	point := validRetrievalPoint(t, "symbol_alpha", "sha256:"+strings.Repeat("a", 64), "alpha")
+	policyHash, err := RetrievalPolicyHash(query.Policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := RetrievalResult{
+		RequestID: query.RequestID, SchemaVersion: RetrievalSchemaVersion, Status: "complete", ProjectionFreshness: "fresh",
+		Accepted: []RetrievalCandidate{}, Rejections: []RetrievalRejection{{PointID: point.PointID, Reason: "ambiguous_identity"}},
+		Ambiguities: []RetrievalAmbiguity{{PointID: point.PointID, AlternativeEntityIDs: []string{"symbol_alpha", "symbol_beta"}}},
+		Receipt:     RetrievalReceipt{RejectedCandidates: 1, PolicyHash: policyHash},
+	}
+	if err := ValidateRetrievalResult(query, result); err != nil {
+		t.Fatal(err)
+	}
+	registry, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.ValidateJSON("retrieval-result.schema.json", encoded); err != nil {
+		t.Fatalf("valid ambiguity result rejected by schema: %v", err)
+	}
+	result.Ambiguities[0].AlternativeEntityIDs = []string{"symbol_beta", "symbol_alpha"}
+	if err := ValidateRetrievalResult(query, result); err == nil {
+		t.Fatal("unsorted ambiguity alternatives accepted")
+	}
+	result.Ambiguities[0].AlternativeEntityIDs = []string{"symbol_alpha", "symbol_beta"}
+	result.Rejections = nil
+	result.Receipt.RejectedCandidates = 0
+	if err := ValidateRetrievalResult(query, result); err == nil {
+		t.Fatal("ambiguity without an explicit rejection accepted")
+	}
+}
+
 func TestFuseRetrievalRanksIsWeightedAndStable(t *testing.T) {
 	t.Parallel()
 	policy := validRetrievalQuery().Policy
