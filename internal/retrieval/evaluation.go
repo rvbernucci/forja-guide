@@ -55,8 +55,8 @@ type EvaluationOutcome struct {
 	// LatencyMilliseconds and ProjectionLagEvents are scalar capture metadata.
 	// They intentionally exclude query text, vectors, entity names, and Qdrant
 	// payloads so a private evaluation can retain performance evidence safely.
-	LatencyMilliseconds int64 `json:"latency_milliseconds,omitempty"`
-	ProjectionLagEvents int64 `json:"projection_lag_events,omitempty"`
+	LatencyMilliseconds int64 `json:"latency_milliseconds"`
+	ProjectionLagEvents int64 `json:"projection_lag_events"`
 }
 
 // EvaluationVariant captures one complete accepted-entity sequence for a

@@ -25,9 +25,12 @@ import (
 )
 
 const (
-	maximumQueryFileBytes = 64 << 10
-	maximumOperationTime  = 30 * time.Second
-	defaultOperationTime  = 20 * time.Second
+	maximumQueryFileBytes        = 64 << 10
+	maximumEvaluationPlanBytes   = 16 << 20
+	maximumOperationTime         = 30 * time.Second
+	defaultOperationTime         = 20 * time.Second
+	maximumEvaluationCaptureTime = 10 * time.Minute
+	defaultEvaluationCaptureTime = 5 * time.Minute
 )
 
 func main() {
@@ -39,16 +42,64 @@ func main() {
 
 func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) error {
 	if len(arguments) == 0 {
-		return fmt.Errorf("expected project-once or query subcommand")
+		return fmt.Errorf("expected project-once, query, or capture subcommand")
 	}
 	switch arguments[0] {
 	case "project-once":
 		return projectOnce(ctx, arguments[1:], stdout, stderr, lookup)
 	case "query":
 		return queryOnce(ctx, arguments[1:], stdout, stderr, lookup)
+	case "capture":
+		return captureRequiredRankings(ctx, arguments[1:], stdout, stderr, lookup)
 	default:
 		return fmt.Errorf("unsupported subcommand %q", arguments[0])
 	}
+}
+
+// captureRequiredRankings runs the fixed four baseline policies against a
+// private query plan. The plan cannot contain labels, while the separately
+// access-controlled corpus cannot be read by this command.
+func captureRequiredRankings(parent context.Context, arguments []string, _ io.Writer, stderr io.Writer, lookup func(string) (string, bool)) error {
+	flags := flag.NewFlagSet("forja-retrieval capture", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	planPath := flags.String("plan", "", "private label-free evaluation query plan JSON path")
+	output := flags.String("output", "", "private four-baseline comparison JSON path")
+	timeout := flags.Duration("timeout", defaultEvaluationCaptureTime, "whole-capture deadline (maximum 10m)")
+	queryTimeout := flags.Duration("query-timeout", defaultOperationTime, "per-query deadline (maximum 30s)")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || !safeInputPath(*planPath) || !safeOutputPath(*output) ||
+		!validEvaluationCaptureTimeout(*timeout) || !validOperationTimeout(*queryTimeout) {
+		return fmt.Errorf("private plan, output, bounded capture timeout, and bounded query timeout are required")
+	}
+	plan, err := readEvaluationCapturePlan(*planPath)
+	if err != nil {
+		return err
+	}
+	runtime, closeRuntime, err := openRuntime(parent, lookup)
+	if err != nil {
+		return err
+	}
+	defer closeRuntime()
+	cases, policies, err := normalizeEvaluationCapturePlan(runtime, plan)
+	if err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, *timeout)
+	defer cancel()
+	service := retrieval.QueryService{
+		Client: runtime.qdrant, CollectionName: runtime.collection,
+		Embedder: runtime.embedder, Sparse: retrieval.HashingSparseEncoder{},
+		Resolver: runtime.store, Freshness: runtime.store, QueryTimeout: *queryTimeout,
+	}
+	variants, err := retrieval.CaptureRequiredRankings(ctx, service, cases, policies)
+	if err != nil {
+		return fmt.Errorf("capture governed retrieval baselines: %w", err)
+	}
+	return writeEvaluationComparison(*output, evaluationComparisonCapture{
+		SchemaVersion: contracts.RetrievalSchemaVersion, CorpusID: plan.CorpusID, Variants: variants,
+	})
 }
 
 func projectOnce(parent context.Context, arguments []string, _ io.Writer, stderr io.Writer, lookup func(string) (string, bool)) error {
@@ -269,25 +320,33 @@ type projectionReceipt struct {
 	Dead          int    `json:"dead"`
 }
 
+type evaluationCapturePlan struct {
+	SchemaVersion string                        `json:"schema_version"`
+	CorpusID      string                        `json:"corpus_id"`
+	Queries       []evaluationCapturePlanQuery  `json:"queries"`
+	Policies      []evaluationCapturePlanPolicy `json:"policies"`
+}
+
+type evaluationCapturePlanQuery struct {
+	CaseID string                   `json:"case_id"`
+	Query  contracts.RetrievalQuery `json:"query"`
+}
+
+type evaluationCapturePlanPolicy struct {
+	Name   string                    `json:"name"`
+	Policy contracts.RetrievalPolicy `json:"policy"`
+}
+
+type evaluationComparisonCapture struct {
+	SchemaVersion string                        `json:"schema_version"`
+	CorpusID      string                        `json:"corpus_id"`
+	Variants      []retrieval.EvaluationVariant `json:"variants"`
+}
+
 func readQuery(path string) (contracts.RetrievalQuery, error) {
-	file, err := os.Open(path)
+	data, err := readPrivateJSONFile(path, maximumQueryFileBytes, "retrieval query")
 	if err != nil {
-		return contracts.RetrievalQuery{}, fmt.Errorf("open retrieval query: %w", err)
-	}
-	defer file.Close()
-	info, err := file.Stat()
-	if err != nil {
-		return contracts.RetrievalQuery{}, fmt.Errorf("stat retrieval query: %w", err)
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
-		return contracts.RetrievalQuery{}, errors.New("retrieval query must be a private regular file")
-	}
-	data, err := io.ReadAll(io.LimitReader(file, maximumQueryFileBytes+1))
-	if err != nil {
-		return contracts.RetrievalQuery{}, fmt.Errorf("read retrieval query: %w", err)
-	}
-	if len(data) > maximumQueryFileBytes {
-		return contracts.RetrievalQuery{}, fmt.Errorf("retrieval query exceeds %d bytes", maximumQueryFileBytes)
+		return contracts.RetrievalQuery{}, err
 	}
 	registry, err := contracts.NewRegistry()
 	if err != nil {
@@ -298,6 +357,66 @@ func readQuery(path string) (contracts.RetrievalQuery, error) {
 		return contracts.RetrievalQuery{}, fmt.Errorf("decode retrieval query: %w", err)
 	}
 	return query, nil
+}
+
+func readEvaluationCapturePlan(path string) (evaluationCapturePlan, error) {
+	data, err := readPrivateJSONFile(path, maximumEvaluationPlanBytes, "retrieval evaluation plan")
+	if err != nil {
+		return evaluationCapturePlan{}, err
+	}
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		return evaluationCapturePlan{}, fmt.Errorf("initialize contracts: %w", err)
+	}
+	plan, err := contracts.DecodeStrict[evaluationCapturePlan](registry, "retrieval-evaluation-query-plan.schema.json", data)
+	if err != nil {
+		return evaluationCapturePlan{}, fmt.Errorf("decode retrieval evaluation plan: %w", err)
+	}
+	return plan, nil
+}
+
+func readPrivateJSONFile(path string, maximumBytes int64, description string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open %s: %w", description, err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat %s: %w", description, err)
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0o077 != 0 {
+		return nil, fmt.Errorf("%s must be a private regular file", description)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maximumBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read %s: %w", description, err)
+	}
+	if int64(len(data)) > maximumBytes {
+		return nil, fmt.Errorf("%s exceeds %d bytes", description, maximumBytes)
+	}
+	return data, nil
+}
+
+func normalizeEvaluationCapturePlan(runtime runtime, plan evaluationCapturePlan) ([]retrieval.EvaluationQueryCase, []retrieval.EvaluationCapturePolicy, error) {
+	cases := make([]retrieval.EvaluationQueryCase, 0, len(plan.Queries))
+	for _, planQuery := range plan.Queries {
+		query := planQuery.Query
+		if query.TenantID != runtime.tenantID || query.RepositoryID != runtime.repositoryID {
+			return nil, nil, fmt.Errorf("evaluation query %s scope does not match configured authority", planQuery.CaseID)
+		}
+		if query.ExpectedGeneration == nil {
+			query.ExpectedGeneration = &runtime.generation
+		} else if *query.ExpectedGeneration != runtime.generation {
+			return nil, nil, fmt.Errorf("evaluation query %s generation does not match configured embedding", planQuery.CaseID)
+		}
+		cases = append(cases, retrieval.EvaluationQueryCase{CaseID: planQuery.CaseID, Query: query})
+	}
+	policies := make([]retrieval.EvaluationCapturePolicy, 0, len(plan.Policies))
+	for _, policy := range plan.Policies {
+		policies = append(policies, retrieval.EvaluationCapturePolicy{Name: policy.Name, Policy: policy.Policy})
+	}
+	return cases, policies, nil
 }
 
 func writeQueryResult(path string, result contracts.RetrievalResult) error {
@@ -313,6 +432,21 @@ func writeQueryResult(path string, result contracts.RetrievalResult) error {
 		return fmt.Errorf("validate retrieval result: %w", err)
 	}
 	return writePrivateJSON(path, result)
+}
+
+func writeEvaluationComparison(path string, comparison evaluationComparisonCapture) error {
+	encoded, err := json.Marshal(comparison)
+	if err != nil {
+		return fmt.Errorf("encode retrieval evaluation comparison: %w", err)
+	}
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		return fmt.Errorf("initialize contracts: %w", err)
+	}
+	if err := registry.ValidateJSON("retrieval-evaluation-comparison.schema.json", encoded); err != nil {
+		return fmt.Errorf("validate retrieval evaluation comparison: %w", err)
+	}
+	return writePrivateJSON(path, comparison)
 }
 
 func writePrivateJSON(path string, value any) error {
@@ -359,6 +493,10 @@ func writePrivateJSON(path string, value any) error {
 
 func validOperationTimeout(value time.Duration) bool {
 	return value > 0 && value <= maximumOperationTime
+}
+
+func validEvaluationCaptureTimeout(value time.Duration) bool {
+	return value > 0 && value <= maximumEvaluationCaptureTime
 }
 func safeInputPath(path string) bool  { return strings.TrimSpace(path) != "" && path != "-" }
 func safeOutputPath(path string) bool { return strings.TrimSpace(path) != "" && path != "-" }

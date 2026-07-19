@@ -244,6 +244,14 @@ It cannot authorize Sprint 10.
   cross-tenant, and unauthorized rejection evidence separately. This makes the
   remaining private evaluation capable of measuring every listed Sprint 09
   retrieval criterion without exposing its corpus to the runtime.
+- `forja-retrieval capture` now accepts only a private, label-free query plan
+  and runs the exact four required baseline policies through the governed
+  runtime. It validates the plan and comparison schemas, enforces private-file
+  permissions and bounded per-query/whole-run deadlines, captures only
+  canonical accepted entity IDs plus scalar latency/freshness telemetry, and
+  writes atomically. Its companion private corpus remains a separate operator
+  capability. No private capture has yet been run, so this is implementation
+  readiness rather than quality evidence.
 - `govulncheck@v1.6.0 ./...` found no reachable Go vulnerabilities in the
   local implementation tree.
 - The public fixture remains a contract smoke test only. No tuning, holdout,

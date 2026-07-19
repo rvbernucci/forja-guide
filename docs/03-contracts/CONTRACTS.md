@@ -47,6 +47,7 @@ contracts.
 | [`memory-record.schema.json`](../../schemas/memory-record.schema.json) | Explicitly promoted durable memory |
 | [`incident.schema.json`](../../schemas/incident.schema.json) | Safe immutable retrieval view of a failed terminal attempt |
 | [`retrieval-evaluation-corpus.schema.json`](../../schemas/retrieval-evaluation-corpus.schema.json) | Access-controlled offline retrieval expectations |
+| [`retrieval-evaluation-query-plan.schema.json`](../../schemas/retrieval-evaluation-query-plan.schema.json) | Private label-free query templates and frozen four-baseline capture policies |
 | [`retrieval-evaluation-outcomes.schema.json`](../../schemas/retrieval-evaluation-outcomes.schema.json) | One immutable captured ranking outcome set |
 | [`retrieval-evaluation-comparison.schema.json`](../../schemas/retrieval-evaluation-comparison.schema.json) | Four mandatory, policy-hash-bound baseline outcome sets |
 | [`retrieval-evaluation-report.schema.json`](../../schemas/retrieval-evaluation-report.schema.json) | One policy's bounded offline ranking evidence |

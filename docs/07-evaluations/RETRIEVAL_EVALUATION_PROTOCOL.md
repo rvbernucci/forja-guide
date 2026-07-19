@@ -70,8 +70,29 @@ The fixture is only a contract smoke test. Real evaluation must supply the
 actual, immutable policy hash and embedding descriptor from the run receipt.
 
 To preserve the mandatory baseline comparison rather than selectively
-reporting one ranking policy, capture the four complete outcome sequences in
-one private `comparison.json` artifact and run:
+reporting one ranking policy, first create a private, label-free query plan.
+It holds only `case_id`, the governed retrieval query, and the four frozen
+baseline policies. Expected entities, safety labels, and split membership stay
+in the separately access-controlled corpus. The capture command reads the
+plan as a mode-`0600` regular file, enforces a 30-second limit per query and a
+bounded whole-run deadline, and atomically writes the complete comparison:
+
+```bash
+go run ./cmd/forja-retrieval capture \
+  --plan private-evaluations/tuning/capture-plan.json \
+  --output private-evaluations/tuning/comparison.json \
+  --timeout 5m \
+  --query-timeout 20s
+```
+
+The command uses the same governed PostgreSQL resolver, Qdrant freshness gate,
+Bedrock embedding boundary, tenant/repository authority, and runtime
+environment configuration as `forja-retrieval query`. It cannot read a corpus
+or select a serving policy. A stale or unavailable projector therefore records
+zero accepted entities through the normal fail-closed runtime behavior rather
+than producing a special evaluation-only path.
+
+Then score the captured artifact with the separately controlled corpus:
 
 ```bash
 go run ./cmd/forja-retrieval-eval \

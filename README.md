@@ -98,7 +98,10 @@ guarded rollback, derived-store deletion/replay, and a schema-validated offline
 evaluation harness are implemented. The retrieval plane now also includes a
 Bedrock Titan v2 adapter using the AWS SDK for Go v2 and the standard AWS
 credential chain, plus bounded `forja-retrieval project-once` and
-`forja-retrieval query` commands. Decision cards are re-derived from their
+`forja-retrieval query` commands. A bounded `forja-retrieval capture` command
+can execute the four required hybrid-search baselines from a private,
+label-free plan and produce a schema-validated comparison for offline scoring;
+private labels remain outside the runtime. Decision cards are re-derived from their
 canonical rows. Memory cards require an active canonical memory, an active
 exact artifact/object binding, a verified object version, and a bounded,
 redacted derived body before they can be projected or resolved. Runtime
@@ -173,6 +176,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
 | [`cmd/forja-retrieval-eval`](cmd/forja-retrieval-eval/) | Offline, schema-validated retrieval evaluation reporter |
+| [`cmd/forja-retrieval`](cmd/forja-retrieval/) | Bounded governed projection, query, and private baseline-capture operations |
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 | [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |
