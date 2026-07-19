@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseTreeListingIsCanonicalAndBounded(t *testing.T) {
@@ -58,6 +59,50 @@ func TestParseNameStatusPreservesRenameEvidence(t *testing.T) {
 	}
 }
 
+func TestParseNameStatusRejectsNonUTF8Paths(t *testing.T) {
+	t.Parallel()
+	for name, value := range map[string][]byte{
+		"changed path":  []byte{'M', 0, 0xff, 0},
+		"rename target": []byte{'R', '1', '0', '0', 0, 'a', '.', 'g', 'o', 0, 0xff, 0},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := parseNameStatus(value); !errors.Is(err, ErrUnsupportedGitEntry) {
+				t.Fatalf("error=%v", err)
+			}
+		})
+	}
+}
+
+func TestGitOutputLimitsAreCommandSpecific(t *testing.T) {
+	t.Parallel()
+	if gitOutputLimit([]string{"rev-parse"}) != 1024 ||
+		gitOutputLimit([]string{"cat-file"}) != (16<<20)+1 ||
+		gitOutputLimit([]string{"ls-tree"}) != maximumGitMetadataBytes {
+		t.Fatal("Git output limits do not match their bounded command classes")
+	}
+}
+
+func TestGitSourceRejectsNonUTF8IndexedSourceButAllowsOpaqueBinary(t *testing.T) {
+	t.Parallel()
+	body := []byte{0xff, 0xfe}
+	source, err := NewGitSource(staticGitRunner{output: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := CommittedFile{
+		Path: "main.py", GitBlobID: repeatHex("a", 40),
+		SizeBytes: int64(len(body)), Language: "python",
+	}
+	if _, _, err := source.ReadFile(context.Background(), file); !errors.Is(err, ErrUnsupportedGitEntry) {
+		t.Fatalf("indexed source error=%v", err)
+	}
+	file.Path, file.Language = "logo.png", "other"
+	read, _, err := source.ReadFile(context.Background(), file)
+	if err != nil || !bytes.Equal(read, body) {
+		t.Fatalf("opaque binary=%v error=%v", read, err)
+	}
+}
+
 func TestGitSourceReadsCommittedBytesNotWorktree(t *testing.T) {
 	root := t.TempDir()
 	runGit(t, root, "init", "-q")
@@ -83,6 +128,9 @@ func TestGitSourceReadsCommittedBytesNotWorktree(t *testing.T) {
 	}
 	if len(tree.Files) != 1 || tree.Files[0].Path != "main.go" {
 		t.Fatalf("tree=%#v", tree)
+	}
+	if tree.CommittedAt.IsZero() || tree.CommittedAt.Location() != time.UTC {
+		t.Fatalf("commit timestamp=%v", tree.CommittedAt)
 	}
 	body, digest, err := source.ReadFile(context.Background(), tree.Files[0])
 	if err != nil {
@@ -148,4 +196,10 @@ func runGitOutput(t *testing.T, root string, args ...string) string {
 
 func repeatHex(value string, count int) string {
 	return string(bytes.Repeat([]byte(value), count))
+}
+
+type staticGitRunner struct{ output []byte }
+
+func (r staticGitRunner) Run(context.Context, string, ...string) ([]byte, error) {
+	return append([]byte(nil), r.output...), nil
 }

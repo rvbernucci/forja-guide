@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -21,6 +22,8 @@ import (
 const (
 	MaximumRepositoryFiles       = 100000
 	MaximumRepositorySourceBytes = int64(2 << 30)
+	maximumGitMetadataBytes      = 64 << 20
+	maximumGitErrorBytes         = 64 << 10
 )
 
 var (
@@ -60,19 +63,40 @@ func (r ExecGitRunner) Run(ctx context.Context, name string, args ...string) ([]
 		"GIT_NO_REPLACE_OBJECTS=1",
 		"GIT_TERMINAL_PROMPT=0",
 	}
-	output, runErr := command.Output()
+	stdout := &boundedBuffer{limit: gitOutputLimit(args)}
+	stderr := &boundedBuffer{limit: maximumGitErrorBytes}
+	command.Stdout, command.Stderr = stdout, stderr
+	runErr := command.Run()
+	if stdout.exceeded || stderr.exceeded {
+		return nil, fmt.Errorf("%w: git %s exceeded output limit", ErrRepositoryLimit, args[0])
+	}
 	if runErr != nil {
-		var exitErr *exec.ExitError
-		if errors.As(runErr, &exitErr) {
-			stderr := strings.TrimSpace(string(exitErr.Stderr))
-			if len(stderr) > 500 {
-				stderr = stderr[:500]
+		if errors.As(runErr, new(*exec.ExitError)) {
+			message := strings.TrimSpace(stderr.String())
+			if message == "" {
+				message = runErr.Error()
 			}
-			return nil, fmt.Errorf("git %s failed: %s", args[0], stderr)
+			return nil, fmt.Errorf("git %s failed: %s", args[0], message)
 		}
 		return nil, fmt.Errorf("run git %s: %w", args[0], runErr)
 	}
-	return output, nil
+	return append([]byte(nil), stdout.Bytes()...), nil
+}
+
+func gitOutputLimit(args []string) int {
+	if len(args) == 0 {
+		return 0
+	}
+	switch args[0] {
+	case "rev-parse":
+		return 1024
+	case "show":
+		return 4096
+	case "cat-file":
+		return int(contracts.MaximumIndexedFileBytes) + 1
+	default:
+		return maximumGitMetadataBytes
+	}
 }
 
 type CommittedFile struct {
@@ -85,9 +109,10 @@ type CommittedFile struct {
 }
 
 type CommittedTree struct {
-	CommitID string
-	TreeID   string
-	Files    []CommittedFile
+	CommitID    string
+	TreeID      string
+	CommittedAt time.Time
+	Files       []CommittedFile
 }
 
 type GitChange struct {
@@ -133,6 +158,14 @@ func (s *GitSource) InspectCommit(ctx context.Context, revision string) (Committ
 	if !validGitObjectID(treeID) {
 		return CommittedTree{}, fmt.Errorf("resolved tree ID is invalid")
 	}
+	committedAtOutput, err := s.runner.Run(ctx, "git", "show", "-s", "--format=%cI", commitID)
+	if err != nil {
+		return CommittedTree{}, err
+	}
+	committedAt, err := time.Parse(time.RFC3339, strings.TrimSpace(string(committedAtOutput)))
+	if err != nil {
+		return CommittedTree{}, fmt.Errorf("committed timestamp is invalid: %w", err)
+	}
 	listing, err := s.runner.Run(ctx, "git", "ls-tree", "-rlz", "--full-tree", commitID)
 	if err != nil {
 		return CommittedTree{}, err
@@ -141,7 +174,7 @@ func (s *GitSource) InspectCommit(ctx context.Context, revision string) (Committ
 	if err != nil {
 		return CommittedTree{}, err
 	}
-	return CommittedTree{CommitID: commitID, TreeID: treeID, Files: files}, nil
+	return CommittedTree{CommitID: commitID, TreeID: treeID, CommittedAt: committedAt.UTC(), Files: files}, nil
 }
 
 func (s *GitSource) ReadFile(ctx context.Context, file CommittedFile) ([]byte, string, error) {
@@ -154,6 +187,9 @@ func (s *GitSource) ReadFile(ctx context.Context, file CommittedFile) ([]byte, s
 	}
 	if int64(len(body)) != file.SizeBytes {
 		return nil, "", fmt.Errorf("%w: blob size changed", ErrGitIntegrity)
+	}
+	if isIndexedTextLanguage(file.Language) && !utf8.Valid(body) {
+		return nil, "", fmt.Errorf("%w: %s source is not UTF-8", ErrUnsupportedGitEntry, file.Language)
 	}
 	digest := sha256.Sum256(body)
 	return body, "sha256:" + hex.EncodeToString(digest[:]), nil
@@ -265,6 +301,9 @@ func parseNameStatus(value []byte) ([]GitChange, error) {
 		if index >= len(parts) || len(parts[index]) == 0 {
 			return nil, fmt.Errorf("%w: missing changed path", ErrGitIntegrity)
 		}
+		if !utf8.Valid(parts[index]) {
+			return nil, fmt.Errorf("%w: changed path is not UTF-8", ErrUnsupportedGitEntry)
+		}
 		first, err := contracts.NormalizeRepositoryPath(string(parts[index]))
 		if err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrGitIntegrity, err)
@@ -282,6 +321,9 @@ func parseNameStatus(value []byte) ([]GitChange, error) {
 		case 'R':
 			if index >= len(parts) || len(parts[index]) == 0 {
 				return nil, fmt.Errorf("%w: missing rename target", ErrGitIntegrity)
+			}
+			if !utf8.Valid(parts[index]) {
+				return nil, fmt.Errorf("%w: rename target is not UTF-8", ErrUnsupportedGitEntry)
 			}
 			second, normalizeErr := contracts.NormalizeRepositoryPath(string(parts[index]))
 			if normalizeErr != nil {
@@ -302,6 +344,15 @@ func parseNameStatus(value []byte) ([]GitChange, error) {
 		return changes[i].Path < changes[j].Path
 	})
 	return changes, nil
+}
+
+func isIndexedTextLanguage(language string) bool {
+	switch language {
+	case "go", "python", "typescript", "javascript":
+		return true
+	default:
+		return false
+	}
 }
 
 func validGitObjectID(value string) bool {

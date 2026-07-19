@@ -48,6 +48,9 @@ func TestGovernedKnowledgePersistenceAndRollbackBoundary(t *testing.T) {
 		t.Fatal("cross-repository message-to-artifact reference passed")
 	}
 
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 008: %v", err)
+	}
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("migration 007 rollback discarded canonical knowledge history")
 	}

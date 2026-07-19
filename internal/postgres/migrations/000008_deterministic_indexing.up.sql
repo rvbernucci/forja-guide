@@ -226,13 +226,14 @@ CREATE TABLE forja.index_symbols (
     is_schema boolean NOT NULL,
     documentation_sha256 bytea CHECK (documentation_sha256 IS NULL OR octet_length(documentation_sha256)=32),
     PRIMARY KEY (tenant_id, repository_id, snapshot_id, symbol_id),
-    UNIQUE (tenant_id, repository_id, snapshot_id, lineage_id),
     FOREIGN KEY (tenant_id, repository_id, snapshot_id, file_id)
         REFERENCES forja.index_files(tenant_id, repository_id, snapshot_id, file_id) ON DELETE RESTRICT
 );
 
 CREATE INDEX index_symbols_lookup_idx
     ON forja.index_symbols (tenant_id, repository_id, snapshot_id, qualified_name, kind);
+CREATE INDEX index_symbols_lineage_idx
+    ON forja.index_symbols (tenant_id, repository_id, snapshot_id, lineage_id);
 
 CREATE TABLE forja.index_relations (
     tenant_id uuid NOT NULL,
@@ -283,11 +284,13 @@ BEGIN
             SELECT 1 FROM forja.index_files
             WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
               AND snapshot_id=NEW.snapshot_id AND file_id=NEW.source_entity_id
+              AND file_id=NEW.source_file_id
         )
         OR EXISTS (
             SELECT 1 FROM forja.index_symbols
             WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
               AND snapshot_id=NEW.snapshot_id AND symbol_id=NEW.source_entity_id
+              AND file_id=NEW.source_file_id
         )
     ) THEN
         RAISE EXCEPTION USING ERRCODE='23503', MESSAGE='index relation source entity is outside its snapshot';
@@ -325,7 +328,7 @@ CREATE TABLE forja.index_adapter_runs (
     adapter_version text NOT NULL CHECK (char_length(adapter_version) BETWEEN 1 AND 80),
     configuration_sha256 bytea NOT NULL CHECK (octet_length(configuration_sha256)=32),
     capability_sha256 bytea NOT NULL CHECK (octet_length(capability_sha256)=32),
-    status text NOT NULL CHECK (status IN ('passed', 'failed')),
+    status text NOT NULL CHECK (status IN ('passed', 'reused', 'failed')),
     diagnostic_count integer NOT NULL CHECK (diagnostic_count >= 0),
     PRIMARY KEY (
         tenant_id, repository_id, snapshot_id, adapter_name, adapter_version,
@@ -344,6 +347,14 @@ CREATE TABLE forja.index_deltas (
     entity_kind text NOT NULL CHECK (entity_kind IN ('file', 'symbol', 'relation')),
     entity_id text NOT NULL,
     previous_entity_id text,
+    CHECK (
+        (change_kind IN ('added', 'deleted') AND previous_entity_id IS NULL)
+        OR
+        (change_kind IN ('modified', 'renamed', 'reused')
+            AND previous_entity_id IS NOT NULL
+            AND previous_entity_id ~ ('^' || entity_kind || '_[0-9a-f]{64}$'))
+    ),
+    CHECK (change_kind <> 'renamed' OR entity_kind = 'file'),
     PRIMARY KEY (tenant_id, repository_id, snapshot_id, ordinal),
     FOREIGN KEY (tenant_id, repository_id, snapshot_id)
         REFERENCES forja.index_snapshots(tenant_id, repository_id, snapshot_id) ON DELETE RESTRICT

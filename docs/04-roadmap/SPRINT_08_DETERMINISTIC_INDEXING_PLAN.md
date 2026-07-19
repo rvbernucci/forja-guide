@@ -1,6 +1,8 @@
 # Sprint 08 Deterministic Indexing Plan
 
-Status: In progress
+Status: Implementation complete and independently reviewed. Closure candidate
+publication and protocol-v2 attestation remain pending; Sprint 09 is not yet
+authorized.
 
 The indexing boundary is governed by
 [ADR-0005](../05-decisions/ADR-0005-DETERMINISTIC-CODE-LINEAGE.md).
@@ -22,9 +24,10 @@ keeping large immutable snapshots in the governed artifact store.
   invalidation state.
 - Git object IDs and exact source bytes establish the input boundary. The
   indexer may not read uncommitted files when indexing a committed snapshot.
-- Language adapters are untrusted producers. Their output must satisfy the
-  common schema, semantic validation, repository scope, source hashes, and
-  deterministic-ID rules before canonical publication.
+- Adapter executables are trusted, source-pinned release components; arbitrary
+  repository code is never accepted as an adapter. Adapter output is untrusted
+  data and must satisfy the common schema, semantic validation, repository
+  scope, source hashes, and deterministic-ID rules before publication.
 - A relation is authoritative only when tied to declared compiler, parser,
   schema, test, or runtime evidence. Semantic similarity is not accepted by
   this Sprint.
@@ -81,72 +84,74 @@ canonical Sprint 08 publication.
 
 ### 1. Contracts and canonicalization
 
-- [ ] Publish strict `RepositorySnapshot`, `FileCard`, `SymbolCard`, and
+- [x] Publish strict `RepositorySnapshot`, `FileCard`, `SymbolCard`, and
   `RelationEvidence` JSON schemas.
-- [ ] Add Go contract types and semantic validation for hashes, paths, ranges,
+- [x] Add Go contract types and semantic validation for hashes, paths, ranges,
   evidence classes, bounded collections, and cross-reference closure.
-- [ ] Implement canonical ordering, byte-stable serialization, and stable ID
+- [x] Implement canonical ordering, byte-stable serialization, and stable ID
   generation with golden vectors.
-- [ ] Define adapter manifests, supported language versions, and deterministic
+- [x] Define adapter manifests, supported language versions, and deterministic
   capability declarations.
 
 ### 2. Git boundary and change sets
 
-- [ ] Read committed blobs and trees through bounded Git commands without
+- [x] Read committed blobs and trees through bounded Git commands without
   consulting the mutable worktree.
-- [ ] Validate commit reachability and reject submodule, symlink, traversal,
+- [x] Validate commit reachability and reject submodule, symlink, traversal,
   case-collision, oversized-file, and unsupported-encoding ambiguity safely.
-- [ ] Generate deterministic added, modified, deleted, and renamed path sets.
-- [ ] Bind every source card to its Git blob ID and SHA-256 body hash.
+- [x] Generate deterministic added, modified, deleted, and renamed path sets.
+- [x] Bind every source card to its Git blob ID and SHA-256 body hash.
 
 ### 3. Language adapters
 
-- [ ] Implement Go extraction with `go/packages`, `go/types`, and `go/ast`.
-- [ ] Implement TypeScript/JavaScript extraction with the TypeScript Compiler
+- [x] Implement Go extraction with `go/packages`, `go/types`, and `go/ast`.
+- [x] Implement TypeScript/JavaScript extraction with the TypeScript Compiler
   API and pinned module-resolution behavior.
-- [ ] Implement Python structural extraction with the standard AST and a
+- [x] Implement Python structural extraction with the standard AST and a
   declared syntax-version boundary.
-- [ ] Normalize declarations, imports, exports, signatures, references, tests,
+- [x] Normalize declarations, imports, exports, signatures, references, tests,
   routes, schemas, generated markers, diagnostics, and unresolved targets into
   the common contracts.
-- [ ] Sandbox adapter process execution with bounded input, output, time,
-  environment, and repository scope.
+- [x] Run pinned adapter processes with bounded input, output, deadlines, a
+  minimal environment, and a temporary repository copy. This is lifecycle and
+  resource isolation, not a hostile-code filesystem sandbox; production
+  execution of third-party adapters remains prohibited until Sprint 12.
 
 ### 4. Canonical persistence and publication
 
-- [ ] Add migration 008 for snapshots, files, symbols, relations, adapter runs,
+- [x] Add migration 008 for snapshots, files, symbols, relations, adapter runs,
   deltas, and invalidations using tenant/repository composite authority.
-- [ ] Commit validated snapshot metadata, append-only events, outbox records,
+- [x] Commit validated snapshot metadata, append-only events, outbox records,
   and idempotency receipts atomically.
-- [ ] Publish large canonical snapshot payloads through the Sprint 07 artifact
+- [x] Publish large canonical snapshot payloads through the Sprint 07 artifact
   saga and bind exact artifact hashes in PostgreSQL.
-- [ ] Enforce one active equivalent snapshot and deterministic replay under
+- [x] Enforce one active equivalent snapshot and deterministic replay under
   concurrent publication.
-- [ ] Prevent deletion or mutation of evidence referenced by active snapshots.
+- [x] Prevent deletion or mutation of evidence referenced by active snapshots.
 
 ### 5. Incremental invalidation and observability
 
-- [ ] Compute the affected region from changed files and proven import,
+- [x] Compute the affected region from changed files and proven import,
   reference, schema, test, and route relations.
-- [ ] Reuse unchanged cards only after exact source, adapter, configuration,
+- [x] Reuse unchanged cards only after exact source, adapter, configuration,
   and dependency digests match.
-- [ ] Emit deterministic entity/relation deltas and projection-safe outbox
+- [x] Emit deterministic entity/relation deltas and projection-safe outbox
   events without writing Qdrant or Neo4j directly.
-- [ ] Add bounded metrics and traces for files, symbols, relations,
+- [x] Add bounded metrics and traces for files, symbols, relations,
   diagnostics, cache reuse, invalidations, and adapter failures.
-- [ ] Exclude source bodies, qualified names, paths, tool output, and secrets
+- [x] Exclude source bodies, qualified names, paths, tool output, and secrets
   from low-cardinality telemetry.
 
 ### 6. Acceptance and closure
 
-- [ ] Build golden Go, TypeScript, and Python repositories with cross-version,
+- [x] Build golden Go, TypeScript, and Python repositories with cross-version,
   malformed-source, generated-file, and rename fixtures.
-- [ ] Prove unchanged commits produce byte-identical cards, IDs, relations,
+- [x] Prove unchanged commits produce byte-identical cards, IDs, relations,
   deltas, and snapshot artifacts across repeated runs.
-- [ ] Prove changed files invalidate only the mechanically justified region.
-- [ ] Prove unresolved or ambiguous dynamic relations remain explicit gaps.
-- [ ] Prove tenant isolation, concurrent replay, crash recovery, and rollback.
-- [ ] Run race, integration, security, reproducibility, and independent
+- [x] Prove changed files invalidate only the mechanically justified region.
+- [x] Prove unresolved or ambiguous dynamic relations remain explicit gaps.
+- [x] Prove tenant isolation, concurrent replay, crash recovery, and rollback.
+- [x] Run race, integration, security, reproducibility, and independent
   full-range reviews.
 - [ ] Publish a fail-closed Sprint 08 candidate and close it through protocol
   v2 before authorizing Sprint 09.

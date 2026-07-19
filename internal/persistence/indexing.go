@@ -36,10 +36,16 @@ type IndexPublication struct {
 }
 
 type IndexRepository interface {
+	ValidateIndexPublicationAuthority(
+		context.Context,
+		indexing.IndexBundle,
+		runstate.CommandMetadata,
+	) error
 	PublishIndexSnapshot(
 		context.Context,
 		IndexPublication,
 		runstate.CommandMetadata,
 	) (contracts.RepositorySnapshot, error)
 	GetActiveIndexSnapshot(context.Context) (contracts.RepositorySnapshot, bool, error)
+	GetActiveIndexBundle(context.Context) (indexing.IndexBundle, bool, error)
 }

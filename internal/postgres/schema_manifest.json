@@ -41,9 +41,9 @@
     "tasks": "task_id:uuid:NO:NO::,tenant_id:uuid:NO:NO::,sprint_id:uuid:NO:NO::,title:text:NO:NO::,status:text:NO:NO::'pending'::text,version:int4:NO:NO::1,created_at:timestamptz:NO:NO::clock_timestamp(),updated_at:timestamptz:NO:NO::clock_timestamp()",
     "tenants": "tenant_id:uuid:NO:NO::,slug:text:NO:NO::,display_name:text:NO:NO::,created_at:timestamptz:NO:NO::clock_timestamp()"
   },
-  "constraints_sha256": "6ce110edfef16b597504e59dcbede7d0fbb4203a4b10ad98fb846502ae150dea",
-  "indexes_sha256": "0db3131dfeb8c16de6bb8edaef5ae45b7f1431d492749cb220e3ad8ab9d4d8a4",
-  "triggers_sha256": "e16ce143f77c2041efb55878a32cc110671fa02abc73029b314fcebd24528365",
+  "constraints_sha256": "fb9f5aa170e0b93e3b12246ccffabb60a15a97c7cbb78866bc998bb5b0f7ad62",
+  "indexes_sha256": "61f76a1369d39f3c03ebdf5b0598501d600a5a7daaed5cbe02f3aa0dc938c150",
+  "triggers_sha256": "69a048444109cdab2fc86c2d01a587f43b9f9403dc44a4d4816c2e4749b67fde",
   "trigger": {
     "relation": "forja.events",
     "name": "events_are_append_only",

@@ -89,6 +89,14 @@ func ValidateBundle(bundle IndexBundle) error {
 		if !knownLocalEntity(relation.SourceEntityID, files, symbols) {
 			return fmt.Errorf("relation %q references an unknown source entity", relation.RelationID)
 		}
+		if sourceSymbol, isSymbol := symbols[relation.SourceEntityID]; isSymbol &&
+			sourceSymbol.FileID != relation.SourceFileID {
+			return fmt.Errorf("relation %q source symbol belongs to another file", relation.RelationID)
+		}
+		if _, isFile := files[relation.SourceEntityID]; isFile &&
+			relation.SourceEntityID != relation.SourceFileID {
+			return fmt.Errorf("relation %q source file disagrees with its locator file", relation.RelationID)
+		}
 		if relation.TargetEntityID != nil && !knownTargetEntity(*relation.TargetEntityID, files, symbols) {
 			return fmt.Errorf("relation %q references an unknown target entity", relation.RelationID)
 		}

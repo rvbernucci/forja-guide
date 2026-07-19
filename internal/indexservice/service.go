@@ -67,6 +67,15 @@ func New(artifacts ArtifactPublisher, repository Repository, source clock.Clock,
 func (s *Service) Publish(ctx context.Context, command PublishCommand) (result contracts.RepositorySnapshot, err error) {
 	ctx, handle := s.observer.Start(ctx, observability.BoundaryIndexing, observability.OperationPublishIndex)
 	defer func() { handle.End(err) }()
+	command.Bundle, err = indexing.CanonicalizeBundle(command.Bundle)
+	if err != nil {
+		return contracts.RepositorySnapshot{}, err
+	}
+	if err := s.repository.ValidateIndexPublicationAuthority(
+		ctx, command.Bundle, command.Metadata,
+	); err != nil {
+		return contracts.RepositorySnapshot{}, err
+	}
 	body, err := indexing.MarshalCanonicalBundle(command.Bundle)
 	if err != nil {
 		return contracts.RepositorySnapshot{}, err

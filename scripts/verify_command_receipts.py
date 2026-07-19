@@ -236,6 +236,7 @@ def parse_scope(scope):
         "artifact_reconcile_fail": 4,
         "artifact_tombstone": 3,
         "artifact_object_purge": 4,
+        "index_publish": 3,
     }
     if not parts or parts[0] not in expected_lengths:
         raise ValueError(f"unsupported command receipt scope {scope!r}")
@@ -963,6 +964,81 @@ def verify_artifact_publication_receipt(receipt, candidates, scope_parts):
     }
 
 
+def verify_index_publication_receipt(receipt, candidates, scope_parts):
+    response = receipt["response"]
+    matches = [
+        event
+        for event in candidates
+        if event["event_type"]
+        in {"index_snapshot.activated", "index_snapshot.replayed"}
+        and isinstance(event["payload"], dict)
+        and set(event["payload"])
+        == {"snapshot", "request_identity_json", "request_sha256"}
+        and canonical_json(event["payload"]["snapshot"])
+        == canonical_json(response)
+        and event["payload"]["request_sha256"] == receipt["request_hash"]
+    ]
+    if len(matches) != 1:
+        raise ValueError("index publication receipt lacks one exact canonical event")
+    primary = matches[0]
+    payload = primary["payload"]
+    request_identity_json = payload["request_identity_json"]
+    if not isinstance(request_identity_json, str):
+        raise ValueError("index publication command identity is not canonical JSON")
+    try:
+        publication = json.loads(request_identity_json)
+    except (TypeError, ValueError) as error:
+        raise ValueError("index publication command identity is malformed") from error
+    require_object(
+        publication,
+        {"bundle", "adapter_runs", "deltas", "invalidations"},
+        "index publication command identity",
+    )
+    bundle = publication["bundle"]
+    require_object(
+        bundle,
+        {"snapshot", "files", "symbols", "relations"},
+        "index publication bundle",
+    )
+    request_snapshot = bundle["snapshot"]
+    if not isinstance(request_snapshot, dict):
+        raise ValueError("index publication snapshot is malformed")
+    response_identity = dict(response)
+    response_identity.pop("validated_at", None)
+    if (
+        response.get("snapshot_id") != scope_parts[2]
+        or request_snapshot.get("snapshot_id") != scope_parts[2]
+        or request_snapshot.get("tenant_id") != "tenant_" + receipt["tenant_id"]
+        or request_snapshot.get("repository_id") != "repo_" + scope_parts[1]
+        or canonical_json(request_snapshot) != canonical_json(response_identity)
+        or any(
+            not isinstance(publication[field], list)
+            for field in ("adapter_runs", "deltas", "invalidations")
+        )
+        or any(
+            not isinstance(bundle[field], list)
+            for field in ("files", "symbols", "relations")
+        )
+    ):
+        raise ValueError("index publication scope differs from its snapshot")
+    expected_status = (
+        201 if primary["event_type"] == "index_snapshot.activated" else 200
+    )
+    verify_response(receipt, expected_status, response)
+    verify_hash(
+        receipt,
+        primary,
+        ["knowledge", "index_publication", request_identity_json],
+    )
+    return {
+        "identity": event_identity(primary),
+        "stable_identity": stable_command_identity(primary),
+        "tool_name": "",
+        "domain_event_ids": {primary["event_id"]},
+        "audit_event_ids": set(),
+    }
+
+
 def verify_knowledge_receipt(receipt, candidates, scope_parts):
     command = scope_parts[0]
     response = receipt["response"]
@@ -1175,6 +1251,10 @@ def verify_receipt(receipt, events):
         if not candidates:
             raise ValueError(f"receipt {receipt['scope']} has no canonical command events")
         return verify_artifact_publication_receipt(receipt, candidates, scope_parts)
+    if command == "index_publish":
+        if not candidates:
+            raise ValueError(f"receipt {receipt['scope']} has no canonical command events")
+        return verify_index_publication_receipt(receipt, candidates, scope_parts)
     if command in KNOWLEDGE_COMMANDS:
         if not candidates:
             raise ValueError(f"receipt {receipt['scope']} has no canonical command events")

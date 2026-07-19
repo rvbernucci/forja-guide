@@ -3,6 +3,10 @@ import path from "node:path";
 import process from "node:process";
 import ts from "@typescript/typescript6";
 
+if (Number.parseInt(process.versions.node.split(".", 1)[0], 10) < 24) {
+  throw new Error("TypeScript adapter requires Node.js 24 or newer");
+}
+
 const input = JSON.parse(fs.readFileSync(0, "utf8"));
 const root = path.resolve(input.root);
 const allowed = new Map(input.files.map((value) => {
@@ -183,4 +187,4 @@ for (const diagnostic of ts.getPreEmitDiagnostics(program)) {
   });
 }
 
-process.stdout.write(JSON.stringify({ symbols, relations, diagnostics }));
+process.stdout.write(JSON.stringify({ toolchain_version: ts.version, symbols, relations, diagnostics }));

@@ -35,13 +35,16 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.14.5"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.5"
           cache: true
+
+      - name: Install pinned language adapter dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Match PostgreSQL client to server
         run: |

@@ -3,6 +3,7 @@ package indexing
 import (
 	"context"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,15 +26,21 @@ type GoAdapter struct {
 	descriptor contracts.AdapterDescriptor
 }
 
+//go:embed go_adapter.go
+var goAdapterSource []byte
+
 func NewGoAdapter() *GoAdapter {
 	return &GoAdapter{descriptor: contracts.AdapterDescriptor{
 		Name: "go", Version: runtime.Version(),
-		ConfigurationHash: hashText("go/packages:tests=true;network=off;cgo=off;mod=readonly"),
-		CapabilityHash:    hashText("declarations;imports;references;calls;tests;types"),
+		ConfigurationHash: hashText(
+			"go/packages:tests=true;network=off;cgo=off;mod=readonly;source=" + hashText(string(goAdapterSource)),
+		),
+		CapabilityHash: hashText("declarations;imports;references;calls;tests;types"),
 	}}
 }
 
 func (a *GoAdapter) Descriptor() contracts.AdapterDescriptor { return a.descriptor }
+func (a *GoAdapter) Languages() []string                     { return []string{"go"} }
 
 func (a *GoAdapter) Extract(ctx context.Context, root string, documents []SourceDocument) (RawAdapterResult, error) {
 	allowed := make(map[string]SourceDocument)

@@ -3,6 +3,7 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -24,7 +25,7 @@ func (s *Store) PublishIndexSnapshot(
 	publication persistence.IndexPublication,
 	metadata runstate.CommandMetadata,
 ) (contracts.RepositorySnapshot, error) {
-	requestHash, err := s.validateIndexPublication(publication, metadata)
+	requestHash, requestIdentity, err := s.validateIndexPublication(publication, metadata)
 	if err != nil {
 		return contracts.RepositorySnapshot{}, err
 	}
@@ -59,6 +60,16 @@ func (s *Store) PublishIndexSnapshot(
 		if !bytes.Equal(storedHash, requestHash) {
 			return contracts.RepositorySnapshot{}, fault.New(fault.CodeConflict, "postgres.PublishIndexSnapshot", "snapshot identity is bound to different evidence")
 		}
+		now := postgresTimestamp(s.clock.Now())
+		replayID := contracts.StableIndexID(
+			"index_replay", snapshot.SnapshotID, metadata.IdempotencyKey,
+		)
+		if err := s.appendKnowledgeEvent(
+			ctx, tx, "audit", replayID, 1, "index_snapshot.replayed", now,
+			indexEventPayload(stored, requestIdentity, requestHash), metadata,
+		); err != nil {
+			return contracts.RepositorySnapshot{}, err
+		}
 		if err := saveControlReplay(ctx, tx, s.tenantID, scope, metadata.IdempotencyKey, requestHash, 200, stored); err != nil {
 			return contracts.RepositorySnapshot{}, err
 		}
@@ -66,6 +77,16 @@ func (s *Store) PublishIndexSnapshot(
 			return contracts.RepositorySnapshot{}, databaseError("postgres.PublishIndexSnapshot.existing", err)
 		}
 		return stored, nil
+	}
+	previousSnapshotID := ""
+	var previousSnapshot contracts.RepositorySnapshot
+	if previous, _, previousFound, previousErr := loadIndexSnapshot(
+		ctx, tx, s.tenantID, s.repositoryID, "", true,
+	); previousErr != nil {
+		return contracts.RepositorySnapshot{}, previousErr
+	} else if previousFound {
+		previousSnapshotID = previous.SnapshotID
+		previousSnapshot = previous
 	}
 	artifactHash, _ := decodeContentHash(*snapshot.ArtifactContentHash)
 	var artifactKind, artifactStatus string
@@ -126,6 +147,11 @@ func (s *Store) PublishIndexSnapshot(
 	if err := copyIndexRelations(ctx, tx, s.tenantID, s.repositoryID, publication); err != nil {
 		return contracts.RepositorySnapshot{}, err
 	}
+	if err := validateIndexDeltaAuthority(
+		ctx, tx, s.tenantID, s.repositoryID, previousSnapshotID, publication,
+	); err != nil {
+		return contracts.RepositorySnapshot{}, err
+	}
 	if err := copyIndexMetadata(ctx, tx, s.tenantID, s.repositoryID, publication); err != nil {
 		return contracts.RepositorySnapshot{}, err
 	}
@@ -133,7 +159,25 @@ func (s *Store) PublishIndexSnapshot(
 	snapshot.Version = 1
 	snapshot.CreatedAt = createdAt
 	snapshot.ValidatedAt = &validatedAt
-	if err := s.appendKnowledgeEvent(ctx, tx, "index_snapshot", snapshot.SnapshotID, 1, "index_snapshot.activated", now, snapshot, metadata); err != nil {
+	if previousSnapshotID != "" {
+		previousSnapshot.Status = "superseded"
+		previousSnapshot.Version++
+		if err := s.appendKnowledgeEvent(
+			ctx, tx, "index_snapshot", previousSnapshot.SnapshotID,
+			previousSnapshot.Version, "index_snapshot.superseded", now,
+			map[string]any{
+				"snapshot": previousSnapshot, "superseded_by": snapshot.SnapshotID,
+			},
+			metadata,
+		); err != nil {
+			return contracts.RepositorySnapshot{}, err
+		}
+	}
+	if err := s.appendKnowledgeEvent(
+		ctx, tx, "index_snapshot", snapshot.SnapshotID, 1,
+		"index_snapshot.activated", now,
+		indexEventPayload(snapshot, requestIdentity, requestHash), metadata,
+	); err != nil {
 		return contracts.RepositorySnapshot{}, err
 	}
 	if err := saveControlReplay(ctx, tx, s.tenantID, scope, metadata.IdempotencyKey, requestHash, 201, snapshot); err != nil {
@@ -145,55 +189,203 @@ func (s *Store) PublishIndexSnapshot(
 	return snapshot, nil
 }
 
+func (s *Store) ValidateIndexPublicationAuthority(
+	_ context.Context,
+	bundle indexing.IndexBundle,
+	metadata runstate.CommandMetadata,
+) error {
+	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
+		return err
+	}
+	if err := indexing.ValidateBundle(bundle); err != nil {
+		return fault.Wrap(
+			fault.CodeInvalidArgument,
+			"postgres.ValidateIndexPublicationAuthority",
+			"validate proposed index bundle",
+			err,
+		)
+	}
+	snapshot := bundle.Snapshot
+	if snapshot.TenantID != "tenant_"+s.tenantID ||
+		snapshot.RepositoryID != "repo_"+s.repositoryID ||
+		snapshot.Status != "proposed" || snapshot.CreatedBy != metadata.ActorID ||
+		snapshot.ArtifactID != nil || snapshot.ArtifactContentHash != nil ||
+		snapshot.ValidatedAt != nil {
+		return fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.ValidateIndexPublicationAuthority",
+			"snapshot authority or lifecycle is invalid",
+		)
+	}
+	return nil
+}
+
+func indexEventPayload(
+	snapshot contracts.RepositorySnapshot,
+	requestIdentity string,
+	requestHash []byte,
+) map[string]any {
+	return map[string]any{
+		"snapshot":              snapshot,
+		"request_identity_json": requestIdentity,
+		"request_sha256":        hex.EncodeToString(requestHash),
+	}
+}
+
+func validateIndexDeltaAuthority(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID, repositoryID, previousSnapshotID string,
+	publication persistence.IndexPublication,
+) error {
+	expected, err := expectedIndexDeltas(
+		ctx, tx, tenantID, repositoryID, previousSnapshotID, publication.Bundle,
+	)
+	if err != nil {
+		return err
+	}
+	actual := append([]persistence.IndexDelta(nil), publication.Deltas...)
+	sortIndexDeltaSemantics(expected)
+	sortIndexDeltaSemantics(actual)
+	if len(actual) != len(expected) {
+		return invalidIndexDeltaAuthority()
+	}
+	for index := range expected {
+		if indexDeltaSemanticKey(actual[index]) != indexDeltaSemanticKey(expected[index]) {
+			return invalidIndexDeltaAuthority()
+		}
+	}
+	return nil
+}
+
+func expectedIndexDeltas(
+	ctx context.Context,
+	queryer indexBundleQueryer,
+	tenantID, repositoryID, previousSnapshotID string,
+	target indexing.IndexBundle,
+) ([]persistence.IndexDelta, error) {
+	if previousSnapshotID == "" {
+		result := make([]persistence.IndexDelta, 0, len(target.Files)+len(target.Symbols)+len(target.Relations))
+		for _, file := range target.Files {
+			result = append(result, persistence.IndexDelta{ChangeKind: "added", EntityKind: "file", EntityID: file.FileID})
+		}
+		for _, symbol := range target.Symbols {
+			result = append(result, persistence.IndexDelta{ChangeKind: "added", EntityKind: "symbol", EntityID: symbol.SymbolID})
+		}
+		for _, relation := range target.Relations {
+			result = append(result, persistence.IndexDelta{ChangeKind: "added", EntityKind: "relation", EntityID: relation.RelationID})
+		}
+		return result, nil
+	}
+	baseline, found, err := loadIndexBundle(
+		ctx, queryer, tenantID, repositoryID, previousSnapshotID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, fault.New(
+			fault.CodeConflict, "postgres.PublishIndexSnapshot",
+			"canonical baseline snapshot disappeared during publication",
+		)
+	}
+	computed, err := indexing.ComputeBundleDeltas(baseline, target)
+	if err != nil {
+		return nil, fault.Wrap(
+			fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot",
+			"recompute canonical index deltas", err,
+		)
+	}
+	result := make([]persistence.IndexDelta, len(computed))
+	for index, delta := range computed {
+		result[index] = persistence.IndexDelta{
+			ChangeKind: delta.ChangeKind, EntityKind: delta.EntityKind,
+			EntityID: delta.EntityID, PreviousEntityID: delta.PreviousEntityID,
+		}
+	}
+	return result, nil
+}
+
+func sortIndexDeltaSemantics(values []persistence.IndexDelta) {
+	slices.SortFunc(values, func(left, right persistence.IndexDelta) int {
+		return strings.Compare(indexDeltaSemanticKey(left), indexDeltaSemanticKey(right))
+	})
+}
+
+func indexDeltaSemanticKey(value persistence.IndexDelta) string {
+	previous := "<absent>"
+	if value.PreviousEntityID != nil {
+		previous = "<present>" + *value.PreviousEntityID
+	}
+	return value.ChangeKind + "\x00" + value.EntityKind + "\x00" + value.EntityID + "\x00" + previous
+}
+
+func invalidIndexDeltaAuthority() error {
+	return fault.New(
+		fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot",
+		"index deltas do not match the canonical baseline-to-target transition",
+	)
+}
+
 func (s *Store) GetActiveIndexSnapshot(ctx context.Context) (contracts.RepositorySnapshot, bool, error) {
 	value, _, found, err := loadIndexSnapshot(ctx, s.pool, s.tenantID, s.repositoryID, "", false)
 	return value, found, err
 }
 
-func (s *Store) validateIndexPublication(value persistence.IndexPublication, metadata runstate.CommandMetadata) ([]byte, error) {
+func (s *Store) validateIndexPublication(
+	value persistence.IndexPublication,
+	metadata runstate.CommandMetadata,
+) ([]byte, string, error) {
 	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if err := indexing.ValidateBundle(value.Bundle); err != nil {
-		return nil, fault.Wrap(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "validate index bundle", err)
+		return nil, "", fault.Wrap(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "validate index bundle", err)
 	}
 	snapshot := value.Bundle.Snapshot
 	if snapshot.TenantID != "tenant_"+s.tenantID || snapshot.RepositoryID != "repo_"+s.repositoryID ||
 		snapshot.Status != "active" || snapshot.CreatedBy != metadata.ActorID {
-		return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "snapshot authority or lifecycle is invalid")
+		return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "snapshot authority or lifecycle is invalid")
 	}
 	if len(value.AdapterRuns) != len(snapshot.Adapters) {
-		return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "adapter run set is incomplete")
+		return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "adapter run set is incomplete")
 	}
 	for index, run := range value.AdapterRuns {
-		if run.Adapter != snapshot.Adapters[index] || run.Status != "passed" || run.DiagnosticCount < 0 {
-			return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "adapter run evidence is invalid")
+		if run.Adapter != snapshot.Adapters[index] || !slices.Contains([]string{"passed", "reused"}, run.Status) || run.DiagnosticCount < 0 {
+			return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "adapter run evidence is invalid")
 		}
 	}
 	for index, delta := range value.Deltas {
 		if delta.Ordinal != index || !slices.Contains([]string{"added", "modified", "deleted", "renamed", "reused"}, delta.ChangeKind) ||
-			!slices.Contains([]string{"file", "symbol", "relation"}, delta.EntityKind) || strings.TrimSpace(delta.EntityID) == "" {
-			return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "index delta evidence is invalid")
+			!slices.Contains([]string{"file", "symbol", "relation"}, delta.EntityKind) || strings.TrimSpace(delta.EntityID) == "" ||
+			(slices.Contains([]string{"added", "deleted"}, delta.ChangeKind) && delta.PreviousEntityID != nil) ||
+			(slices.Contains([]string{"modified", "renamed", "reused"}, delta.ChangeKind) &&
+				(delta.PreviousEntityID == nil || strings.TrimSpace(*delta.PreviousEntityID) == "")) ||
+			delta.ChangeKind == "renamed" && delta.EntityKind != "file" {
+			return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "index delta evidence is invalid")
 		}
 	}
 	previousInvalidation := ""
 	for _, invalidation := range value.Invalidations {
 		key := invalidation.EntityID + "\x00" + invalidation.Reason
 		if key <= previousInvalidation || !slices.Contains([]string{"source_changed", "dependency_changed", "adapter_changed", "configuration_changed", "deleted"}, invalidation.Reason) {
-			return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "index invalidations are not canonical")
+			return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "index invalidations are not canonical")
 		}
 		if invalidation.SourceHash != nil {
 			if _, err := decodeContentHash(*invalidation.SourceHash); err != nil {
-				return nil, fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "invalidation source hash is invalid")
+				return nil, "", fault.New(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "invalidation source hash is invalid")
 			}
 		}
 		previousInvalidation = key
 	}
-	encoded, err := json.Marshal(value)
+	requestIdentity := value
+	requestIdentity.Bundle.Snapshot.ValidatedAt = nil
+	encoded, err := json.Marshal(requestIdentity)
 	if err != nil {
-		return nil, fault.Wrap(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "encode publication", err)
+		return nil, "", fault.Wrap(fault.CodeInvalidArgument, "postgres.PublishIndexSnapshot", "encode publication", err)
 	}
-	return hashKnowledgeCommand(metadata, "index_publication", string(encoded)), nil
+	canonicalRequest := string(encoded)
+	return hashKnowledgeCommand(metadata, "index_publication", canonicalRequest), canonicalRequest, nil
 }
 
 type indexSnapshotQueryer interface {

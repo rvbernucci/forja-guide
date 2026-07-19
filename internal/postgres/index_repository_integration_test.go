@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -39,6 +40,13 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 	if err != nil || replayed.SnapshotID != published.SnapshotID {
 		t.Fatalf("replay=%#v err=%v", replayed, err)
 	}
+	restarted := first
+	revalidatedAt := first.Bundle.Snapshot.ValidatedAt.Add(time.Minute)
+	restarted.Bundle.Snapshot.ValidatedAt = &revalidatedAt
+	replayed, err = store.PublishIndexSnapshot(t.Context(), restarted, testMetadata("index-publish-restarted"))
+	if err != nil || replayed.SnapshotID != published.SnapshotID || !replayed.ValidatedAt.Equal(*published.ValidatedAt) {
+		t.Fatalf("restart replay=%#v err=%v", replayed, err)
+	}
 	conflict := first
 	conflict.Bundle.Files = append([]contracts.FileCard(nil), first.Bundle.Files...)
 	conflict.Bundle.Files[0].Generated = !conflict.Bundle.Files[0].Generated
@@ -46,12 +54,44 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		t.Fatalf("conflicting snapshot error=%v", err)
 	}
 	second := indexPublicationFixture(t, pool, "second", strings.Repeat("b", 40))
+	if _, err := store.PublishIndexSnapshot(t.Context(), second, testMetadata("index-publish-incomplete-delta")); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("incomplete delta error=%v", err)
+	}
+	canonicalDeltas := indexPersistenceDeltas(t, first.Bundle, second.Bundle)
+	if len(canonicalDeltas) != 1 || canonicalDeltas[0].ChangeKind != "modified" ||
+		canonicalDeltas[0].PreviousEntityID == nil {
+		t.Fatalf("unexpected canonical delta fixture=%#v", canonicalDeltas)
+	}
+	falseReused := second
+	falseReused.Deltas = append([]persistence.IndexDelta(nil), canonicalDeltas...)
+	falseReused.Deltas[0].ChangeKind = "reused"
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), falseReused, testMetadata("index-publish-false-reused"),
+	); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("false reused delta error=%v", err)
+	}
+	falseSplit := second
+	falseSplit.Deltas = []persistence.IndexDelta{
+		{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: canonicalDeltas[0].EntityID},
+		{Ordinal: 1, ChangeKind: "deleted", EntityKind: "file", EntityID: *canonicalDeltas[0].PreviousEntityID},
+	}
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), falseSplit, testMetadata("index-publish-false-split"),
+	); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("false added/deleted delta error=%v", err)
+	}
+	second.Deltas = canonicalDeltas
 	if _, err := store.PublishIndexSnapshot(t.Context(), second, testMetadata("index-publish-second")); err != nil {
 		t.Fatal(err)
 	}
 	active, found, err := store.GetActiveIndexSnapshot(t.Context())
 	if err != nil || !found || active.SnapshotID != second.Bundle.Snapshot.SnapshotID {
 		t.Fatalf("active=%#v found=%v err=%v", active, found, err)
+	}
+	activeBundle, found, err := store.GetActiveIndexBundle(t.Context())
+	if err != nil || !found || activeBundle.Snapshot.SnapshotID != second.Bundle.Snapshot.SnapshotID ||
+		len(activeBundle.Files) != len(second.Bundle.Files) {
+		t.Fatalf("active bundle=%#v found=%v err=%v", activeBundle, found, err)
 	}
 	var activeCount, supersededCount, eventCount, outboxCount int
 	if err := pool.QueryRow(t.Context(), `
@@ -69,8 +109,18 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		WHERE e.aggregate_type='index_snapshot'`).Scan(&outboxCount); err != nil {
 		t.Fatal(err)
 	}
-	if activeCount != 1 || supersededCount != 1 || eventCount != 2 || outboxCount != 2 {
+	if activeCount != 1 || supersededCount != 1 || eventCount != 3 || outboxCount != 3 {
 		t.Fatalf("active=%d superseded=%d events=%d outbox=%d", activeCount, supersededCount, eventCount, outboxCount)
+	}
+	var supersededBy string
+	if err := pool.QueryRow(t.Context(), `
+		SELECT payload->>'superseded_by'
+		FROM forja.events
+		WHERE aggregate_type='index_snapshot' AND aggregate_id=$1
+		  AND aggregate_version=2 AND event_type='index_snapshot.superseded'`,
+		first.Bundle.Snapshot.SnapshotID,
+	).Scan(&supersededBy); err != nil || supersededBy != second.Bundle.Snapshot.SnapshotID {
+		t.Fatalf("superseded_by=%q error=%v", supersededBy, err)
 	}
 	if _, err := pool.Exec(t.Context(), `
 		UPDATE forja.artifacts SET status='archived', tombstoned_at=clock_timestamp(), updated_at=clock_timestamp()
@@ -129,6 +179,130 @@ func TestConcurrentEquivalentIndexPublicationCreatesOneAuthority(t *testing.T) {
 	}
 }
 
+func TestIndexPublicationRejectsCallerControlledRenameAndMalformedPreviousID(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	first := indexPublicationFixture(t, pool, "rename-base", strings.Repeat("1", 40))
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), first, testMetadata("index-rename-base"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	target := indexPublicationFixture(t, pool, "rename-target", strings.Repeat("2", 40))
+	file := &target.Bundle.Files[0]
+	file.Path = "app/moved.py"
+	file.FileID = contracts.ComputeFileID(*file)
+	file.LineageID = contracts.ComputeFileLineageID(*file)
+	canonical := indexPersistenceDeltas(t, first.Bundle, target.Bundle)
+	if len(canonical) != 2 {
+		t.Fatalf("changed-content move deltas=%#v", canonical)
+	}
+	callerRename := target
+	callerRename.Deltas = []persistence.IndexDelta{{
+		Ordinal: 0, ChangeKind: "renamed", EntityKind: "file",
+		EntityID: file.FileID, PreviousEntityID: &first.Bundle.Files[0].FileID,
+	}}
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), callerRename, testMetadata("index-caller-rename"),
+	); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("caller-controlled rename error=%v", err)
+	}
+	malformed := target
+	malformed.Deltas = append([]persistence.IndexDelta(nil), canonical...)
+	empty := ""
+	for index := range malformed.Deltas {
+		if malformed.Deltas[index].ChangeKind == "added" {
+			malformed.Deltas[index].PreviousEntityID = &empty
+		}
+	}
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), malformed, testMetadata("index-empty-previous"),
+	); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("empty previous entity error=%v", err)
+	}
+	target.Deltas = canonical
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), target, testMetadata("index-changed-content-move"),
+	); err != nil {
+		t.Fatalf("canonical changed-content move: %v", err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.index_deltas (
+			tenant_id, repository_id, snapshot_id, ordinal, change_kind,
+			entity_kind, entity_id, previous_entity_id
+		) VALUES ($1,$2,$3,999,'modified','file',$4,E'\\t')`,
+		DefaultTenantID, DefaultRepositoryID, target.Bundle.Snapshot.SnapshotID,
+		target.Bundle.Files[0].FileID,
+	); err == nil {
+		t.Fatal("database accepted a whitespace previous_entity_id")
+	}
+}
+
+func TestIndexPublicationPreservesMultipleSymbolsInOneLineage(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	publication := indexPublicationFixture(t, pool, "overloads", strings.Repeat("8", 40))
+	file := &publication.Bundle.Files[0]
+	makeSymbol := func(offset int, signature string) contracts.SymbolCard {
+		value := contracts.SymbolCard{
+			SchemaVersion: contracts.IndexSchemaVersion,
+			SnapshotID:    publication.Bundle.Snapshot.SnapshotID,
+			FileID:        file.FileID, FileLineageID: file.LineageID,
+			Language: "python", Kind: "function", Name: "parse",
+			QualifiedName: "app.main.parse", Signature: signature,
+			Declaration: contracts.SourceRange{
+				Start: contracts.SourcePosition{Line: offset + 1, Column: 1, Offset: offset},
+				End:   contracts.SourcePosition{Line: offset + 1, Column: 2, Offset: offset + 1},
+			},
+		}
+		value.SymbolID = contracts.ComputeSymbolID(value)
+		value.LineageID = contracts.ComputeSymbolLineageID(value)
+		return value
+	}
+	first := makeSymbol(0, "parse(str) -> str")
+	second := makeSymbol(2, "parse(int) -> int")
+	if first.LineageID != second.LineageID || first.SymbolID == second.SymbolID {
+		t.Fatal("overload fixture does not share one lineage across version identities")
+	}
+	publication.Bundle.Symbols = []contracts.SymbolCard{first, second}
+	file.SymbolIDs = []string{first.SymbolID, second.SymbolID}
+	sort.Strings(file.SymbolIDs)
+	publication.Bundle.Snapshot.Counts.Symbols = 2
+	publication.Deltas = []persistence.IndexDelta{
+		{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID},
+		{Ordinal: 1, ChangeKind: "added", EntityKind: "symbol", EntityID: first.SymbolID},
+		{Ordinal: 2, ChangeKind: "added", EntityKind: "symbol", EntityID: second.SymbolID},
+	}
+	sort.Slice(publication.Deltas, func(i, j int) bool {
+		left := publication.Deltas[i].EntityKind + "\x00" + publication.Deltas[i].EntityID
+		right := publication.Deltas[j].EntityKind + "\x00" + publication.Deltas[j].EntityID
+		return left < right
+	})
+	for index := range publication.Deltas {
+		publication.Deltas[index].Ordinal = index
+	}
+	if _, err := store.PublishIndexSnapshot(
+		t.Context(), publication, testMetadata("index-overload-lineage"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	var count int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT count(*) FROM forja.index_symbols WHERE lineage_id=$1`,
+		first.LineageID,
+	).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("lineage rows=%d error=%v", count, err)
+	}
+}
+
 func TestIndexPublicationRollsBackAllRowsOnInvalidArtifact(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)
@@ -137,6 +311,16 @@ func TestIndexPublicationRollsBackAllRowsOnInvalidArtifact(t *testing.T) {
 	}
 	store := newIntegrationStore(t, pool)
 	publication := indexPublicationFixture(t, pool, "invalid-kind", strings.Repeat("c", 40))
+	otherStore, err := NewStore(
+		pool, nil, "00000000-0000-4000-8000-000000000011",
+		"00000000-0000-4000-8000-000000000012",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := otherStore.PublishIndexSnapshot(t.Context(), publication, testMetadata("index-cross-tenant")); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("cross-tenant publication error=%v", err)
+	}
 	if _, err := pool.Exec(t.Context(), `UPDATE forja.artifacts SET kind='test_report' WHERE artifact_id=$1`, *publication.Bundle.Snapshot.ArtifactID); err != nil {
 		t.Fatal(err)
 	}
@@ -241,6 +425,57 @@ func TestIndexRelationClosureAndArtifactActivationAreSerialized(t *testing.T) {
 	if err := closureTx.Commit(t.Context()); err == nil {
 		t.Fatal("deferred relation closure accepted an unknown source entity")
 	}
+
+	ownershipTx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ownershipTx.Rollback(t.Context())
+	otherFile := "file_" + strings.Repeat("4", 64)
+	otherLineage := "file_lineage_" + strings.Repeat("5", 64)
+	sourceSymbol := "symbol_" + strings.Repeat("6", 64)
+	symbolLineage := "symbol_lineage_" + strings.Repeat("7", 64)
+	zeroHash := make([]byte, sha256.Size)
+	if _, err := ownershipTx.Exec(t.Context(), `
+		INSERT INTO forja.index_files (
+			tenant_id, repository_id, snapshot_id, file_id, lineage_id, path,
+			git_blob_id, source_sha256, size_bytes, language, generated, diagnostics
+		) VALUES ($1,$2,$3,$4,$5,'other.py',$6,$7,1,'python',false,'[]')`,
+		DefaultTenantID, DefaultRepositoryID, second.Bundle.Snapshot.SnapshotID,
+		otherFile, otherLineage, strings.Repeat("8", 40), zeroHash,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownershipTx.Exec(t.Context(), `
+		INSERT INTO forja.index_symbols (
+			tenant_id, repository_id, snapshot_id, symbol_id, lineage_id, file_id,
+			language, kind, name, qualified_name, signature,
+			start_line, start_column, start_offset, end_line, end_column, end_offset,
+			exported, is_test, is_route, is_schema
+		) VALUES ($1,$2,$3,$4,$5,$6,'python','function','source','app.source','',
+			1,1,0,1,1,0,false,false,false,false)`,
+		DefaultTenantID, DefaultRepositoryID, second.Bundle.Snapshot.SnapshotID,
+		sourceSymbol, symbolLineage, file.FileID,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ownershipTx.Exec(t.Context(), `
+		INSERT INTO forja.index_relations (
+			tenant_id, repository_id, snapshot_id, relation_id, source_entity_id,
+			kind, resolution, target_entity_id, evidence_class, source_file_id,
+			start_line, start_column, start_offset, end_line, end_column, end_offset,
+			evidence_sha256, adapter
+		) VALUES ($1,$2,$3,$4,$5,'calls','resolved',$6,'confirmed_static',$7,
+			1,1,0,1,1,0,$8,$9)`,
+		DefaultTenantID, DefaultRepositoryID, second.Bundle.Snapshot.SnapshotID,
+		"relation_"+strings.Repeat("9", 64), sourceSymbol, target, otherFile,
+		evidence[:], adapter,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := ownershipTx.Commit(t.Context()); err == nil {
+		t.Fatal("deferred relation closure accepted a source symbol from another file")
+	}
 }
 
 func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit string) persistence.IndexPublication {
@@ -342,4 +577,21 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 func indexHash(value string) string {
 	digest := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+func indexPersistenceDeltas(t *testing.T, baseline, target indexing.IndexBundle) []persistence.IndexDelta {
+	t.Helper()
+	computed, err := indexing.ComputeBundleDeltas(baseline, target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := make([]persistence.IndexDelta, len(computed))
+	for index, value := range computed {
+		result[index] = persistence.IndexDelta{
+			Ordinal: value.Ordinal, ChangeKind: value.ChangeKind,
+			EntityKind: value.EntityKind, EntityID: value.EntityID,
+			PreviousEntityID: value.PreviousEntityID,
+		}
+	}
+	return result
 }

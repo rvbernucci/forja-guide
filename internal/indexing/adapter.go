@@ -23,6 +23,7 @@ type SourceDocument struct {
 
 type Adapter interface {
 	Descriptor() contracts.AdapterDescriptor
+	Languages() []string
 	Extract(context.Context, string, []SourceDocument) (RawAdapterResult, error)
 }
 
@@ -251,6 +252,7 @@ func NormalizeResults(
 		return left.Key < right.Key
 	})
 	symbolByKey := make(map[string]string, len(bound))
+	symbolFileByID := make(map[string]string, len(bound))
 	symbols := make([]contracts.SymbolCard, 0, len(bound))
 	for _, item := range bound {
 		if strings.TrimSpace(item.raw.Key) == "" {
@@ -260,6 +262,7 @@ func NormalizeResults(
 			return IndexBundle{}, fmt.Errorf("adapter symbol key %q is ambiguous", item.raw.Key)
 		}
 		symbolByKey[item.raw.Key] = item.card.SymbolID
+		symbolFileByID[item.card.SymbolID] = item.card.FileID
 		symbols = append(symbols, item.card)
 		fileByPath[item.raw.Path].SymbolIDs = append(fileByPath[item.raw.Path].SymbolIDs, item.card.SymbolID)
 	}
@@ -286,14 +289,20 @@ func NormalizeResults(
 			SourcePath: item.raw.Path, Kind: "declares", TargetKey: &item.raw.Key,
 			EvidenceClass: "confirmed_static", Locator: item.raw.Declaration,
 		}
-		relation, err := bindRelation(snapshot, raw, item.adapter, fileByPath, documentByPath, symbolByKey)
+		relation, err := bindRelation(
+			snapshot, raw, item.adapter, fileByPath, documentByPath,
+			symbolByKey, symbolFileByID,
+		)
 		if err != nil {
 			return IndexBundle{}, err
 		}
 		relations = append(relations, relation)
 	}
 	for _, item := range allRelations {
-		relation, err := bindRelation(snapshot, item.raw, item.adapter, fileByPath, documentByPath, symbolByKey)
+		relation, err := bindRelation(
+			snapshot, item.raw, item.adapter, fileByPath, documentByPath,
+			symbolByKey, symbolFileByID,
+		)
 		if err != nil {
 			return IndexBundle{}, err
 		}
@@ -323,6 +332,7 @@ func bindRelation(
 	files map[string]*contracts.FileCard,
 	documents map[string]SourceDocument,
 	symbols map[string]string,
+	symbolFiles map[string]string,
 ) (contracts.RelationEvidence, error) {
 	file := files[raw.SourcePath]
 	document, exists := documents[raw.SourcePath]
@@ -335,6 +345,9 @@ func bindRelation(
 		sourceID, found = symbols[*raw.SourceKey]
 		if !found {
 			return contracts.RelationEvidence{}, fmt.Errorf("relation source symbol is unresolved")
+		}
+		if symbolFiles[sourceID] != file.FileID {
+			return contracts.RelationEvidence{}, fmt.Errorf("relation source symbol belongs to a different file")
 		}
 	}
 	resolvedTargets := 0

@@ -12,10 +12,28 @@ import sys
 request = json.load(sys.stdin)
 root = pathlib.Path(request["root"]).resolve()
 files = sorted(str(value).replace("\\", "/") for value in request["files"])
+syntax_version = tuple(int(value) for value in request["toolchain_version"].split("."))
+if len(syntax_version) != 2 or syntax_version[0] != 3:
+    raise ValueError("Python syntax boundary must be a Python 3 major.minor pair")
 symbols: list[dict[str, object]] = []
 relations: list[dict[str, object]] = []
 diagnostics: list[dict[str, object]] = []
 symbol_keys: dict[tuple[str, str], str] = {}
+
+
+def module_name(file_path: str) -> str:
+    path = pathlib.PurePosixPath(file_path).with_suffix("")
+    parts = list(path.parts)
+    if parts and parts[-1] == "__init__":
+        parts.pop()
+    return ".".join(parts)
+
+
+local_modules = {
+    module_name(value): value
+    for value in files
+    if pathlib.PurePosixPath(value).suffix in {".py", ".pyi"}
+}
 
 
 def position(node: ast.AST) -> dict[str, object]:
@@ -70,9 +88,29 @@ def signature(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
 class Extractor(ast.NodeVisitor):
     def __init__(self, file_path: str) -> None:
         self.file_path = file_path
-        self.module = pathlib.PurePosixPath(file_path).with_suffix("").as_posix().replace("/", ".")
+        self.module = module_name(file_path)
+        path = pathlib.PurePosixPath(file_path)
+        self.package = self.module if path.stem == "__init__" else self.module.rpartition(".")[0]
         self.scope: list[str] = []
         self.source_keys: list[str] = []
+
+    def resolve_import(self, module: str, level: int = 0, imported_name: str = "") -> str | None:
+        if level:
+            package = self.package.split(".") if self.package else []
+            trim = level - 1
+            if trim > len(package):
+                return None
+            parts = package[: len(package) - trim]
+            if module:
+                parts.extend(module.split("."))
+            resolved = ".".join(parts)
+        else:
+            resolved = module
+        if imported_name and resolved:
+            candidate = f"{resolved}.{imported_name}"
+            if candidate in local_modules:
+                return local_modules[candidate]
+        return local_modules.get(resolved)
 
     def add_symbol(self, node: ast.AST, name: str, kind: str, value_signature: str = "") -> str:
         qualified = ".".join([self.module, *self.scope, name])
@@ -113,11 +151,26 @@ class Extractor(ast.NodeVisitor):
 
     def visit_Import(self, node: ast.Import) -> None:
         for alias in node.names:
-            self.add_relation(node, "imports", external_name=alias.name)
+            target = self.resolve_import(alias.name)
+            if target:
+                self.add_relation(node, "imports", target_path=target)
+            else:
+                self.add_relation(node, "imports", external_name=alias.name)
 
     def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         module = "." * node.level + (node.module or "")
-        self.add_relation(node, "imports", external_name=module)
+        targets: set[str] = set()
+        externals: set[str] = set()
+        for alias in node.names:
+            target = self.resolve_import(node.module or "", node.level, alias.name)
+            if target:
+                targets.add(target)
+            else:
+                externals.add(f"{module}.{alias.name}" if module else alias.name)
+        for target in sorted(targets):
+            self.add_relation(node, "imports", target_path=target)
+        for external in sorted(externals):
+            self.add_relation(node, "imports", external_name=external)
 
     def visit_Call(self, node: ast.Call) -> None:
         target = dotted_name(node.func)
@@ -128,7 +181,15 @@ class Extractor(ast.NodeVisitor):
         if isinstance(node.ctx, ast.Load) and self.source_keys:
             self.add_relation(node, "references", external_name=node.id)
 
-    def add_relation(self, node: ast.AST, kind: str, *, external_name: str | None = None, unresolved_name: str | None = None) -> None:
+    def add_relation(
+        self,
+        node: ast.AST,
+        kind: str,
+        *,
+        target_path: str | None = None,
+        external_name: str | None = None,
+        unresolved_name: str | None = None,
+    ) -> None:
         relation: dict[str, object] = {
             "source_path": self.file_path, "kind": kind,
             "evidence_class": "candidate_static" if kind in {"calls", "references"} else "confirmed_static",
@@ -136,7 +197,9 @@ class Extractor(ast.NodeVisitor):
         }
         if self.source_keys:
             relation["source_key"] = self.source_keys[-1]
-        if external_name:
+        if target_path:
+            relation["target_path"] = target_path
+        elif external_name:
             relation["external_name"] = external_name
         else:
             relation["unresolved_name"] = (unresolved_name or ast.unparse(node))[:2048]
@@ -151,11 +214,21 @@ for file_path in files:
         raise ValueError("Python source escapes root")
     body = target.read_text(encoding="utf-8")
     try:
-        tree = ast.parse(body, filename=file_path, type_comments=True)
+        tree = ast.parse(body, filename=file_path, type_comments=True, feature_version=syntax_version)
     except SyntaxError:
         diagnostics.append({"path": file_path, "severity": "error", "code": "python/syntax"})
         continue
     annotate_offsets(tree, body)
     Extractor(file_path).visit(tree)
 
-json.dump({"symbols": symbols, "relations": relations, "diagnostics": diagnostics}, sys.stdout, separators=(",", ":"), sort_keys=True)
+json.dump(
+    {
+        "toolchain_version": f"{sys.version_info.major}.{sys.version_info.minor}",
+        "symbols": symbols,
+        "relations": relations,
+        "diagnostics": diagnostics,
+    },
+    sys.stdout,
+    separators=(",", ":"),
+    sort_keys=True,
+)

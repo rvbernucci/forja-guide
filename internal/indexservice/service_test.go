@@ -1,9 +1,11 @@
 package indexservice
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"strings"
 	"testing"
@@ -22,7 +24,7 @@ func TestServicePublishesArtifactBeforeCanonicalAuthority(t *testing.T) {
 	bundle, descriptor := serviceBundle(t, now.Add(-time.Minute))
 	artifacts := &recordingArtifactPublisher{}
 	repository := &recordingIndexRepository{}
-	service, err := New(artifacts, repository, clock.Fixed{Time: now})
+	service, err := New(artifacts, repository, &advancingClock{current: now, step: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,6 +57,37 @@ func TestServicePublishesArtifactBeforeCanonicalAuthority(t *testing.T) {
 	if strings.Contains(string(artifacts.bodies[0]), "artifact_content_hash") {
 		t.Fatal("immutable artifact body contains its own authority hash")
 	}
+	if !bytes.Equal(artifacts.bodies[0], artifacts.bodies[1]) ||
+		repository.publications[1].Bundle.Snapshot.ValidatedAt.Equal(now) {
+		t.Fatal("clock-advanced retry changed artifact bytes or reused validation time")
+	}
+}
+
+func TestServiceRejectsAuthorityBeforeReservingArtifactIdentity(t *testing.T) {
+	now := time.Date(2026, 7, 19, 16, 0, 0, 0, time.UTC)
+	bundle, descriptor := serviceBundle(t, now.Add(-time.Minute))
+	artifacts := &recordingArtifactPublisher{}
+	repository := &recordingIndexRepository{authorityErr: errors.New("wrong repository authority")}
+	service, err := New(artifacts, repository, clock.Fixed{Time: now})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = service.Publish(t.Context(), PublishCommand{
+		Bundle: bundle,
+		Metadata: runstate.CommandMetadata{
+			IdempotencyKey: "reject-index-authority", ActorType: "system",
+			ActorID: "index-service", CorrelationID: "reject-index-authority",
+		},
+		AdapterRuns: []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
+		Deltas:      []persistence.IndexDelta{}, Invalidations: []persistence.IndexInvalidation{},
+	})
+	if err == nil || repository.authorityChecks != 1 || len(artifacts.commands) != 0 ||
+		len(repository.publications) != 0 {
+		t.Fatalf(
+			"error=%v checks=%d artifacts=%d publications=%d",
+			err, repository.authorityChecks, len(artifacts.commands), len(repository.publications),
+		)
+	}
 }
 
 type recordingArtifactPublisher struct {
@@ -80,7 +113,18 @@ func (r *recordingArtifactPublisher) PublishArtifact(_ context.Context, command 
 }
 
 type recordingIndexRepository struct {
-	publications []persistence.IndexPublication
+	publications    []persistence.IndexPublication
+	authorityChecks int
+	authorityErr    error
+}
+
+func (r *recordingIndexRepository) ValidateIndexPublicationAuthority(
+	_ context.Context,
+	_ indexing.IndexBundle,
+	_ runstate.CommandMetadata,
+) error {
+	r.authorityChecks++
+	return r.authorityErr
 }
 
 func (r *recordingIndexRepository) PublishIndexSnapshot(_ context.Context, value persistence.IndexPublication, _ runstate.CommandMetadata) (contracts.RepositorySnapshot, error) {
@@ -93,6 +137,13 @@ func (r *recordingIndexRepository) GetActiveIndexSnapshot(context.Context) (cont
 		return contracts.RepositorySnapshot{}, false, nil
 	}
 	return r.publications[len(r.publications)-1].Bundle.Snapshot, true, nil
+}
+
+func (r *recordingIndexRepository) GetActiveIndexBundle(context.Context) (indexing.IndexBundle, bool, error) {
+	if len(r.publications) == 0 {
+		return indexing.IndexBundle{}, false, nil
+	}
+	return r.publications[len(r.publications)-1].Bundle, true, nil
 }
 
 func serviceBundle(t *testing.T, createdAt time.Time) (indexing.IndexBundle, contracts.AdapterDescriptor) {
@@ -132,4 +183,15 @@ func serviceBundle(t *testing.T, createdAt time.Time) (indexing.IndexBundle, con
 func serviceHash(value string) string {
 	digest := sha256.Sum256([]byte(value))
 	return "sha256:" + hex.EncodeToString(digest[:])
+}
+
+type advancingClock struct {
+	current time.Time
+	step    time.Duration
+}
+
+func (c *advancingClock) Now() time.Time {
+	value := c.current
+	c.current = c.current.Add(c.step)
+	return value
 }
