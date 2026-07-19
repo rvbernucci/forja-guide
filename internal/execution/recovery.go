@@ -622,7 +622,7 @@ func (p *Pipeline) replayCompleted(
 	}
 	replayCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 	defer cancel()
-	publication, publicationErr := p.publisher.Recover(
+	publication, publicationErr := p.recoverPublicationObserved(
 		replayCtx, request, commit, delivery.ValidationBundle{}, leaseSet,
 	)
 	if publication.Receipt.Status != "published" {

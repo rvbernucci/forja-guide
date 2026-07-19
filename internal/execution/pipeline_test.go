@@ -1488,8 +1488,12 @@ func TestPipelineRecoveryRevalidatesCompletedPublicationAndReleasesLease(t *test
 			Receipt: receipt, Replayed: true, LeaseReleased: true,
 		},
 	}
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
 	pipeline, err := NewPipeline(
 		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+		observability.NewObserver(provider, nil),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1503,10 +1507,27 @@ func TestPipelineRecoveryRevalidatesCompletedPublicationAndReleasesLease(t *test
 		outcome.Commit.ResultCommit != receipt.ResultCommit {
 		t.Fatalf("completed replay bypassed publisher: outcome=%#v calls=%d", outcome, sideEffects.recoveryCalls)
 	}
+	assertRecoveryPublicationTrace(t, exporter.GetSpans())
 
 	sideEffects.publicationErr = delivery.ErrPublicationConflict
 	if _, err := pipeline.Recover(t.Context(), request, recoveryFence); !errors.Is(err, delivery.ErrPublicationConflict) {
 		t.Fatalf("moved publication ref was not rejected: %v", err)
+	}
+}
+
+func assertRecoveryPublicationTrace(t *testing.T, spans tracetest.SpanStubs) {
+	t.Helper()
+	byName := make(map[string]tracetest.SpanStub, len(spans))
+	for _, span := range spans {
+		byName[span.Name] = span
+	}
+	root, rootFound := byName["forja.scheduler.recover_delivery"]
+	publication, publicationFound := byName["forja.delivery.publish_change"]
+	if !rootFound || !publicationFound {
+		t.Fatalf("completed replay trace is incomplete: %#v", spans)
+	}
+	if publication.Parent.SpanID() != root.SpanContext.SpanID() {
+		t.Fatal("completed replay publication span is disconnected from recovery root")
 	}
 }
 

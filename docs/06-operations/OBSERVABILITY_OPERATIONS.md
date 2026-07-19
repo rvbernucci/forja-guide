@@ -78,6 +78,10 @@ Local endpoints:
 - Tempo: `http://127.0.0.1:3200`
 - Alloy: `http://127.0.0.1:12345`
 
+Each process accepts one metrics gather at a time. A concurrent scrape receives
+`503` before starting another PostgreSQL operational query, so telemetry cannot
+consume the canonical connection pool under scrape overlap.
+
 Anonymous Grafana viewer access is intentionally local-development-only. Do
 not expose this Compose profile outside loopback.
 
