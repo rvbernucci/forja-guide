@@ -232,10 +232,14 @@ It cannot authorize Sprint 10.
   OOD, adversarial, production corpus, private label, or provider result is
   represented by these results.
 - A sanitized staging probe reached the VPS but its environment checker is
-  intentionally `sudo`-gated. No privileged operation, Coolify bearer
-  extraction, or Bedrock provider call was attempted from this workstation.
-  The remaining live evidence must use a deployment workload role and the
-  access-controlled evaluation boundary, not copied runtime credentials.
+  intentionally `sudo`-gated. No privileged operation or Coolify bearer
+  extraction was attempted from this workstation. The opt-in live Bedrock
+  compatibility test passed in `us-east-1` against Titan Text Embeddings v2
+  with a synthetic test string and verified the 1024-dimension response;
+  neither card text nor vector output was recorded.
+- The remaining live evidence must exercise PostgreSQL and Qdrant through a
+  deployment workload role and the access-controlled evaluation boundary, not
+  copied runtime credentials.
 
 ## Acceptance Evidence
 
