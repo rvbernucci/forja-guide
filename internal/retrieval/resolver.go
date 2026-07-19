@@ -111,7 +111,7 @@ func authorizedAlternatives(query contracts.RetrievalQuery, pointID string, cand
 	for _, candidate := range candidates {
 		if candidate.PointID != pointID || candidate.TenantID != query.TenantID || candidate.RepositoryID != query.RepositoryID ||
 			(query.ExpectedGeneration != nil && candidate.CollectionGeneration != *query.ExpectedGeneration) ||
-			candidate.Status != "active" || candidate.Stale || candidate.SourceCommit == nil || *candidate.SourceCommit != query.Scope.SourceCommit ||
+			candidate.Status != "active" || candidate.Stale || !matchesSourceScope(query, candidate) ||
 			!contains(query.Filters.ArtifactFamilies, candidate.ArtifactFamily) || !contains(query.Filters.AuthorityClasses, candidate.AuthorityClass) ||
 			(len(query.Filters.Languages) > 0 && (candidate.Language == nil || !contains(query.Filters.Languages, *candidate.Language))) ||
 			(len(query.Filters.SymbolKinds) > 0 && (candidate.SymbolKind == nil || !contains(query.Filters.SymbolKinds, *candidate.SymbolKind))) ||
@@ -168,7 +168,7 @@ func authorizeCanonicalCandidate(query contracts.RetrievalQuery, ranked contract
 	if canonical.Stale {
 		return "stale_projection"
 	}
-	if canonical.SourceCommit == nil || *canonical.SourceCommit != query.Scope.SourceCommit {
+	if !matchesSourceScope(query, canonical) {
 		return "source_commit_mismatch"
 	}
 	if !contains(query.Filters.ArtifactFamilies, canonical.ArtifactFamily) || !contains(query.Filters.AuthorityClasses, canonical.AuthorityClass) {
@@ -186,9 +186,16 @@ func authorizeCanonicalCandidate(query contracts.RetrievalQuery, ranked contract
 	return ""
 }
 
+func matchesSourceScope(query contracts.RetrievalQuery, candidate CanonicalCandidate) bool {
+	if contracts.RetrievalFamilyRequiresSourceCommit(candidate.ArtifactFamily) {
+		return candidate.SourceCommit != nil && *candidate.SourceCommit == query.Scope.SourceCommit
+	}
+	return candidate.SourceCommit == nil && contracts.RetrievalScopeCoversRepository(query.Scope)
+}
+
 func pathInScope(repositoryPath *string, scope contracts.RetrievalScope) bool {
 	if repositoryPath == nil {
-		return contains(scope.AllowedPaths, "**") && !contains(scope.DeniedPaths, "**")
+		return contracts.RetrievalScopeCoversRepository(scope)
 	}
 	value := path.Clean(*repositoryPath)
 	allowed := false

@@ -22,8 +22,12 @@ checkpoints.
    versioned physical collection addressed through a stable alias.
 3. Build deterministic retrieval cards from canonical entities instead of
    embedding arbitrary raw files by default.
-4. Apply tenant, repository, lifecycle, authority, staleness, commit, language,
-   and kind filters to every dense and sparse query before ranking.
+4. Apply tenant, repository, lifecycle, authority, staleness, language, and
+   kind filters to every dense and sparse query before ranking. Couple commit
+   filtering to artifact family: `symbol` and `test` cards must match the
+   requested commit, while `decision`, `memory`, and `incident` cards must
+   have no commit and may be queried only through an unrestricted whole-
+   repository scope.
 5. Fuse the two bounded rank lists in Forja with weighted reciprocal rank
    fusion. The policy and every component rank remain visible in the receipt.
 6. Resolve every candidate against current PostgreSQL state. Missing, stale,
@@ -59,6 +63,8 @@ Negative:
 - Similarity score, Qdrant payload, or vector presence never establishes
   authority, freshness, identity, or access.
 - No query may omit tenant and repository filters.
+- A source-bound card may never match another commit. A repository-global card
+  may never enter a path-restricted or partially denied scope.
 - No projector may use the global outbox `published` state as its independent
   cursor.
 - An alias may switch only to a verified complete generation.

@@ -3,6 +3,7 @@ package retrieval
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -102,6 +103,43 @@ func TestQueryServiceRejectsPayloadIdentityDrift(t *testing.T) {
 	}
 	if len(result.Accepted) != 0 || len(result.Rejections) != 1 || result.Rejections[0].Reason != "source_hash_mismatch" {
 		t.Fatalf("result=%#v", result)
+	}
+}
+
+func TestQueryServiceAcceptsRepositoryGlobalDecisionOnlyWithRepositoryScope(t *testing.T) {
+	t.Parallel()
+	source := CardSource{
+		TenantID: retrievalTenantID, RepositoryID: retrievalRepositoryID,
+		EntityID: "decision_global", ArtifactFamily: "decision",
+		SourceHash: "sha256:" + strings.Repeat("c", 64), AuthorityClass: "canonical", Status: "active",
+		Title: "decision: publish", Body: "status: approved", ProofRefs: []string{"decision:decision_global"}, GraphNodeIDs: []string{},
+	}
+	point, err := BuildPoint(t.Context(), source, contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion), fixtureEmbedder{}, HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wire, err := QdrantPoint(point)
+	if err != nil {
+		t.Fatal(err)
+	}
+	canonical := CanonicalCandidate{
+		PointID: point.PointID, CollectionGeneration: point.CollectionGeneration, TenantID: point.TenantID, RepositoryID: point.RepositoryID,
+		EntityID: point.EntityID, ArtifactFamily: point.ArtifactFamily, SourceHash: point.SourceHash, Status: "active", AuthorityClass: point.AuthorityClass,
+		ProofRefs: point.ProofRefs,
+	}
+	query := governedQuery()
+	query.Scope.AllowedPaths = []string{"**"}
+	query.Scope.DeniedPaths = nil
+	query.Filters.ArtifactFamilies = []string{"decision"}
+	generation := point.CollectionGeneration
+	query.ExpectedGeneration = &generation
+	service := QueryService{
+		Client:         &recordingQdrantQueryClient{dense: []*qdrant.ScoredPoint{{Payload: wire.Payload}}, sparse: []*qdrant.ScoredPoint{{Payload: wire.Payload}}},
+		CollectionName: "forja_retrieval_v1", Embedder: fixtureEmbedder{}, Sparse: HashingSparseEncoder{}, Resolver: staticResolver{point.PointID: {canonical}},
+	}
+	result, err := service.Search(t.Context(), query)
+	if err != nil || result.Status != "complete" || len(result.Accepted) != 1 || result.Accepted[0].EntityID != point.EntityID || result.Accepted[0].SourceCommit != nil {
+		t.Fatalf("result=%#v err=%v", result, err)
 	}
 }
 

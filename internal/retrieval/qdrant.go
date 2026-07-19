@@ -530,7 +530,6 @@ func qdrantFilter(query contracts.RetrievalQuery) (*qdrant.Filter, error) {
 	must := []*qdrant.Condition{
 		qdrant.NewMatchKeyword("tenant_id", query.TenantID),
 		qdrant.NewMatchKeyword("repository_id", query.RepositoryID),
-		qdrant.NewMatchKeyword("source_commit", query.Scope.SourceCommit),
 		qdrant.NewMatchKeyword("status", "active"),
 		qdrant.NewMatchBool("stale", false),
 		qdrant.NewMatchKeywords("artifact_family", query.Filters.ArtifactFamilies...),
@@ -547,12 +546,47 @@ func qdrantFilter(query contracts.RetrievalQuery) (*qdrant.Filter, error) {
 		must = append(must, qdrant.NewMatchKeywords("symbol_kind", query.Filters.SymbolKinds...))
 	}
 	filter := &qdrant.Filter{Must: must}
+	sourceBound, repositoryGlobal := retrievalFamilyGroups(query.Filters.ArtifactFamilies)
+	switch {
+	case len(sourceBound) > 0 && len(repositoryGlobal) > 0:
+		// Couple source-commit semantics to artifact family. This avoids a broad
+		// source-commit OR that could return source-bound code from another commit.
+		filter.Should = []*qdrant.Condition{
+			qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
+				qdrant.NewMatchKeywords("artifact_family", sourceBound...),
+				qdrant.NewMatchKeyword("source_commit", query.Scope.SourceCommit),
+			}}),
+			qdrant.NewFilterAsCondition(&qdrant.Filter{Must: []*qdrant.Condition{
+				qdrant.NewMatchKeywords("artifact_family", repositoryGlobal...),
+				qdrant.NewIsNull("source_commit"),
+			}}),
+		}
+	case len(sourceBound) > 0:
+		filter.Must = append(filter.Must, qdrant.NewMatchKeyword("source_commit", query.Scope.SourceCommit))
+	case len(repositoryGlobal) > 0:
+		filter.Must = append(filter.Must, qdrant.NewIsNull("source_commit"))
+	default:
+		return nil, fmt.Errorf("retrieval query has no supported artifact families")
+	}
 	if len(query.Scope.DeniedPaths) > 0 {
 		filter.MustNot = []*qdrant.Condition{
 			qdrant.NewMatchKeywords("path_scope", normalizeScopePaths(query.Scope.DeniedPaths)...),
 		}
 	}
 	return filter, nil
+}
+
+func retrievalFamilyGroups(families []string) ([]string, []string) {
+	sourceBound := make([]string, 0, len(families))
+	repositoryGlobal := make([]string, 0, len(families))
+	for _, family := range families {
+		if contracts.RetrievalFamilyRequiresSourceCommit(family) {
+			sourceBound = append(sourceBound, family)
+			continue
+		}
+		repositoryGlobal = append(repositoryGlobal, family)
+	}
+	return sourceBound, repositoryGlobal
 }
 
 func normalizeScopePaths(paths []string) []string {

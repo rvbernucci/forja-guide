@@ -54,6 +54,37 @@ func TestValidateRetrievalPointRejectsProviderAndIdentityDrift(t *testing.T) {
 	}
 }
 
+func TestRetrievalCommitAndScopeSemanticsAreFamilyBound(t *testing.T) {
+	sourceBound := validRetrievalPoint(t, "symbol_alpha", "sha256:"+strings.Repeat("a", 64), "alpha")
+	sourceBound.SourceCommit = nil
+	if err := ValidateRetrievalPoint(sourceBound); err == nil {
+		t.Fatal("source-bound point accepted without source commit")
+	}
+
+	global := validRetrievalPoint(t, "decision_global", "sha256:"+strings.Repeat("b", 64), "decision")
+	global.ArtifactFamily = "decision"
+	global.SourceCommit = nil
+	global.PointID = RetrievalPointID(global.CollectionGeneration, global.EntityID, global.SourceHash)
+	if err := ValidateRetrievalPoint(global); err != nil {
+		t.Fatalf("repository-global point rejected: %v", err)
+	}
+	commit := retrievalTestCommit
+	global.SourceCommit = &commit
+	if err := ValidateRetrievalPoint(global); err == nil {
+		t.Fatal("repository-global point accepted with a source commit")
+	}
+
+	query := validRetrievalQuery()
+	query.Filters.ArtifactFamilies = []string{"incident"}
+	if err := ValidateRetrievalQuery(query); err == nil {
+		t.Fatal("repository-global query accepted a narrow path scope")
+	}
+	query.Scope.AllowedPaths = []string{"**"}
+	if err := ValidateRetrievalQuery(query); err != nil {
+		t.Fatalf("repository-wide global query rejected: %v", err)
+	}
+}
+
 func TestValidateRetrievalQueryAndResult(t *testing.T) {
 	t.Parallel()
 	query := validRetrievalQuery()

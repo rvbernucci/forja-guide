@@ -212,6 +212,20 @@ func IsRetrievalEntityID(value string) bool {
 	return retrievalEntityIDPattern.MatchString(value)
 }
 
+// RetrievalFamilyRequiresSourceCommit reports whether an entity is derived
+// from a specific repository snapshot. Decisions, memories, and incidents are
+// repository-global canonical records and deliberately have no source commit.
+func RetrievalFamilyRequiresSourceCommit(family string) bool {
+	return family == "symbol" || family == "test"
+}
+
+// RetrievalScopeCoversRepository reports whether a scope can safely include a
+// repository-global entity. A global card has no path-level provenance, so an
+// allow-all scope with any denied path is still too narrow to authorize it.
+func RetrievalScopeCoversRepository(scope RetrievalScope) bool {
+	return slices.Contains(scope.AllowedPaths, "**") && len(scope.DeniedPaths) == 0
+}
+
 // CardTextHash returns the required content hash for a deterministic retrieval card.
 func CardTextHash(text string) string {
 	digest := sha256.Sum256([]byte(text))
@@ -247,6 +261,12 @@ func ValidateRetrievalPoint(point RetrievalPoint) error {
 	}
 	if _, ok := retrievalArtifactFamilies[point.ArtifactFamily]; !ok {
 		return fmt.Errorf("retrieval point artifact family is invalid")
+	}
+	if RetrievalFamilyRequiresSourceCommit(point.ArtifactFamily) && point.SourceCommit == nil {
+		return fmt.Errorf("source-bound retrieval point requires a source commit")
+	}
+	if !RetrievalFamilyRequiresSourceCommit(point.ArtifactFamily) && point.SourceCommit != nil {
+		return fmt.Errorf("repository-global retrieval point must not carry a source commit")
 	}
 	if point.SourceCommit != nil && !retrievalSourceCommitPattern.MatchString(*point.SourceCommit) {
 		return fmt.Errorf("retrieval point source commit is invalid")
@@ -308,6 +328,9 @@ func ValidateRetrievalQuery(query RetrievalQuery) error {
 	}
 	if err := validateRetrievalFilters(query.Filters); err != nil {
 		return err
+	}
+	if retrievalFiltersIncludeRepositoryGlobalFamily(query.Filters) && !RetrievalScopeCoversRepository(query.Scope) {
+		return fmt.Errorf("repository-global retrieval requires an unrestricted repository scope")
 	}
 	if err := validateRetrievalPolicy(query.Policy); err != nil {
 		return err
@@ -474,6 +497,15 @@ func validateRetrievalFilters(filters RetrievalFilters) error {
 	return validateUniqueBoundedStrings(filters.SymbolKinds, 64, 80, "retrieval symbol kinds")
 }
 
+func retrievalFiltersIncludeRepositoryGlobalFamily(filters RetrievalFilters) bool {
+	for _, family := range filters.ArtifactFamilies {
+		if !RetrievalFamilyRequiresSourceCommit(family) {
+			return true
+		}
+	}
+	return false
+}
+
 func validateRetrievalPolicy(policy RetrievalPolicy) error {
 	if policy.Limit < 1 || policy.Limit > 100 || policy.DenseLimit < policy.Limit || policy.DenseLimit > 200 ||
 		policy.SparseLimit < policy.Limit || policy.SparseLimit > 200 || policy.RRFK < 1 || policy.RRFK > 1000 ||
@@ -499,6 +531,12 @@ func validateRetrievalCandidate(candidate RetrievalCandidate) error {
 	}
 	if candidate.SourceCommit != nil && !retrievalSourceCommitPattern.MatchString(*candidate.SourceCommit) {
 		return fmt.Errorf("retrieval candidate source commit is invalid")
+	}
+	if RetrievalFamilyRequiresSourceCommit(candidate.ArtifactFamily) && candidate.SourceCommit == nil {
+		return fmt.Errorf("source-bound retrieval candidate requires a source commit")
+	}
+	if !RetrievalFamilyRequiresSourceCommit(candidate.ArtifactFamily) && candidate.SourceCommit != nil {
+		return fmt.Errorf("repository-global retrieval candidate must not carry a source commit")
 	}
 	if candidate.DenseRank != nil && (*candidate.DenseRank < 1 || *candidate.DenseRank > 200) {
 		return fmt.Errorf("retrieval candidate dense rank is invalid")

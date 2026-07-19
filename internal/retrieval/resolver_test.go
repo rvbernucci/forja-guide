@@ -65,6 +65,33 @@ func TestResolveRankedCandidatesExposesOnlyAuthorizedAmbiguousAlternatives(t *te
 	}
 }
 
+func TestResolveRankedCandidatesAcceptsRepositoryGlobalDecisionOnlyAtRepositoryScope(t *testing.T) {
+	query := governedQuery()
+	query.Scope.AllowedPaths = []string{"**"}
+	query.Scope.DeniedPaths = nil
+	query.Filters.ArtifactFamilies = []string{"decision"}
+	decision := canonicalCandidate("retrieval_"+strings.Repeat("5", 64), "decision_global", "sha256:"+strings.Repeat("f", 64), "")
+	decision.ArtifactFamily = "decision"
+	decision.SourceCommit = nil
+	decision.RepositoryPath = nil
+	accepted, rejected, ambiguities, err := ResolveRankedCandidates(context.Background(), query, []contracts.RetrievalCandidate{rankedCandidate(decision)}, staticResolver{decision.PointID: {decision}})
+	if err != nil || len(accepted) != 1 || accepted[0].EntityID != decision.EntityID || len(rejected) != 0 || len(ambiguities) != 0 {
+		t.Fatalf("accepted=%#v rejected=%#v ambiguities=%#v err=%v", accepted, rejected, ambiguities, err)
+	}
+}
+
+func TestResolveRankedCandidatesRejectsRepositoryGlobalFamilyInNarrowScope(t *testing.T) {
+	query := governedQuery()
+	query.Filters.ArtifactFamilies = []string{"memory"}
+	memory := canonicalCandidate("retrieval_"+strings.Repeat("6", 64), "memory_global", "sha256:"+strings.Repeat("e", 64), "")
+	memory.ArtifactFamily = "memory"
+	memory.SourceCommit = nil
+	memory.RepositoryPath = nil
+	if _, _, _, err := ResolveRankedCandidates(context.Background(), query, []contracts.RetrievalCandidate{rankedCandidate(memory)}, staticResolver{memory.PointID: {memory}}); err == nil || !strings.Contains(err.Error(), "repository-global") {
+		t.Fatalf("narrow global scope error=%v", err)
+	}
+}
+
 func stringPointer(value string) *string { return &value }
 
 type staticResolver map[string][]CanonicalCandidate

@@ -164,6 +164,40 @@ func TestBuildQdrantQueryRequestAppliesMandatoryFiltersToBothRanks(t *testing.T)
 	}
 }
 
+func TestBuildQdrantQueryRequestSeparatesSourceBoundAndRepositoryGlobalFamilies(t *testing.T) {
+	query := contracts.RetrievalQuery{
+		RequestID: "retrieval_request_global", SchemaVersion: contracts.RetrievalSchemaVersion,
+		TenantID: "tenant_10000000-0000-4000-8000-000000000001", RepositoryID: "repo_00000000-0000-4000-8000-000000000002",
+		Query: "approved decision", Scope: contracts.RetrievalScope{SourceCommit: strings.Repeat("a", 40), AllowedPaths: []string{"**"}},
+		Filters: contracts.RetrievalFilters{ArtifactFamilies: []string{"symbol", "decision", "incident"}, AuthorityClasses: []string{"canonical"}},
+		Policy:  contracts.RetrievalPolicy{Limit: 2, DenseLimit: 3, SparseLimit: 3, DenseWeight: 1, SparseWeight: 1, RRFK: 60},
+	}
+	request, err := BuildQdrantQueryRequest("forja_retrieval_v1", query, []float64{0.1, 0.2, 0.3}, contracts.SparseVector{Indices: []uint32{2}, Values: []float64{0.4}}, DenseVectorName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filter := request.GetFilter()
+	if filter == nil || len(filter.GetShould()) != 2 || hasKeywordCondition(filter.GetMust(), "source_commit", query.Scope.SourceCommit) {
+		t.Fatalf("filter does not keep source scope family-bound: %#v", filter)
+	}
+	if !hasNestedFamilyCommit(filter.GetShould(), []string{"symbol"}, query.Scope.SourceCommit) || !hasNestedGlobalFamily(filter.GetShould(), []string{"decision", "incident"}) {
+		t.Fatalf("filter should=%#v", filter.GetShould())
+	}
+}
+
+func TestRepositoryGlobalRetrievalCannotUseNarrowPathScope(t *testing.T) {
+	query := contracts.RetrievalQuery{
+		RequestID: "retrieval_request_global_narrow", SchemaVersion: contracts.RetrievalSchemaVersion,
+		TenantID: "tenant_10000000-0000-4000-8000-000000000001", RepositoryID: "repo_00000000-0000-4000-8000-000000000002",
+		Query: "approved decision", Scope: contracts.RetrievalScope{SourceCommit: strings.Repeat("a", 40), AllowedPaths: []string{"internal/**"}},
+		Filters: contracts.RetrievalFilters{ArtifactFamilies: []string{"decision"}, AuthorityClasses: []string{"canonical"}},
+		Policy:  contracts.RetrievalPolicy{Limit: 1, DenseLimit: 1, SparseLimit: 1, DenseWeight: 1, SparseWeight: 1, RRFK: 60},
+	}
+	if _, err := BuildQdrantQueryRequest("forja_retrieval_v1", query, []float64{0.1, 0.2, 0.3}, contracts.SparseVector{Indices: []uint32{2}, Values: []float64{0.4}}, DenseVectorName); err == nil {
+		t.Fatal("repository-global retrieval accepted a narrow scope")
+	}
+}
+
 func TestNormalizeScopePathsAndUUIDAreStable(t *testing.T) {
 	if got := normalizeScopePaths([]string{"src/**", "**", "src/**"}); strings.Join(got, ",") != "**,src" {
 		t.Fatalf("scope=%v", got)
@@ -386,6 +420,51 @@ func hasKeywordCondition(conditions []*qdrant.Condition, field, value string) bo
 func hasBoolCondition(conditions []*qdrant.Condition, field string, value bool) bool {
 	for _, condition := range conditions {
 		if condition.GetField().GetKey() == field && condition.GetField().GetMatch().GetBoolean() == value {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNestedFamilyCommit(conditions []*qdrant.Condition, families []string, commit string) bool {
+	for _, condition := range conditions {
+		filter := condition.GetFilter()
+		if filter == nil || !hasKeywordCondition(filter.GetMust(), "source_commit", commit) {
+			continue
+		}
+		if hasKeywordsCondition(filter.GetMust(), "artifact_family", families...) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasNestedGlobalFamily(conditions []*qdrant.Condition, families []string) bool {
+	for _, condition := range conditions {
+		filter := condition.GetFilter()
+		if filter != nil && hasIsNullCondition(filter.GetMust(), "source_commit") && hasKeywordsCondition(filter.GetMust(), "artifact_family", families...) {
+			return true
+		}
+	}
+	return false
+}
+
+func hasKeywordsCondition(conditions []*qdrant.Condition, field string, values ...string) bool {
+	for _, condition := range conditions {
+		if condition.GetField().GetKey() != field {
+			continue
+		}
+		got := condition.GetField().GetMatch().GetKeywords().GetStrings()
+		if len(got) == len(values) && strings.Join(got, ",") == strings.Join(values, ",") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasIsNullCondition(conditions []*qdrant.Condition, field string) bool {
+	for _, condition := range conditions {
+		if condition.GetIsNull().GetKey() == field {
 			return true
 		}
 	}
