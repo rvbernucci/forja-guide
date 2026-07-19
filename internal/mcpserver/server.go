@@ -15,6 +15,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 )
 
 const (
@@ -59,9 +60,15 @@ type Adapter struct {
 	service  *control.Service
 	resolver PrincipalResolver
 	server   *mcp.Server
+	observer *observability.Observer
 }
 
-func New(service *control.Service, resolver PrincipalResolver, version string) (*Adapter, error) {
+func New(
+	service *control.Service,
+	resolver PrincipalResolver,
+	version string,
+	observers ...*observability.Observer,
+) (*Adapter, error) {
 	if service == nil {
 		return nil, fmt.Errorf("control service is required")
 	}
@@ -71,7 +78,14 @@ func New(service *control.Service, resolver PrincipalResolver, version string) (
 	if strings.TrimSpace(version) == "" {
 		version = "development"
 	}
-	adapter := &Adapter{service: service, resolver: resolver}
+	if len(observers) > 1 {
+		return nil, fmt.Errorf("MCP adapter accepts at most one observer")
+	}
+	observer := observability.NewObserver(nil, nil)
+	if len(observers) == 1 && observers[0] != nil {
+		observer = observers[0]
+	}
+	adapter := &Adapter{service: service, resolver: resolver, observer: observer}
 	adapter.server = mcp.NewServer(&mcp.Implementation{
 		Name:    "forja-control",
 		Version: version,
@@ -213,7 +227,13 @@ func (a *Adapter) registerTools() {
 	}, a.resumeRun)
 }
 
-func (a *Adapter) planSprint(ctx context.Context, _ *mcp.CallToolRequest, in planSprintInput) (*mcp.CallToolResult, control.PlanResult, error) {
+func (a *Adapter) planSprint(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	in planSprintInput,
+) (_ *mcp.CallToolResult, result control.PlanResult, resultErr error) {
+	ctx, operation := a.observeTool(ctx, ToolPlanSprint, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, control.PlanResult{}, err
@@ -221,10 +241,17 @@ func (a *Adapter) planSprint(ctx context.Context, _ *mcp.CallToolRequest, in pla
 	result, callErr := a.service.PlanSprint(ctx, principal, control.PlanSprintInput{
 		Title: in.Title, Objective: in.Objective, Command: in.command().context(),
 	})
-	return nil, result, a.finishMutationAudit(ctx, principal, ToolPlanSprint, in.command(), callErr)
+	resultErr = a.finishMutationAudit(ctx, principal, ToolPlanSprint, in.command(), callErr)
+	return nil, result, resultErr
 }
 
-func (a *Adapter) submitSprint(ctx context.Context, _ *mcp.CallToolRequest, in submitSprintInput) (*mcp.CallToolResult, control.SubmissionResult, error) {
+func (a *Adapter) submitSprint(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	in submitSprintInput,
+) (_ *mcp.CallToolResult, result control.SubmissionResult, resultErr error) {
+	ctx, operation := a.observeTool(ctx, ToolSubmitSprint, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, control.SubmissionResult{}, err
@@ -232,25 +259,40 @@ func (a *Adapter) submitSprint(ctx context.Context, _ *mcp.CallToolRequest, in s
 	result, callErr := a.service.SubmitSprint(ctx, principal, control.SubmitSprintInput{
 		SprintID: in.SprintID, ExpectedVersion: in.ExpectedVersion, RiskClass: in.RiskClass, Command: in.command().context(),
 	})
-	return nil, result, a.finishMutationAudit(ctx, principal, ToolSubmitSprint, in.command(), callErr)
+	resultErr = a.finishMutationAudit(ctx, principal, ToolSubmitSprint, in.command(), callErr)
+	return nil, result, resultErr
 }
 
-func (a *Adapter) getSprint(ctx context.Context, _ *mcp.CallToolRequest, in getSprintInput) (*mcp.CallToolResult, sprintOutput, error) {
+func (a *Adapter) getSprint(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	in getSprintInput,
+) (_ *mcp.CallToolResult, output sprintOutput, resultErr error) {
+	ctx, operation := a.observeTool(ctx, ToolGetSprint, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, sprintOutput{}, err
 	}
 	result, callErr := a.service.GetSprint(ctx, principal, in.SprintID, in.command().context())
-	return nil, sprintOutput{Sprint: result}, a.finishAudit(ctx, principal, ToolGetSprint, in.command(), callErr)
+	resultErr = a.finishAudit(ctx, principal, ToolGetSprint, in.command(), callErr)
+	return nil, sprintOutput{Sprint: result}, resultErr
 }
 
-func (a *Adapter) getRun(ctx context.Context, _ *mcp.CallToolRequest, in getRunInput) (*mcp.CallToolResult, runOutput, error) {
+func (a *Adapter) getRun(
+	ctx context.Context,
+	_ *mcp.CallToolRequest,
+	in getRunInput,
+) (_ *mcp.CallToolResult, output runOutput, resultErr error) {
+	ctx, operation := a.observeTool(ctx, ToolGetRun, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, runOutput{}, err
 	}
 	result, callErr := a.service.GetRun(ctx, principal, in.RunID, in.command().context())
-	return nil, runOutput{Run: result}, a.finishAudit(ctx, principal, ToolGetRun, in.command(), callErr)
+	resultErr = a.finishAudit(ctx, principal, ToolGetRun, in.command(), callErr)
+	return nil, runOutput{Run: result}, resultErr
 }
 
 func (a *Adapter) approveDecision(ctx context.Context, _ *mcp.CallToolRequest, in decisionInput) (*mcp.CallToolResult, control.DecisionResult, error) {
@@ -261,7 +303,14 @@ func (a *Adapter) rejectDecision(ctx context.Context, _ *mcp.CallToolRequest, in
 	return a.resolveDecision(ctx, in, false, ToolRejectDecision)
 }
 
-func (a *Adapter) resolveDecision(ctx context.Context, in decisionInput, approve bool, tool string) (*mcp.CallToolResult, control.DecisionResult, error) {
+func (a *Adapter) resolveDecision(
+	ctx context.Context,
+	in decisionInput,
+	approve bool,
+	tool string,
+) (_ *mcp.CallToolResult, result control.DecisionResult, resultErr error) {
+	ctx, operation := a.observeTool(ctx, tool, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, control.DecisionResult{}, err
@@ -269,7 +318,8 @@ func (a *Adapter) resolveDecision(ctx context.Context, in decisionInput, approve
 	result, callErr := a.service.ResolveDecision(ctx, principal, control.ResolveDecisionInput{
 		DecisionID: in.DecisionID, ExpectedVersion: in.ExpectedVersion, Reason: in.Reason, Command: in.command().context(),
 	}, approve)
-	return nil, result, a.finishMutationAudit(ctx, principal, tool, in.command(), callErr)
+	resultErr = a.finishMutationAudit(ctx, principal, tool, in.command(), callErr)
+	return nil, result, resultErr
 }
 
 func (a *Adapter) cancelRun(ctx context.Context, _ *mcp.CallToolRequest, in transitionRunInput) (*mcp.CallToolResult, runOutput, error) {
@@ -280,7 +330,14 @@ func (a *Adapter) resumeRun(ctx context.Context, _ *mcp.CallToolRequest, in tran
 	return a.transitionRun(ctx, in, true, ToolResumeRun)
 }
 
-func (a *Adapter) transitionRun(ctx context.Context, in transitionRunInput, resume bool, tool string) (*mcp.CallToolResult, runOutput, error) {
+func (a *Adapter) transitionRun(
+	ctx context.Context,
+	in transitionRunInput,
+	resume bool,
+	tool string,
+) (_ *mcp.CallToolResult, output runOutput, resultErr error) {
+	ctx, operation := a.observeTool(ctx, tool, in.command())
+	defer func() { operation.End(resultErr) }()
 	principal, err := a.resolve(ctx)
 	if err != nil {
 		return nil, runOutput{}, err
@@ -295,7 +352,45 @@ func (a *Adapter) transitionRun(ctx context.Context, in transitionRunInput, resu
 	} else {
 		result, callErr = a.service.CancelRun(ctx, principal, input)
 	}
-	return nil, runOutput{Run: result}, a.finishMutationAudit(ctx, principal, tool, in.command(), callErr)
+	resultErr = a.finishMutationAudit(ctx, principal, tool, in.command(), callErr)
+	return nil, runOutput{Run: result}, resultErr
+}
+
+func (a *Adapter) observeTool(
+	ctx context.Context,
+	tool string,
+	command commandFields,
+) (context.Context, *observability.OperationHandle) {
+	ctx, operation := a.observer.Start(
+		ctx,
+		observability.BoundaryMCP,
+		operationForTool(tool),
+	)
+	observability.AddCorrelation(ctx, command.CorrelationID, command.CausationID)
+	return ctx, operation
+}
+
+func operationForTool(tool string) observability.Operation {
+	switch tool {
+	case ToolPlanSprint:
+		return observability.OperationPlanSprint
+	case ToolSubmitSprint:
+		return observability.OperationSubmitSprint
+	case ToolGetSprint:
+		return observability.OperationGetSprint
+	case ToolGetRun:
+		return observability.OperationGetRun
+	case ToolApproveDecision:
+		return observability.OperationApproveDecision
+	case ToolRejectDecision:
+		return observability.OperationRejectDecision
+	case ToolCancelRun:
+		return observability.OperationCancelRun
+	case ToolResumeRun:
+		return observability.OperationResumeRun
+	default:
+		return observability.OperationOther
+	}
 }
 
 func (a *Adapter) resolve(ctx context.Context) (control.Principal, error) {

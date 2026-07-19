@@ -9,14 +9,19 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
+
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/logging"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -87,7 +92,7 @@ func TestHTTPMapsAuthenticationAndAuthorizationErrors(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			server.writeError(recorder, test.err)
+			server.writeError(t.Context(), recorder, test.err)
 			if recorder.Code != test.want {
 				t.Fatalf("status=%d want=%d body=%s", recorder.Code, test.want, recorder.Body.String())
 			}
@@ -132,6 +137,54 @@ func TestHTTPRoutesRequireAuthenticationBeforeParsing(t *testing.T) {
 	}
 }
 
+func TestHTTPExportsBoundedPrometheusMetrics(t *testing.T) {
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	telemetry, err := observability.NewRuntime(
+		t.Context(),
+		observability.RuntimeConfig{
+			ServiceName: "forjad-test", Version: "test", Environment: "test",
+		},
+		slog.New(slog.NewTextHandler(io.Discard, nil)),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = telemetry.Shutdown(context.Background()) })
+	server, err := New(
+		runstate.NewStore(nil),
+		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
+		func() (identity.RunID, error) { return fixedRunID, nil },
+		nil,
+		telemetry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	health := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		health,
+		httptest.NewRequest(http.MethodGet, "/healthz", nil),
+	)
+	metrics := httptest.NewRecorder()
+	server.Handler().ServeHTTP(
+		metrics,
+		httptest.NewRequest(http.MethodGet, "/metrics", nil),
+	)
+	want := []byte(`forja_operations_total{boundary="http",failure_class="none",operation="health",outcome="succeeded"} 1`)
+	if metrics.Code != http.StatusOK || !bytes.Contains(metrics.Body.Bytes(), want) {
+		t.Fatalf(
+			"unexpected metrics response status=%d body=%s",
+			metrics.Code,
+			metrics.Body.String(),
+		)
+	}
+}
+
 func TestHTTPAuthenticatesEntireV1NamespaceBeforeRouting(t *testing.T) {
 	t.Parallel()
 	handler := newTestServer(t).Handler()
@@ -163,6 +216,87 @@ func TestHTTPAuthenticatesEntireV1NamespaceBeforeRouting(t *testing.T) {
 type recordingRepository struct {
 	runstate.Repository
 	metadata runstate.CommandMetadata
+}
+
+type internalErrorRepository struct {
+	runstate.Repository
+	err error
+}
+
+func (repository internalErrorRepository) CreateRun(
+	context.Context,
+	identity.RunID,
+	string,
+	runstate.CommandMetadata,
+) (contracts.Run, error) {
+	return contracts.Run{}, repository.err
+}
+
+func TestInternalRequestLogOmitsRawFailureContent(t *testing.T) {
+	t.Parallel()
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	secret := "Bearer private-request-failure"
+	var output bytes.Buffer
+	provider := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	telemetry := &observability.Runtime{
+		Observer: observability.NewObserver(provider, nil),
+	}
+	server, err := New(
+		internalErrorRepository{
+			Repository: runstate.NewStore(nil),
+			err:        fault.New(fault.CodeInternal, "test", secret),
+		},
+		registry,
+		newTestAuthenticator(t, testAuthority, control.AllPermissions...),
+		testAuthority,
+		func() (identity.RunID, error) { return fixedRunID, nil },
+		logging.New(&output, "info"),
+		telemetry,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/runs",
+		bytes.NewBufferString(`{"objective":"Exercise safe internal logging"}`),
+	)
+	request.Header.Set("Authorization", "Bearer "+testBearerToken)
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	server.Handler().ServeHTTP(response, request)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	if strings.Contains(output.String(), secret) ||
+		!strings.Contains(output.String(), `"failure_class":"internal"`) ||
+		!strings.Contains(output.String(), `"trace_id":"`) ||
+		!strings.Contains(output.String(), `"span_id":"`) {
+		t.Fatalf("unsafe internal log: %s", output.String())
+	}
+}
+
+func TestRequestLogUsesBoundedRouteInsteadOfRawPath(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	logger := logging.New(&output, "info")
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /healthz", func(writer http.ResponseWriter, _ *http.Request) {
+		writer.WriteHeader(http.StatusOK)
+	})
+	handler := requestLogMiddleware(logger, mux)
+	handler.ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/private-customer-content", nil),
+	)
+	if strings.Contains(output.String(), "private-customer-content") ||
+		!strings.Contains(output.String(), `"route":"unmatched"`) {
+		t.Fatalf("unbounded request log: %s", output.String())
+	}
 }
 
 func (r *recordingRepository) CreateRun(

@@ -1,0 +1,65 @@
+groups:
+  - name: forja-runtime
+    rules:
+      - alert: ForjaOperationalCollectionFailed
+        expr: forja_operational_collection_success == 0 or absent(forja_operational_collection_success)
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: Forja operational state collection is unavailable
+      - alert: ForjaStuckRuns
+        expr: forja_operational_condition_items{condition="stuck_runs"} > 0
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: Governed runs remain in active states beyond the bounded window
+      - alert: ForjaExpiredLeases
+        expr: forja_operational_condition_items{condition="expired_leases"} > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: Expired leases require cleanup or recovery review
+      - alert: ForjaOutboxBacklog
+        expr: forja_operational_condition_items{condition="pending_outbox"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Event outbox backlog exceeds the initial operating threshold
+      - alert: ForjaDeadOutbox
+        expr: forja_operational_condition_items{condition="dead_outbox"} > 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: Event outbox contains terminal failures
+      - alert: ForjaProjectionLag
+        expr: forja_operational_condition_items{condition="projection_lag"} > 100
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: Derived projections lag behind the canonical outbox
+      - alert: ForjaWorkerCrashLoop
+        expr: forja_operational_condition_items{condition="worker_crash_loops"} > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: A run has repeated retryable worker failures
+      - alert: ForjaPendingApprovalQueue
+        expr: forja_operational_condition_items{condition="pending_approvals"} > 0
+        for: 4h
+        labels:
+          severity: info
+        annotations:
+          summary: Human decisions have remained pending for an extended period
+      - alert: ForjaTelemetryFailures
+        expr: increase(forja_telemetry_failures_total[10m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: The non-authoritative telemetry plane is dropping signals

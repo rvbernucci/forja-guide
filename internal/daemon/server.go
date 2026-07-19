@@ -18,6 +18,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 	"github.com/rvbernucci/forja-guide/internal/version"
 )
@@ -36,6 +37,7 @@ type Server struct {
 	logger        *slog.Logger
 	authenticator Authenticator
 	authority     control.Authority
+	telemetry     *observability.Runtime
 	ready         atomic.Bool
 }
 
@@ -53,6 +55,7 @@ func New(
 	authority control.Authority,
 	newID IDGenerator,
 	logger *slog.Logger,
+	telemetry ...*observability.Runtime,
 ) (*Server, error) {
 	if store == nil {
 		return nil, fmt.Errorf("store is required")
@@ -73,6 +76,9 @@ func New(
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+	if len(telemetry) > 1 {
+		return nil, fmt.Errorf("daemon accepts at most one telemetry runtime")
+	}
 	server := &Server{
 		store:         store,
 		registry:      registry,
@@ -80,6 +86,9 @@ func New(
 		authority:     authority,
 		newID:         newID,
 		logger:        logger,
+	}
+	if len(telemetry) == 1 {
+		server.telemetry = telemetry[0]
 	}
 	if probe, ok := store.(readinessProbe); ok {
 		server.readiness = probe
@@ -94,10 +103,17 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	mux.HandleFunc("GET /readyz", s.handleReady)
 	mux.HandleFunc("GET /version", s.handleVersion)
+	if s.telemetry != nil {
+		mux.Handle("GET /metrics", s.telemetry.MetricsHandler())
+	}
 	mux.Handle("POST /v1/runs", s.protect(control.PermissionLegacyRunWrite, s.handleCreateRun))
 	mux.Handle("GET /v1/runs/{run_id}", s.protect(control.PermissionRead, s.handleGetRun))
 	mux.Handle("POST /v1/runs/{run_id}/transitions", s.protect(control.PermissionLegacyRunWrite, s.handleTransitionRun))
-	return requestLogMiddleware(s.logger, s.authenticateV1(mux))
+	handler := requestLogMiddleware(s.logger, s.authenticateV1(mux))
+	if s.telemetry != nil && s.telemetry.Observer != nil {
+		handler = s.telemetry.Observer.HTTPHandler(handler)
+	}
+	return handler
 }
 
 // SetReady changes readiness without changing liveness.
@@ -120,7 +136,12 @@ func (s *Server) handleReady(writer http.ResponseWriter, request *http.Request) 
 		ctx, cancel := context.WithTimeout(request.Context(), time.Second)
 		defer cancel()
 		if err := s.readiness.Ready(ctx); err != nil {
-			s.logger.Warn("readiness dependency unavailable", "error", err)
+			s.logger.WarnContext(
+				request.Context(),
+				"readiness dependency unavailable",
+				"failure_class",
+				observability.Classify(err),
+			)
 			writeJSON(writer, http.StatusServiceUnavailable, map[string]string{
 				"status": "not_ready",
 			})
@@ -148,7 +169,7 @@ func (s *Server) authenticateV1(next http.Handler) http.Handler {
 		}
 		principal, err := s.authenticator.Authenticate(request)
 		if err != nil {
-			s.writeError(writer, err)
+			s.writeError(request.Context(), writer, err)
 			return
 		}
 		ctx := context.WithValue(request.Context(), principalContextKey{}, principal)
@@ -160,11 +181,11 @@ func (s *Server) protect(permission control.Permission, next protectedHandler) h
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		principal, ok := request.Context().Value(principalContextKey{}).(control.Principal)
 		if !ok {
-			s.writeError(writer, unauthenticated())
+			s.writeError(request.Context(), writer, unauthenticated())
 			return
 		}
 		if err := s.authorize(principal, permission); err != nil {
-			s.writeError(writer, err)
+			s.writeError(request.Context(), writer, err)
 			return
 		}
 		next(writer, request, principal)
@@ -196,12 +217,12 @@ func (s *Server) authorize(principal control.Principal, permission control.Permi
 func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Request, principal control.Principal) {
 	var command createRunRequest
 	if err := decodeRequest(writer, request, &command); err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	id, err := s.newID()
 	if err != nil {
-		s.writeError(writer, fault.Wrap(
+		s.writeError(request.Context(), writer, fault.Wrap(
 			fault.CodeInternal,
 			"daemon.createRun",
 			"generate run identifier",
@@ -217,11 +238,11 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 		metadata,
 	)
 	if err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	if err := s.validateRun(run); err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	writer.Header().Set("Idempotency-Key", metadata.IdempotencyKey)
@@ -231,7 +252,7 @@ func (s *Server) handleCreateRun(writer http.ResponseWriter, request *http.Reque
 func (s *Server) handleGetRun(writer http.ResponseWriter, request *http.Request, _ control.Principal) {
 	id, err := identity.ParseRunID(request.PathValue("run_id"))
 	if err != nil {
-		s.writeError(writer, fault.Wrap(
+		s.writeError(request.Context(), writer, fault.Wrap(
 			fault.CodeInvalidArgument,
 			"daemon.getRun",
 			"invalid run identifier",
@@ -241,11 +262,11 @@ func (s *Server) handleGetRun(writer http.ResponseWriter, request *http.Request,
 	}
 	run, err := s.store.GetRun(request.Context(), id)
 	if err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	if err := s.validateRun(run); err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	writeJSON(writer, http.StatusOK, run)
@@ -259,7 +280,7 @@ type transitionRunRequest struct {
 func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.Request, principal control.Principal) {
 	id, err := identity.ParseRunID(request.PathValue("run_id"))
 	if err != nil {
-		s.writeError(writer, fault.Wrap(
+		s.writeError(request.Context(), writer, fault.Wrap(
 			fault.CodeInvalidArgument,
 			"daemon.transitionRun",
 			"invalid run identifier",
@@ -269,11 +290,11 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 	}
 	var command transitionRunRequest
 	if err := decodeRequest(writer, request, &command); err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	if command.ExpectedVersion < 1 {
-		s.writeError(writer, fault.New(
+		s.writeError(request.Context(), writer, fault.New(
 			fault.CodeInvalidArgument,
 			"daemon.transitionRun",
 			"expected_version must be at least 1",
@@ -282,12 +303,12 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 	}
 	target, err := runstate.ParseState(command.TargetState)
 	if err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	requestID, err := s.newID()
 	if err != nil {
-		s.writeError(writer, fault.Wrap(
+		s.writeError(request.Context(), writer, fault.Wrap(
 			fault.CodeInternal,
 			"daemon.transitionRun",
 			"generate command identifier",
@@ -304,11 +325,11 @@ func (s *Server) handleTransitionRun(writer http.ResponseWriter, request *http.R
 		metadata,
 	)
 	if err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	if err := s.validateRun(run); err != nil {
-		s.writeError(writer, err)
+		s.writeError(request.Context(), writer, err)
 		return
 	}
 	writer.Header().Set("Idempotency-Key", metadata.IdempotencyKey)
@@ -364,7 +385,7 @@ type errorResponse struct {
 	} `json:"error"`
 }
 
-func (s *Server) writeError(writer http.ResponseWriter, err error) {
+func (s *Server) writeError(ctx context.Context, writer http.ResponseWriter, err error) {
 	code := fault.CodeOf(err)
 	status := http.StatusInternalServerError
 	switch code {
@@ -384,7 +405,14 @@ func (s *Server) writeError(writer http.ResponseWriter, err error) {
 	}
 	message := err.Error()
 	if code == fault.CodeInternal {
-		s.logger.Error("request failed", "error", err)
+		s.logger.ErrorContext(
+			ctx,
+			"request failed",
+			"error_code",
+			code,
+			"failure_class",
+			observability.Classify(err),
+		)
 		message = "internal error"
 	}
 	response := errorResponse{}
@@ -438,13 +466,17 @@ func requestLogMiddleware(logger *slog.Logger, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		started := time.Now()
 		next.ServeHTTP(writer, request)
+		route := request.Pattern
+		if route == "" {
+			route = "unmatched"
+		}
 		logger.InfoContext(
 			request.Context(),
 			"http request",
 			"method",
 			request.Method,
-			"path",
-			request.URL.Path,
+			"route",
+			route,
 			"duration_ms",
 			time.Since(started).Milliseconds(),
 		)

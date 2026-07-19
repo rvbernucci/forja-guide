@@ -14,6 +14,8 @@ test-integration:
 	@test -n "$$FORJA_TEST_DATABASE_URL" || \
 		(echo "FORJA_TEST_DATABASE_URL is required"; exit 2)
 	FORJA_TEST_BACKUP_RESTORE=1 go test -count=1 ./internal/postgres
+	FORJA_TEST_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
+		go test -count=1 ./internal/observability -run '^TestOperationalSnapshot'
 	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
 		go test -count=1 ./internal/delivery -run 'TestPublicationPostgres(EndToEnd|RecoversCrashAfterGitCAS)$$'
 	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \

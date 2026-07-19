@@ -10,6 +10,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/delivery"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
@@ -25,6 +26,13 @@ func (p *Pipeline) Recover(
 	if ctx == nil {
 		return Outcome{}, fmt.Errorf("recovery context is required")
 	}
+	ctx, operation := p.observer.Start(
+		ctx,
+		observability.BoundaryScheduler,
+		observability.OperationRecoverDelivery,
+	)
+	observability.AddCorrelation(ctx, request.RunID, &request.AttemptID)
+	defer func() { operation.End(observedPipelineError(outcome, resultErr)) }()
 	if err := validateDeliveryRequestDocument(p.registry, request); err != nil {
 		return Outcome{}, fmt.Errorf("validate recovery delivery request: %w", err)
 	}
@@ -200,7 +208,7 @@ func (p *Pipeline) resumeSucceeded(
 		}
 	}
 	if guard == nil && !publicationFound {
-		bundle, loadErr := p.validator.Load(ctx, request)
+		bundle, loadErr := p.loadValidationObserved(ctx, request)
 		if loadErr == nil && bundle.Report.Status != "passed" {
 			outcome.Validation = bundle
 			rejected, cleanupErr := p.rejectRecoveredValidation(
@@ -251,12 +259,12 @@ func (p *Pipeline) resumeSucceeded(
 	var bundle delivery.ValidationBundle
 	if !publicationFound {
 		var loadErr error
-		bundle, loadErr = p.validator.Load(ctx, request)
+		bundle, loadErr = p.loadValidationObserved(ctx, request)
 		if loadErr != nil {
 			if !errors.Is(loadErr, delivery.ErrValidationEvidenceNotFound) {
 				return outcome, fmt.Errorf("load interrupted validation evidence: %w", loadErr)
 			}
-			bundle, err = p.validator.Validate(ctx, request, commit)
+			bundle, err = p.validateObserved(ctx, request, commit)
 			if err != nil {
 				return outcome, fmt.Errorf("rerun interrupted validation: %w", err)
 			}
@@ -318,11 +326,11 @@ func (p *Pipeline) resumeSucceeded(
 	)
 	defer cancelPublication()
 	if publicationFound {
-		publication, publicationErr = p.publisher.Recover(
+		publication, publicationErr = p.recoverPublicationObserved(
 			publicationCtx, request, commit, bundle, leaseSet,
 		)
 	} else {
-		publication, publicationErr = p.publisher.Publish(
+		publication, publicationErr = p.publishObserved(
 			publicationCtx, request, commit, bundle, leaseSet,
 		)
 	}

@@ -4,6 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -14,7 +17,9 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/config"
 	"github.com/rvbernucci/forja-guide/internal/control"
+	"github.com/rvbernucci/forja-guide/internal/logging"
 	"github.com/rvbernucci/forja-guide/internal/mcpserver"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/postgres"
 	"github.com/rvbernucci/forja-guide/internal/version"
 )
@@ -43,10 +48,42 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("load runtime configuration: %w", err)
 	}
+	logger := logging.New(os.Stderr, cfg.LogLevel)
+	telemetryConfig, err := observability.RuntimeConfigFromEnv(
+		"forja-mcp", version.Version, cfg.Environment, os.LookupEnv,
+	)
+	if err != nil {
+		return err
+	}
+	telemetry, err := observability.NewRuntime(context.Background(), telemetryConfig, logger)
+	if err != nil {
+		return fmt.Errorf("initialize observability: %w", err)
+	}
+	defer shutdownTelemetry(telemetry, logger)
+	metricsListen, err := mcpMetricsListen(os.LookupEnv)
+	if err != nil {
+		return err
+	}
+	metricsEndpoint, metricsErr := startMCPMetricsEndpoint(
+		metricsListen, telemetry.MetricsHandler(), logger,
+	)
+	if metricsErr != nil {
+		logger.Warn(
+			"MCP metrics endpoint unavailable",
+			"failure_class", observability.FailureUnavailable,
+		)
+	} else if metricsEndpoint != nil {
+		defer metricsEndpoint.shutdown(logger)
+	}
 	var repository control.Repository = control.NewMemoryRepository(nil)
 	if cfg.DatabaseURL != "" {
 		connectContext, cancelConnect := context.WithTimeout(context.Background(), 15*time.Second)
-		pool, openErr := postgres.Open(connectContext, cfg.DatabaseURL, int32(cfg.DatabaseMaxConn))
+		pool, openErr := postgres.Open(
+			connectContext,
+			cfg.DatabaseURL,
+			int32(cfg.DatabaseMaxConn),
+			observability.NewPGXTracer(telemetry.Observer),
+		)
 		cancelConnect()
 		if openErr != nil {
 			return fmt.Errorf("open PostgreSQL: %w", openErr)
@@ -77,7 +114,7 @@ func run() error {
 		}
 		repository = durable
 	} else {
-		_, _ = fmt.Fprintln(os.Stderr, "forja-mcp: using ephemeral state; set FORJA_DATABASE_URL for durability")
+		logger.Warn("using ephemeral state", "hint", "set FORJA_DATABASE_URL")
 	}
 	service, err := control.NewService(repository)
 	if err != nil {
@@ -87,6 +124,7 @@ func run() error {
 		service,
 		mcpserver.FixedPrincipalResolver{Principal: principal},
 		version.Version,
+		telemetry.Observer,
 	)
 	if err != nil {
 		return err
@@ -94,6 +132,88 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return normalizeServerError(ctx, adapter.Server().Run(ctx, &mcp.StdioTransport{}))
+}
+
+const defaultMCPMetricsListen = "127.0.0.1:9464"
+
+type mcpMetricsEndpoint struct {
+	server   *http.Server
+	listener net.Listener
+}
+
+func mcpMetricsListen(lookup func(string) (string, bool)) (string, error) {
+	listen := defaultMCPMetricsListen
+	if value, ok := lookup("FORJA_MCP_METRICS_LISTEN"); ok {
+		listen = strings.TrimSpace(value)
+		if strings.EqualFold(listen, "off") {
+			return "", nil
+		}
+	}
+	if listen == "" {
+		return "", fmt.Errorf("FORJA_MCP_METRICS_LISTEN cannot be empty; use off to disable it")
+	}
+	if err := config.ValidateDaemonListen(listen); err != nil {
+		return "", fmt.Errorf("validate FORJA_MCP_METRICS_LISTEN: %w", err)
+	}
+	return listen, nil
+}
+
+func startMCPMetricsEndpoint(
+	listen string,
+	handler http.Handler,
+	logger *slog.Logger,
+) (*mcpMetricsEndpoint, error) {
+	if listen == "" {
+		return nil, nil
+	}
+	listener, err := net.Listen("tcp", listen)
+	if err != nil {
+		return nil, err
+	}
+	server := &http.Server{
+		Handler:           handler,
+		ReadHeaderTimeout: 2 * time.Second,
+		IdleTimeout:       30 * time.Second,
+	}
+	go func() {
+		if err := server.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Warn(
+				"MCP metrics server stopped",
+				"failure_class", observability.FailureUnavailable,
+			)
+		}
+	}()
+	return &mcpMetricsEndpoint{server: server, listener: listener}, nil
+}
+
+func (endpoint *mcpMetricsEndpoint) shutdown(logger interface {
+	Warn(string, ...any)
+}) {
+	if endpoint == nil || endpoint.server == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := endpoint.server.Shutdown(ctx); err != nil {
+		logger.Warn(
+			"MCP metrics shutdown incomplete",
+			"failure_class", observability.FailureUnavailable,
+		)
+	}
+}
+
+func shutdownTelemetry(runtime *observability.Runtime, logger interface {
+	Warn(string, ...any)
+}) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := runtime.Shutdown(ctx); err != nil {
+		logger.Warn(
+			"telemetry shutdown incomplete",
+			"failure_class",
+			observability.FailureUnavailable,
+		)
+	}
 }
 
 func stdioPermissions(actorType string) []control.Permission {

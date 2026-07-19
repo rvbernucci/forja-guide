@@ -40,21 +40,24 @@ and residual risk.
 **Outcome:** make runtime behavior measurable without relying on terminal
 scrollback.
 
-**Status:** Authorized and ready.
+**Status:** In progress. See the
+[Sprint 06 execution plan](SPRINT_06_OBSERVABILITY_PLAN.md).
 
 ### Scope
 
-- [ ] Add OpenTelemetry traces across MCP, scheduler, worker, validation, and
+- [x] Add OpenTelemetry traces across MCP, scheduler, worker, validation, and
   persistence boundaries.
-- [ ] Export Prometheus metrics with controlled cardinality.
-- [ ] Emit structured, redacted logs for Loki.
-- [ ] Build dashboards for factory health, runs, workers, failures, retrieval,
-  projection lag, approvals, and cost.
-- [ ] Define a stable failure taxonomy.
-- [ ] Add alert candidates for stuck runs, expired leases, outbox backlog,
+- [x] Export Prometheus metrics with controlled cardinality.
+- [x] Emit structured, redacted logs for Loki.
+- [x] Build the current factory-health dashboard for runs, workers, failures,
+  projection lag, and approvals. Retrieval and cost panels wait for their
+  owning subsystems.
+- [x] Define a stable failure taxonomy.
+- [x] Add alert candidates for stuck runs, expired leases, outbox backlog,
   projection lag, and worker crash loops.
-- [ ] Store large logs as artifacts rather than database rows.
-- [ ] Test telemetry behavior during cancellation and partial outages.
+- [x] Keep stdout/stderr bodies out of canonical attempt events; large durable
+  artifacts and retention remain owned by Sprint 07.
+- [x] Test telemetry behavior during cancellation and partial outages.
 
 ### Acceptance
 

@@ -15,8 +15,10 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/daemon"
 	"github.com/rvbernucci/forja-guide/internal/identity"
 	"github.com/rvbernucci/forja-guide/internal/logging"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/postgres"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
+	"github.com/rvbernucci/forja-guide/internal/version"
 )
 
 func main() {
@@ -35,6 +37,17 @@ func run() error {
 		return err
 	}
 	logger := logging.New(os.Stdout, cfg.LogLevel)
+	telemetryConfig, err := observability.RuntimeConfigFromEnv(
+		"forjad", version.Version, cfg.Environment, os.LookupEnv,
+	)
+	if err != nil {
+		return err
+	}
+	telemetry, err := observability.NewRuntime(context.Background(), telemetryConfig, logger)
+	if err != nil {
+		return fmt.Errorf("initialize observability: %w", err)
+	}
+	defer shutdownTelemetry(telemetry, logger)
 	authenticator, authority, err := httpTrustBoundary(os.Getenv)
 	if err != nil {
 		return err
@@ -54,6 +67,7 @@ func run() error {
 			connectContext,
 			cfg.DatabaseURL,
 			int32(cfg.DatabaseMaxConn),
+			observability.NewPGXTracer(telemetry.Observer),
 		)
 		cancelConnect()
 		if openErr != nil {
@@ -81,6 +95,24 @@ func run() error {
 		if storeErr != nil {
 			return fmt.Errorf("initialize PostgreSQL store: %w", storeErr)
 		}
+		operationalReader, readerErr := observability.NewPostgresOperationalReader(
+			pool,
+			postgres.DefaultTenantID,
+			postgres.DefaultRepositoryID,
+		)
+		if readerErr != nil {
+			return fmt.Errorf("initialize operational state reader: %w", readerErr)
+		}
+		operationalCollector, collectorErr := observability.NewOperationalCollector(
+			operationalReader,
+			observability.DefaultOperationalThresholds(),
+		)
+		if collectorErr != nil {
+			return fmt.Errorf("initialize operational state collector: %w", collectorErr)
+		}
+		if registerErr := telemetry.RegisterCollector(operationalCollector); registerErr != nil {
+			return registerErr
+		}
 		repository = durable
 		logger.Info("durable PostgreSQL state enabled")
 	} else {
@@ -93,6 +125,7 @@ func run() error {
 		authority,
 		identity.NewRunID,
 		logger,
+		telemetry,
 	)
 	if err != nil {
 		return fmt.Errorf("initialize daemon: %w", err)
@@ -123,6 +156,20 @@ func run() error {
 		cfg.ShutdownTimeout,
 		logger,
 	)
+}
+
+func shutdownTelemetry(runtime *observability.Runtime, logger interface {
+	Warn(string, ...any)
+}) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := runtime.Shutdown(ctx); err != nil {
+		logger.Warn(
+			"telemetry shutdown incomplete",
+			"failure_class",
+			observability.FailureUnavailable,
+		)
+	}
 }
 
 func httpTrustBoundary(

@@ -2,10 +2,13 @@ package logging
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"log/slog"
 	"strings"
 	"testing"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestLoggerRedactsSensitiveKeysAndValues(t *testing.T) {
@@ -95,5 +98,38 @@ func TestLoggerSafelyMaterializesAnyValuesOnce(t *testing.T) {
 	}
 	if value.calls != 1 || strings.Contains(text, "later-secret") {
 		t.Fatalf("value was rendered more than once: calls=%d output=%s", value.calls, text)
+	}
+}
+
+func TestLoggerAddsCanonicalTraceCorrelation(t *testing.T) {
+	t.Parallel()
+	var output bytes.Buffer
+	logger := New(&output, "debug")
+	traceID, err := trace.TraceIDFromHex("0102030405060708090a0b0c0d0e0f10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spanID, err := trace.SpanIDFromHex("0102030405060708")
+	if err != nil {
+		t.Fatal(err)
+	}
+	spanContext := trace.NewSpanContext(trace.SpanContextConfig{
+		TraceID: traceID,
+		SpanID:  spanID,
+	})
+	ctx := trace.ContextWithSpanContext(context.Background(), spanContext)
+	logger.InfoContext(
+		ctx,
+		"correlated",
+		"trace_id",
+		"caller-controlled",
+		"span_id",
+		"caller-controlled",
+	)
+	text := output.String()
+	if strings.Contains(text, "caller-controlled") ||
+		!strings.Contains(text, traceID.String()) ||
+		!strings.Contains(text, spanID.String()) {
+		t.Fatalf("unexpected trace correlation: %s", text)
 	}
 }

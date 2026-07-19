@@ -10,10 +10,15 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/logging"
+	"github.com/rvbernucci/forja-guide/internal/observability"
+	"github.com/rvbernucci/forja-guide/internal/version"
 	"github.com/rvbernucci/forja-guide/internal/worker"
 )
 
@@ -66,12 +71,33 @@ func run(
 		_, _ = fmt.Fprintf(stderr, "forja-worker: invalid task: %v\n", err)
 		return 2
 	}
+	lookup := environmentLookup(environ)
+	environment := "development"
+	if value, ok := lookup("FORJA_ENVIRONMENT"); ok && strings.TrimSpace(value) != "" {
+		environment = strings.TrimSpace(value)
+	}
+	logger := logging.New(stderr, "info")
+	telemetryConfig, err := observability.RuntimeConfigFromEnv(
+		"forja-worker", version.Version, environment, lookup,
+	)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "forja-worker: configure observability: %v\n", err)
+		return 2
+	}
+	telemetry, err := observability.NewRuntime(ctx, telemetryConfig, logger)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "forja-worker: initialize observability: %v\n", err)
+		return 1
+	}
+	defer shutdownWorkerTelemetry(telemetry, logger)
+	ctx = observability.ExtractTraceContextFromEnv(ctx, lookup)
 	supervisor, err := worker.NewSupervisor(
 		registry,
 		worker.CodexAdapter{Executable: *codexPath},
 		worker.CodexIsolationPolicy{Executable: *codexPath},
 		&eventWriter{writer: stderr},
 		environ,
+		telemetry.Observer,
 	)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "forja-worker: initialize supervisor: %v\n", err)
@@ -97,6 +123,33 @@ func run(
 		return 130
 	default:
 		return 1
+	}
+}
+
+func environmentLookup(environ []string) func(string) (string, bool) {
+	values := make(map[string]string, len(environ))
+	for _, item := range environ {
+		key, value, found := strings.Cut(item, "=")
+		if found && key != "" {
+			values[key] = value
+		}
+	}
+	return func(key string) (string, bool) {
+		value, ok := values[key]
+		return value, ok
+	}
+}
+
+func shutdownWorkerTelemetry(runtime *observability.Runtime, logger interface {
+	Warn(string, ...any)
+}) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := runtime.Shutdown(ctx); err != nil {
+		logger.Warn(
+			"worker telemetry shutdown incomplete",
+			"failure_class", observability.FailureUnavailable,
+		)
 	}
 }
 

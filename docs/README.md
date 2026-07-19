@@ -18,7 +18,8 @@ language.
 11. [Architecture decisions](05-decisions/)
 12. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
 13. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
-14. [Sprint evidence](evidence/)
+14. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
+15. [Sprint evidence](evidence/)
 
 ## Documentation States
 
