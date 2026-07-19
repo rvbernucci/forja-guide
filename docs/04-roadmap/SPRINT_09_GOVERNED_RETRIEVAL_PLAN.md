@@ -82,9 +82,11 @@ documentation evidence.
 - [x] Publish strict retrieval point, query, and result JSON schemas.
 - [x] Add Go contract types and semantic validation for scopes, filters,
   vectors, ranks, finite scores, model descriptors, and bounded collections.
-- [x] Build the generic deterministic card boundary and the first canonical
-  symbol-card adapter; decision, test, memory, and incident source adapters
-  remain pending with their owning canonical models.
+- [x] Build the generic deterministic card boundary plus canonical symbol and
+  test-card adapters. A test card is emitted only for a symbol canonically
+  marked as a test and resolves only while that flag remains true. Decision,
+  memory, and incident adapters remain pending with their owning canonical
+  models.
 - [x] Generate stable point IDs and byte-stable card text from canonical input.
 - [x] Implement a versioned deterministic lexical encoder for sparse vectors.
 
@@ -134,9 +136,10 @@ documentation evidence.
   return a bounded degraded receipt when either path is unavailable.
 - [x] Define and test the fail-closed canonical resolver boundary for identity,
   source hash, source commit, lifecycle, scope, and duplicate checks.
-- [x] Resolve symbol candidates against canonical PostgreSQL identity, source
-  hash, source commit, lifecycle, and repository authority. Other card
-  families remain absent until their canonical adapters exist.
+- [x] Resolve symbol and test candidates against canonical PostgreSQL identity,
+  source hash, source commit, lifecycle, and repository authority. Test cards
+  additionally require the canonical `is_test` flag. Other card families
+  remain absent until their canonical adapters exist.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
 - [x] Return bounded, scope-authorized canonical entity-ID alternatives for a

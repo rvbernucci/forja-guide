@@ -76,6 +76,63 @@ func TestResolveRetrievalPointRequiresActiveCanonicalSymbolAndHash(t *testing.T)
 	}
 }
 
+func TestResolveRetrievalTestPointRequiresCanonicalTestFlag(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	publication := indexPublicationFixture(t, pool, "resolver-test", strings.Repeat("b", 40))
+	publication.Bundle.Symbols[0].Test = true
+	if _, err := store.PublishIndexSnapshot(t.Context(), publication, testMetadata("retrieval-test-resolver-index")); err != nil {
+		t.Fatal(err)
+	}
+	generation := contracts.RetrievalGenerationID("fixture", "test-v1", 3, retrieval.SparseEncoderVersion)
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES ($1,$2,$3,'retrieval','retrieval_test_fixture','fixture','test-v1',3,$4,'active')`,
+		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
+		t.Fatal(err)
+	}
+	var outboxID int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT outbox.outbox_id
+		FROM forja.outbox AS outbox
+		JOIN forja.events AS event ON event.event_id=outbox.event_id
+		WHERE event.aggregate_type='index_snapshot' AND event.aggregate_id=$1
+		  AND event.event_type='index_snapshot.activated'`, publication.Bundle.Snapshot.SnapshotID).Scan(&outboxID); err != nil {
+		t.Fatal(err)
+	}
+	source, err := retrieval.BuildTestSource(
+		publication.Bundle.Snapshot, publication.Bundle.Files[0], publication.Bundle.Symbols[0], "canonical", nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	point, err := retrieval.BuildPoint(t.Context(), source, generation, postgresFixtureEmbedder{}, retrieval.HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRetrievalProjectionPoint(t.Context(), point, outboxID); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID); err != nil || len(resolved) != 1 || resolved[0].ArtifactFamily != "test" {
+		t.Fatalf("test point resolved=%#v err=%v", resolved, err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.index_symbols SET is_test=false
+		WHERE tenant_id=$1 AND repository_id=$2 AND snapshot_id=$3 AND symbol_id=$4`,
+		DefaultTenantID, DefaultRepositoryID, publication.Bundle.Snapshot.SnapshotID, publication.Bundle.Symbols[0].SymbolID); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID); err != nil || len(resolved) != 0 {
+		t.Fatalf("test point without canonical flag resolved=%#v err=%v", resolved, err)
+	}
+}
+
 func TestRecordRetrievalProjectionPointMakesOnlyCanonicalPointResolvable(t *testing.T) {
 	pool := integrationPool(t)
 	resetDatabase(t, pool)

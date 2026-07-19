@@ -150,7 +150,9 @@ preserving authority and access boundaries.
   rollback are implemented; durable blue-green generation activation and a
   live Qdrant integration exercise remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
-  The deterministic symbol-card adapter and generic card contract are complete.
+  The deterministic symbol/test-card adapters and generic card contract are
+  complete; decision, memory, and incident await their owning canonical
+  sources.
 - [x] Implement the dense/sparse request contracts, deterministic sparse
   lexical encoder, Qdrant candidate execution, bounded RRF fusion, degraded
   receipts, and mandatory PostgreSQL resolution. Concrete embedding-provider
@@ -159,7 +161,8 @@ preserving authority and access boundaries.
   filters before ranking.
 - [x] Implement weighted reciprocal rank fusion.
 - [x] Implement and test canonical-resolution and ambiguity-handling policy,
-  including the PostgreSQL resolver adapter for active canonical symbols.
+  including the PostgreSQL resolver adapter for active canonical symbols and
+  canonically flagged tests.
 - [x] Record embedding model, version, dimensions, source hash, and generation
   timestamp.
 - [x] Implement independent, fenced per-projector outbox delivery and backlog

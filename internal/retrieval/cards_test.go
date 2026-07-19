@@ -63,6 +63,23 @@ func TestBuildPointBindsEveryDerivedComponent(t *testing.T) {
 	}
 }
 
+func TestBuildTestSourceRequiresCanonicalTestAndUsesTestFamily(t *testing.T) {
+	t.Parallel()
+	bundle := projectionFixture(t)
+	file := bundle.Files[0]
+	symbol := bundle.Symbols[0]
+	if _, err := BuildTestSource(bundle.Snapshot, file, symbol, "canonical", nil); err == nil {
+		t.Fatal("non-test symbol was accepted as a test card")
+	}
+	symbol.Test = true
+	symbol.SymbolID = contracts.ComputeSymbolID(symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(symbol)
+	source, err := BuildTestSource(bundle.Snapshot, file, symbol, "canonical", nil)
+	if err != nil || source.ArtifactFamily != "test" || source.EntityID != symbol.SymbolID {
+		t.Fatalf("source=%#v err=%v", source, err)
+	}
+}
+
 func TestHashingSparseEncoderIsStableAndNormalized(t *testing.T) {
 	t.Parallel()
 	encoder := HashingSparseEncoder{}

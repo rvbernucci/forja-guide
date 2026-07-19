@@ -85,8 +85,22 @@ func BuildCardText(source CardSource) (string, error) {
 	return card, nil
 }
 
-// BuildSymbolSource maps deterministic Sprint 08 metadata into one safe text card.
+// BuildSymbolSource maps deterministic Sprint 08 metadata into one safe symbol card.
 func BuildSymbolSource(snapshot contracts.RepositorySnapshot, file contracts.FileCard, symbol contracts.SymbolCard, authorityClass string, proofRefs []string) (CardSource, error) {
+	return buildIndexedSymbolSource(snapshot, file, symbol, authorityClass, proofRefs, "symbol")
+}
+
+// BuildTestSource emits a separate test-family card only for a symbol the
+// canonical index itself marks as a test. The entity remains the stable symbol
+// identity, while the artifact family makes test-only retrieval filters work.
+func BuildTestSource(snapshot contracts.RepositorySnapshot, file contracts.FileCard, symbol contracts.SymbolCard, authorityClass string, proofRefs []string) (CardSource, error) {
+	if !symbol.Test {
+		return CardSource{}, fmt.Errorf("test source requires a canonical test symbol")
+	}
+	return buildIndexedSymbolSource(snapshot, file, symbol, authorityClass, proofRefs, "test")
+}
+
+func buildIndexedSymbolSource(snapshot contracts.RepositorySnapshot, file contracts.FileCard, symbol contracts.SymbolCard, authorityClass string, proofRefs []string, artifactFamily string) (CardSource, error) {
 	if err := contracts.ValidateRepositorySnapshot(snapshot); err != nil {
 		return CardSource{}, fmt.Errorf("validate snapshot: %w", err)
 	}
@@ -121,7 +135,7 @@ func BuildSymbolSource(snapshot contracts.RepositorySnapshot, file contracts.Fil
 	}
 	return CardSource{
 		TenantID: snapshot.TenantID, RepositoryID: snapshot.RepositoryID,
-		EntityID: symbol.SymbolID, ArtifactFamily: "symbol", SourceCommit: &commit,
+		EntityID: symbol.SymbolID, ArtifactFamily: artifactFamily, SourceCommit: &commit,
 		SourceHash: file.SourceHash, AuthorityClass: authorityClass, Status: "active",
 		Language: &language, SymbolKind: &kind, RepositoryPath: &file.Path,
 		Title: symbol.QualifiedName, Body: body,

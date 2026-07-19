@@ -36,6 +36,30 @@ func TestProjectionWorkerOnlyCompletesAfterVectorAndProvenanceWrites(t *testing.
 	}
 }
 
+func TestProjectionWorkerProjectsCanonicalTestsAsTestFamily(t *testing.T) {
+	t.Parallel()
+	bundle := projectionFixture(t)
+	symbol := bundle.Symbols[0]
+	symbol.Test = true
+	symbol.SymbolID = contracts.ComputeSymbolID(symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(symbol)
+	bundle.Symbols[0] = symbol
+	bundle.Files[0].SymbolIDs = []string{symbol.SymbolID}
+	delivery := persistence.ProjectionDelivery{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 71, AggregateType: "index_snapshot", AggregateID: bundle.Snapshot.SnapshotID,
+		EventType: "index_snapshot.activated", Attempts: 1, FencingToken: 3,
+	}}
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{delivery}}
+	writer := &recordingPointWriter{}
+	worker := projectionWorker(store, staticIndexSource{bundle: bundle, found: true}, &recordingPointRecorder{}, writer)
+	if _, err := worker.ProcessOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.points) != 1 || writer.points[0].ArtifactFamily != "test" || writer.points[0].EntityID != symbol.SymbolID {
+		t.Fatalf("projected points=%#v", writer.points)
+	}
+}
+
 func TestProjectionWorkerRetriesAndDoesNotCheckpointFailedWrite(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)

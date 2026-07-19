@@ -9,9 +9,10 @@ import (
 )
 
 // ResolveRetrievalPoint reauthorizes a Qdrant candidate against the active
-// canonical index. Only symbol points are eligible until the other card
-// families have authoritative source adapters; unsupported entities return no
-// match rather than being trusted from derived projection metadata.
+// canonical index. Symbol and test cards resolve only through the indexed
+// symbol source; a test card additionally requires the canonical test flag.
+// Unsupported families return no match rather than being trusted from derived
+// projection metadata.
 func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT point.point_id, point.generation_id,
@@ -22,7 +23,7 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		       point.repository_path, point.proof_refs
 		FROM forja.retrieval_projection_points AS point
 		JOIN forja.index_symbols AS symbol
-		  ON point.artifact_family='symbol' AND point.entity_id=symbol.symbol_id
+		  ON point.artifact_family IN ('symbol', 'test') AND point.entity_id=symbol.symbol_id
 		JOIN forja.index_files AS file
 		  ON file.tenant_id=symbol.tenant_id AND file.repository_id=symbol.repository_id
 		 AND file.snapshot_id=symbol.snapshot_id AND file.file_id=symbol.file_id
@@ -31,6 +32,7 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		 AND snapshot.snapshot_id=symbol.snapshot_id
 		WHERE point.tenant_id=$1 AND point.repository_id=$2 AND point.point_id=$3
 		  AND point.status='active' AND point.stale=false
+		  AND (point.artifact_family='symbol' OR (point.artifact_family='test' AND symbol.is_test=true))
 		  AND snapshot.status='active' AND snapshot.source_commit=point.source_commit
 		  AND file.source_sha256=point.source_sha256
 		ORDER BY point.generation_id`, s.tenantID, s.repositoryID, pointID)

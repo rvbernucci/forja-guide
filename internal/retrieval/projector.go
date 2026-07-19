@@ -140,7 +140,11 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 		if !found {
 			return false, fmt.Errorf("canonical symbol %s references missing file", item.Symbol.SymbolID)
 		}
-		source, err := BuildSymbolSource(bundle.Snapshot, file, item.Symbol, "canonical", nil)
+		buildSource := BuildSymbolSource
+		if item.Symbol.Test {
+			buildSource = BuildTestSource
+		}
+		source, err := buildSource(bundle.Snapshot, file, item.Symbol, "canonical", nil)
 		if err != nil {
 			return false, err
 		}
