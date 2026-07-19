@@ -229,6 +229,12 @@ It cannot authorize Sprint 10.
   source commit, prove that the lexical-only and dense-only baseline policies
   do not invoke their disabled retrieval paths, and align the canonical
   PostgreSQL integration fixtures with immutable index evidence.
+- On `40a2326`, the same full validation suite passed after the runtime began
+  gating retrieval on its dedicated Qdrant projector backlog. A disposable
+  PostgreSQL drill proved that an inactive projector is unavailable, a
+  published delivery reports zero lag, and a new fan-out delivery reports a
+  positive lag. Unit tests prove that stale or unavailable freshness prevents
+  any embedder or Qdrant request from running.
 - `go run ./cmd/forja-retrieval-eval` scores both a single frozen ranking
   capture and an immutable four-baseline comparison. The public synthetic
   comparison verifies that lexical-only and dense-only can retain distinct
