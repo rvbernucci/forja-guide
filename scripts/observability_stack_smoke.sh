@@ -15,6 +15,10 @@ cleanup() {
 			echo "--- forjad ---" >&2
 			cat "$work/logs/forjad.jsonl" >&2
 		fi
+		if [[ -s "$work/forjad.stderr" ]]; then
+			echo "--- forjad stderr captured separately (bytes only) ---" >&2
+			wc -c <"$work/forjad.stderr" >&2
+		fi
 		echo "--- compose ps ---" >&2
 		FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" ps >&2 || true
 		echo "--- compose logs ---" >&2
@@ -74,7 +78,8 @@ export FORJA_OTEL_ENABLED="true"
 export FORJA_TRACE_SAMPLE_RATIO="1"
 export OTEL_EXPORTER_OTLP_ENDPOINT="http://127.0.0.1:4318"
 export OTEL_EXPORTER_OTLP_PROTOCOL="http/protobuf"
-"$work/forjad" --listen 127.0.0.1:8080 >"$work/logs/forjad.jsonl" 2>&1 &
+"$work/forjad" --listen 127.0.0.1:8080 \
+  >"$work/logs/forjad.jsonl" 2>"$work/forjad.stderr" &
 daemon_pid="$!"
 
 wait_for_url http://127.0.0.1:8080/healthz

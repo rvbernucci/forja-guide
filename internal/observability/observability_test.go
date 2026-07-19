@@ -79,7 +79,7 @@ forja_operations_total{boundary="other",failure_class="internal",operation="othe
 		t.Fatal("secret appeared in span identity or status")
 	}
 	for _, item := range spans[0].Attributes {
-		if strings.Contains(item.Value.Emit(), secret) {
+		if strings.Contains(item.Value.String(), secret) {
 			t.Fatal("secret appeared in span attributes")
 		}
 	}
@@ -250,7 +250,7 @@ func TestPGXTracerDoesNotRecordSQLOrArguments(t *testing.T) {
 		t.Fatalf("spans = %d, want 1", len(spans))
 	}
 	for _, item := range spans[0].Attributes {
-		if strings.Contains(item.Value.Emit(), secret) {
+		if strings.Contains(item.Value.String(), secret) {
 			t.Fatal("database content appeared in trace attributes")
 		}
 	}

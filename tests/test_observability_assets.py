@@ -95,6 +95,19 @@ class ObservabilityAssetsTests(unittest.TestCase):
         self.assertGreaterEqual(len(match.group(1).encode("utf-8")), 32)
         self.assertIn("observability stack diagnostics", script)
 
+    def test_unstructured_stderr_is_not_ingested_as_json_logs(self) -> None:
+        script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        operations = (
+            ROOT / "docs/06-operations/OBSERVABILITY_OPERATIONS.md"
+        ).read_text(encoding="utf-8")
+        self.assertNotRegex(script, r"forjad\.jsonl[^\n]*2>&1")
+        self.assertNotRegex(operations, r"forjad\.jsonl[^\n]*2>&1")
+        self.assertIn('2>"$work/forjad.stderr"', script)
+        self.assertIn("2> /tmp/forja/forjad.stderr", operations)
+        self.assertIn("non-ingested", operations)
+
     def test_compose_parser_when_available(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker CLI is not available")

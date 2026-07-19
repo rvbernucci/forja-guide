@@ -14,6 +14,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 // Observer joins traces and Prometheus metrics without becoming authority.
@@ -26,7 +27,7 @@ type Observer struct {
 // NewObserver creates an observer over explicit providers.
 func NewObserver(provider trace.TracerProvider, metrics *Metrics) *Observer {
 	if provider == nil {
-		provider = trace.NewNoopTracerProvider()
+		provider = noop.NewTracerProvider()
 	}
 	return &Observer{
 		tracer:  provider.Tracer("github.com/rvbernucci/forja-guide"),

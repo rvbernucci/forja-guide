@@ -2,6 +2,10 @@
 
 Status: Sprint 06 foundation implemented; closure pending
 
+The trust, propagation, persistence, and failure behavior of this subsystem is
+recorded in
+[ADR-0012](../05-decisions/ADR-0012-FAIL-SOFT-CONTENT-FREE-OBSERVABILITY.md).
+
 ## Stack
 
 - OpenTelemetry for W3C context propagation and content-free traces.

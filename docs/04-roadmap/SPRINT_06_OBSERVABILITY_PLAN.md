@@ -2,6 +2,9 @@
 
 Status: In progress
 
+The observability trust boundary is governed by
+[ADR-0012](../05-decisions/ADR-0012-FAIL-SOFT-CONTENT-FREE-OBSERVABILITY.md).
+
 ## Outcome
 
 Make one governed task traceable from its external command through scheduling,
@@ -34,6 +37,7 @@ into the telemetry plane or leaking task content.
   configuration.
 - [x] Provision dashboards and alert rules with bounded labels.
 - [x] Prove cancellation taxonomy, exporter outage, and secret-fixture behavior.
+- [x] Record the observability trust boundary in ADR-0012.
 - [ ] Rehearse the complete Compose stack on a clean Docker host.
 - [ ] Publish reviewed Sprint evidence through the two-phase closure protocol.
 

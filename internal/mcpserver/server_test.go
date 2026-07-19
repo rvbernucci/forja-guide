@@ -125,7 +125,7 @@ func TestMCPToolProducesContentFreeTrace(t *testing.T) {
 		t.Fatal("raw MCP correlation identity leaked into span name")
 	}
 	for _, attribute := range spans[0].Attributes {
-		if strings.Contains(attribute.Value.Emit(), secretCorrelation) {
+		if strings.Contains(attribute.Value.String(), secretCorrelation) {
 			t.Fatal("raw MCP correlation identity leaked into span attributes")
 		}
 	}

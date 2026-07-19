@@ -40,7 +40,16 @@ func TestMCPMetricsEndpointServesAndShutsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { endpoint.shutdown(logger) })
-	response, err := http.Get("http://" + endpoint.listener.Addr().String())
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://"+endpoint.listener.Addr().String(),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}

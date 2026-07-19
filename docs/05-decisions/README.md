@@ -13,6 +13,7 @@
 | [0009](ADR-0009-TWO-PHASE-SPRINT-CLOSURE.md) | Bind Sprint closure to a published, independently reviewed candidate | Accepted |
 | [0010](ADR-0010-BOUNDED-WORKER-SUPERVISION.md) | Supervise workers through bounded, authority-free process contracts | Accepted |
 | [0011](ADR-0011-FENCED-GIT-DELIVERY.md) | Deliver Git changes through fenced leases and reproducible validation | Accepted for Sprint 05 |
+| [0012](ADR-0012-FAIL-SOFT-CONTENT-FREE-OBSERVABILITY.md) | Keep observability fail-soft, content-free, and non-authoritative | Accepted for Sprint 06 |
 
 Use zero-padded sequential identifiers. Accepted ADRs are not edited to reverse
 their decision; a new ADR supersedes them.

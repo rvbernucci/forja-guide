@@ -61,8 +61,14 @@ export FORJA_TRACE_SAMPLE_RATIO=1
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 go run ./cmd/forjad --listen 127.0.0.1:8080 \
-  > >(tee -a /tmp/forja/logs/forjad.jsonl) 2>&1
+  > >(tee -a /tmp/forja/logs/forjad.jsonl) \
+  2> /tmp/forja/forjad.stderr
 ```
+
+Only structured `stdout` enters the Alloy/Loki JSONL stream. Treat the
+separate, non-ingested `stderr` file as potentially sensitive operator
+diagnostics: restrict its permissions, inspect it locally, redact it before any
+external collection, and delete it according to the local retention policy.
 
 Local endpoints:
 

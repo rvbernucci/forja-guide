@@ -19,6 +19,7 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.41.0"
 	"go.opentelemetry.io/otel/trace"
+	"go.opentelemetry.io/otel/trace/noop"
 )
 
 const (
@@ -201,7 +202,7 @@ func (runtime *Runtime) RegisterCollector(collector prometheus.Collector) error 
 // TracerProvider exposes the configured provider to instrumentation adapters.
 func (runtime *Runtime) TracerProvider() trace.TracerProvider {
 	if runtime == nil || runtime.provider == nil {
-		return trace.NewNoopTracerProvider()
+		return noop.NewTracerProvider()
 	}
 	return runtime.provider
 }
