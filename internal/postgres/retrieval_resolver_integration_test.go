@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"crypto/sha256"
 	"strings"
 	"testing"
 	"time"
@@ -134,6 +135,65 @@ func TestRecordRetrievalProjectionPointMakesOnlyCanonicalPointResolvable(t *test
 	}
 }
 
+func TestFencedSymbolProjectionPublishesOnlyAfterCanonicalReceipt(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	configurationHash := sha256.Sum256([]byte("retrieval-projector-fixture"))
+	if err := store.EnsureProjectionConsumer(t.Context(), retrieval.DefaultQdrantProjectorName, configurationHash); err != nil {
+		t.Fatal(err)
+	}
+	publication := indexPublicationFixture(t, pool, "worker-point", strings.Repeat("a", 40))
+	snapshot, err := store.PublishIndexSnapshot(t.Context(), publication, testMetadata("fenced-retrieval-worker"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, retrieval.SparseEncoderVersion)
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES ($1,$2,$3,'retrieval','retrieval_fixture','fixture','v1',3,$4,'active')`,
+		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
+		t.Fatal(err)
+	}
+	writer := &postgresRecordingPointWriter{}
+	worker := retrieval.ProjectionWorker{
+		Deliveries: store, Source: store, Recorder: store, Writer: writer,
+		Embedder: postgresFixtureEmbedder{}, Sparse: retrieval.HashingSparseEncoder{},
+		WorkerID: "postgres-integration-worker", Generation: generation, BatchSize: 10,
+		ClaimTTL: time.Minute, MaxAttempts: 3, RetryDelay: time.Second,
+	}
+	run, err := worker.ProcessOnce(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run.Claimed != 1 || run.Published != 1 || run.Retried != 0 || len(writer.points) != 1 {
+		t.Fatalf("run=%#v points=%d", run, len(writer.points))
+	}
+	resolved, err := store.ResolveRetrievalPoint(t.Context(), writer.points[0].PointID)
+	if err != nil || len(resolved) != 1 || resolved[0].EntityID != publication.Bundle.Symbols[0].SymbolID {
+		t.Fatalf("resolved=%#v err=%v", resolved, err)
+	}
+	var state string
+	var checkpoint int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT delivery.state, checkpoint.last_outbox_id
+		FROM forja.projection_deliveries AS delivery
+		JOIN forja.projection_checkpoints AS checkpoint
+		  ON checkpoint.tenant_id=delivery.tenant_id AND checkpoint.repository_id=delivery.repository_id
+		 AND checkpoint.projector_name=delivery.projector_name
+		WHERE delivery.projector_name=$1`, retrieval.DefaultQdrantProjectorName).Scan(&state, &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if state != "published" || checkpoint < 1 || snapshot.SnapshotID == "" {
+		t.Fatalf("delivery state=%q checkpoint=%d snapshot=%q", state, checkpoint, snapshot.SnapshotID)
+	}
+}
+
 type postgresFixtureEmbedder struct{}
 
 func (postgresFixtureEmbedder) Descriptor() contracts.EmbeddingDescriptor {
@@ -146,4 +206,13 @@ func (postgresFixtureEmbedder) Descriptor() contracts.EmbeddingDescriptor {
 
 func (postgresFixtureEmbedder) Embed(context.Context, string) ([]float64, error) {
 	return []float64{0.1, 0.2, 0.3}, nil
+}
+
+type postgresRecordingPointWriter struct {
+	points []contracts.RetrievalPoint
+}
+
+func (writer *postgresRecordingPointWriter) UpsertPoint(_ context.Context, point contracts.RetrievalPoint) error {
+	writer.points = append(writer.points, point)
+	return nil
 }
