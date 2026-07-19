@@ -48,6 +48,9 @@ DROP TRIGGER index_symbols_are_append_only ON forja.index_symbols;
 DROP TRIGGER index_files_are_append_only ON forja.index_files;
 DROP FUNCTION forja.reject_index_immutable_mutation();
 
+DROP TRIGGER index_relations_require_closed_entities ON forja.index_relations;
+DROP FUNCTION forja.enforce_index_relation_closure();
+
 DROP TRIGGER live_index_snapshots_protect_artifacts ON forja.artifacts;
 DROP TRIGGER index_snapshot_transitions_are_guarded ON forja.index_snapshots;
 DROP TRIGGER index_snapshots_require_canonical_artifact ON forja.index_snapshots;

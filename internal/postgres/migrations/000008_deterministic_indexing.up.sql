@@ -57,7 +57,7 @@ BEGIN
           AND repository_id=NEW.repository_id
           AND artifact_id=NEW.artifact_id
           AND content_sha256=NEW.artifact_content_sha256
-        FOR KEY SHARE;
+        FOR SHARE;
         IF NOT FOUND
            OR artifact_kind <> 'index_snapshot'
            OR artifact_status NOT IN ('active', 'validated')
@@ -85,22 +85,50 @@ BEGIN
        OR NEW.adapter_set_sha256 <> OLD.adapter_set_sha256
        OR NEW.adapters <> OLD.adapters
        OR NEW.request_sha256 <> OLD.request_sha256
-       OR NEW.file_count <> OLD.file_count
-       OR NEW.symbol_count <> OLD.symbol_count
-       OR NEW.relation_count <> OLD.relation_count
-       OR NEW.diagnostic_count <> OLD.diagnostic_count
-       OR NEW.artifact_id IS DISTINCT FROM OLD.artifact_id
-       OR NEW.artifact_content_sha256 IS DISTINCT FROM OLD.artifact_content_sha256
        OR NEW.created_by <> OLD.created_by
        OR NEW.created_at <> OLD.created_at
-       OR NEW.validated_at IS DISTINCT FROM OLD.validated_at
        OR NEW.version <> OLD.version + 1
        OR NEW.updated_at < OLD.updated_at
        OR NOT (
-           (OLD.status='proposed' AND NEW.status IN ('extracting', 'failed'))
-           OR (OLD.status='extracting' AND NEW.status IN ('validated', 'failed'))
-           OR (OLD.status='validated' AND NEW.status IN ('active', 'failed'))
-           OR (OLD.status='active' AND NEW.status IN ('superseded', 'invalidated'))
+           (OLD.status='proposed' AND NEW.status IN ('extracting', 'failed')
+               AND NEW.file_count=OLD.file_count
+               AND NEW.symbol_count=OLD.symbol_count
+               AND NEW.relation_count=OLD.relation_count
+               AND NEW.diagnostic_count=OLD.diagnostic_count
+               AND NEW.artifact_id IS NOT DISTINCT FROM OLD.artifact_id
+               AND NEW.artifact_content_sha256 IS NOT DISTINCT FROM OLD.artifact_content_sha256
+               AND NEW.validated_at IS NOT DISTINCT FROM OLD.validated_at)
+           OR (OLD.status='extracting' AND NEW.status='failed'
+               AND NEW.file_count=OLD.file_count
+               AND NEW.symbol_count=OLD.symbol_count
+               AND NEW.relation_count=OLD.relation_count
+               AND NEW.diagnostic_count=OLD.diagnostic_count
+               AND NEW.artifact_id IS NOT DISTINCT FROM OLD.artifact_id
+               AND NEW.artifact_content_sha256 IS NOT DISTINCT FROM OLD.artifact_content_sha256
+               AND NEW.validated_at IS NOT DISTINCT FROM OLD.validated_at)
+           OR (OLD.status='extracting' AND NEW.status='validated'
+               AND OLD.artifact_id IS NULL
+               AND OLD.artifact_content_sha256 IS NULL
+               AND OLD.validated_at IS NULL
+               AND NEW.artifact_id IS NOT NULL
+               AND NEW.artifact_content_sha256 IS NOT NULL
+               AND NEW.validated_at IS NOT NULL)
+           OR (OLD.status='validated' AND NEW.status='active'
+               AND NEW.file_count=OLD.file_count
+               AND NEW.symbol_count=OLD.symbol_count
+               AND NEW.relation_count=OLD.relation_count
+               AND NEW.diagnostic_count=OLD.diagnostic_count
+               AND NEW.artifact_id IS NOT DISTINCT FROM OLD.artifact_id
+               AND NEW.artifact_content_sha256 IS NOT DISTINCT FROM OLD.artifact_content_sha256
+               AND NEW.validated_at IS NOT DISTINCT FROM OLD.validated_at)
+           OR (OLD.status='active' AND NEW.status IN ('superseded', 'invalidated')
+               AND NEW.file_count=OLD.file_count
+               AND NEW.symbol_count=OLD.symbol_count
+               AND NEW.relation_count=OLD.relation_count
+               AND NEW.diagnostic_count=OLD.diagnostic_count
+               AND NEW.artifact_id IS NOT DISTINCT FROM OLD.artifact_id
+               AND NEW.artifact_content_sha256 IS NOT DISTINCT FROM OLD.artifact_content_sha256
+               AND NEW.validated_at IS NOT DISTINCT FROM OLD.validated_at)
        ) THEN
         RAISE EXCEPTION USING ERRCODE='55000', MESSAGE='invalid index snapshot mutation or transition';
     END IF;
@@ -147,7 +175,11 @@ CREATE TABLE forja.index_files (
     repository_id uuid NOT NULL,
     snapshot_id text NOT NULL,
     file_id text NOT NULL CHECK (file_id ~ '^file_[a-f0-9]{64}$'),
-    path text NOT NULL CHECK (char_length(path) BETWEEN 1 AND 4096),
+    path text NOT NULL CHECK (
+        char_length(path) BETWEEN 1 AND 4096
+        AND path <> '.'
+        AND path !~ '(^/|/$|(^|/)\.\.?(?:/|$)|//|\\)'
+    ),
     git_blob_id text NOT NULL CHECK (git_blob_id ~ '^[a-f0-9]{40,64}$'),
     source_sha256 bytea NOT NULL CHECK (octet_length(source_sha256)=32),
     size_bytes bigint NOT NULL CHECK (size_bytes BETWEEN 0 AND 16777216),
@@ -170,7 +202,12 @@ CREATE TABLE forja.index_symbols (
     symbol_id text NOT NULL CHECK (symbol_id ~ '^symbol_[a-f0-9]{64}$'),
     file_id text NOT NULL,
     language text NOT NULL CHECK (language IN ('go', 'typescript', 'javascript', 'python')),
-    kind text NOT NULL,
+    kind text NOT NULL CHECK (kind IN (
+        'package', 'module', 'namespace', 'class', 'interface', 'type',
+        'struct', 'enum', 'function', 'method', 'constructor', 'variable',
+        'constant', 'field', 'property', 'parameter', 'import', 'export',
+        'route', 'schema', 'test'
+    )),
     name text NOT NULL CHECK (char_length(name) BETWEEN 1 AND 512),
     qualified_name text NOT NULL CHECK (char_length(qualified_name) BETWEEN 1 AND 2048),
     signature text NOT NULL CHECK (char_length(signature) <= 8192),
@@ -199,7 +236,11 @@ CREATE TABLE forja.index_relations (
     snapshot_id text NOT NULL,
     relation_id text NOT NULL CHECK (relation_id ~ '^relation_[a-f0-9]{64}$'),
     source_entity_id text NOT NULL CHECK (source_entity_id ~ '^(file|symbol)_[a-f0-9]{64}$'),
-    kind text NOT NULL,
+    kind text NOT NULL CHECK (kind IN (
+        'contains', 'imports', 'exports', 'declares', 'references', 'calls',
+        'implements', 'extends', 'reads', 'writes', 'tests', 'routes_to',
+        'validates', 'uses_schema'
+    )),
     resolution text NOT NULL CHECK (resolution IN ('resolved', 'unresolved')),
     target_entity_id text CHECK (target_entity_id IS NULL OR target_entity_id ~ '^(file|symbol|external)_[a-f0-9]{64}$'),
     unresolved_name text CHECK (unresolved_name IS NULL OR char_length(unresolved_name) BETWEEN 1 AND 2048),
@@ -228,6 +269,50 @@ CREATE INDEX index_relations_target_idx
     ON forja.index_relations (tenant_id, repository_id, snapshot_id, target_entity_id, kind)
     WHERE target_entity_id IS NOT NULL;
 
+CREATE FUNCTION forja.enforce_index_relation_closure()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF NOT (
+        EXISTS (
+            SELECT 1 FROM forja.index_files
+            WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
+              AND snapshot_id=NEW.snapshot_id AND file_id=NEW.source_entity_id
+        )
+        OR EXISTS (
+            SELECT 1 FROM forja.index_symbols
+            WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
+              AND snapshot_id=NEW.snapshot_id AND symbol_id=NEW.source_entity_id
+        )
+    ) THEN
+        RAISE EXCEPTION USING ERRCODE='23503', MESSAGE='index relation source entity is outside its snapshot';
+    END IF;
+    IF NEW.target_entity_id IS NOT NULL
+       AND NEW.target_entity_id NOT LIKE 'external\_%' ESCAPE '\'
+       AND NOT (
+           EXISTS (
+               SELECT 1 FROM forja.index_files
+               WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
+                 AND snapshot_id=NEW.snapshot_id AND file_id=NEW.target_entity_id
+           )
+           OR EXISTS (
+               SELECT 1 FROM forja.index_symbols
+               WHERE tenant_id=NEW.tenant_id AND repository_id=NEW.repository_id
+                 AND snapshot_id=NEW.snapshot_id AND symbol_id=NEW.target_entity_id
+           )
+       ) THEN
+        RAISE EXCEPTION USING ERRCODE='23503', MESSAGE='index relation target entity is outside its snapshot';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE CONSTRAINT TRIGGER index_relations_require_closed_entities
+    AFTER INSERT OR UPDATE ON forja.index_relations
+    DEFERRABLE INITIALLY DEFERRED
+    FOR EACH ROW EXECUTE FUNCTION forja.enforce_index_relation_closure();
+
 CREATE TABLE forja.index_adapter_runs (
     tenant_id uuid NOT NULL,
     repository_id uuid NOT NULL,
@@ -238,7 +323,10 @@ CREATE TABLE forja.index_adapter_runs (
     capability_sha256 bytea NOT NULL CHECK (octet_length(capability_sha256)=32),
     status text NOT NULL CHECK (status IN ('passed', 'failed')),
     diagnostic_count integer NOT NULL CHECK (diagnostic_count >= 0),
-    PRIMARY KEY (tenant_id, repository_id, snapshot_id, adapter_name),
+    PRIMARY KEY (
+        tenant_id, repository_id, snapshot_id, adapter_name, adapter_version,
+        configuration_sha256, capability_sha256
+    ),
     FOREIGN KEY (tenant_id, repository_id, snapshot_id)
         REFERENCES forja.index_snapshots(tenant_id, repository_id, snapshot_id) ON DELETE RESTRICT
 );
