@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	qdrant "github.com/qdrant/go-client/qdrant"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
@@ -285,13 +286,16 @@ func collectionInfo(plan QdrantCollectionPlan) *qdrant.CollectionInfo {
 	for _, index := range plan.PayloadIndex {
 		payload[index.FieldName] = &qdrant.PayloadSchemaInfo{}
 	}
-	dense := *plan.Create.GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName]
+	dense, ok := proto.Clone(plan.Create.GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName]).(*qdrant.VectorParams)
+	if !ok || dense == nil {
+		panic("test fixture dense vector configuration is absent")
+	}
 	metadata := map[string]*qdrant.Value{
 		"forja_schema_version":  qdrant.NewValueString(plan.Create.GetMetadata()["forja_schema_version"].GetStringValue()),
 		"collection_generation": qdrant.NewValueString(plan.Create.GetMetadata()["collection_generation"].GetStringValue()),
 	}
 	return &qdrant.CollectionInfo{Config: &qdrant.CollectionConfig{Params: &qdrant.CollectionParams{
-		VectorsConfig:       qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{DenseVectorName: &dense}),
+		VectorsConfig:       qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{DenseVectorName: dense}),
 		SparseVectorsConfig: plan.Create.GetSparseVectorsConfig(),
 	}, StrictModeConfig: plan.Create.GetStrictModeConfig(), Metadata: metadata}, PayloadSchema: payload}
 }
