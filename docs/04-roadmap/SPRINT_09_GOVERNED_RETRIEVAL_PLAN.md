@@ -89,8 +89,11 @@ documentation evidence.
 - [x] Build the generic deterministic card boundary plus canonical symbol and
   test-card adapters. A test card is emitted only for a symbol canonically
   marked as a test and resolves only while that flag remains true. Decision,
-  memory, and incident adapters remain pending with their owning canonical
-  models.
+  memory, and incident adapters require their owning canonical models. The
+  resolved decision family now projects and resolves from PostgreSQL. Memory
+  retrieval is deliberately deferred to the authorized derived-body boundary
+  in [ADR-0017](../05-decisions/ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md);
+  incidents do not yet have a canonical model.
 - [x] Generate stable point IDs and byte-stable card text from canonical input.
 - [x] Implement a versioned deterministic lexical encoder for sparse vectors.
 
