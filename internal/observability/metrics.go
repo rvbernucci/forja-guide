@@ -8,6 +8,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
+const maxMetricsRequestsInFlight = 1
+
 // Metrics owns Forja's bounded-cardinality Prometheus instruments.
 type Metrics struct {
 	operations        *prometheus.CounterVec
@@ -95,6 +97,7 @@ func (m *Metrics) telemetryFailed(signal string) {
 // Handler returns an OpenMetrics-compatible scrape handler.
 func Handler(gatherer prometheus.Gatherer) http.Handler {
 	return promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{
-		EnableOpenMetrics: true,
+		EnableOpenMetrics:   true,
+		MaxRequestsInFlight: maxMetricsRequestsInFlight,
 	})
 }

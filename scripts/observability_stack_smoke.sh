@@ -70,6 +70,7 @@ wait_for_url http://127.0.0.1:9090/-/ready
 wait_for_url http://127.0.0.1:3100/ready
 wait_for_url http://127.0.0.1:3200/ready
 wait_for_url http://127.0.0.1:3000/api/health
+wait_for_url http://127.0.0.1:12345/-/ready
 
 export FORJA_HTTP_BEARER_TOKEN="observability-smoke-token-0000000000000001"
 export FORJA_HTTP_ACTOR_TYPE="system"

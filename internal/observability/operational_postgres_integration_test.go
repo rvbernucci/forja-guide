@@ -40,7 +40,7 @@ func TestOperationalSnapshotCompilesAgainstCanonicalSchema(t *testing.T) {
 	}
 }
 
-func TestOperationalSnapshotExcludesReleasedLeasesAndCountsActualProjectionRows(t *testing.T) {
+func TestOperationalSnapshotRequiresFreshLeaseAndCountsActualProjectionRows(t *testing.T) {
 	databaseURL := os.Getenv("FORJA_TEST_DATABASE_URL")
 	if databaseURL == "" {
 		t.Skip("FORJA_TEST_DATABASE_URL is not configured")
@@ -152,6 +152,44 @@ func TestOperationalSnapshotExcludesReleasedLeasesAndCountsActualProjectionRows(
 		)`, postgres.DefaultTenantID, liveRunID); err != nil {
 		t.Fatal(err)
 	}
+	const staleRunID = "run_10000000-0000-4000-8000-000000000009"
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.runs (
+			run_id, tenant_id, repository_id, objective, state, version,
+			created_at, updated_at
+		) VALUES (
+			$1, $2, $3, 'Detect an abandoned long-TTL worker', 'running', 2,
+			clock_timestamp() - interval '1 hour',
+			clock_timestamp() - interval '1 hour'
+		)`, staleRunID, postgres.DefaultTenantID, repositoryA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.leases (
+			tenant_id, repository_id, resource_type, resource_id, owner_id,
+			fencing_token, acquired_at, expires_at, updated_at
+		) VALUES (
+			$1, $2, 'scheduler', 'stale-long-run', 'worker-stale', 1,
+			clock_timestamp() - interval '1 hour',
+			clock_timestamp() + interval '23 hours',
+			clock_timestamp() - interval '1 hour'
+		)`, postgres.DefaultTenantID, repositoryA); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.attempts (
+			attempt_id, tenant_id, run_id, ordinal, status,
+			lease_resource_type, lease_resource_id, worker_id, fencing_token,
+			started_at, version, created_at, updated_at
+		) VALUES (
+			'attempt_observability_stale', $1, $2, 1, 'running',
+			'scheduler', 'stale-long-run', 'worker-stale', 1,
+			clock_timestamp() - interval '1 hour', 2,
+			clock_timestamp() - interval '1 hour',
+			clock_timestamp() - interval '1 hour'
+		)`, postgres.DefaultTenantID, staleRunID); err != nil {
+		t.Fatal(err)
+	}
 
 	insertEventAndOutbox := func(repositoryID, eventID, aggregateID string) int64 {
 		t.Helper()
@@ -204,7 +242,10 @@ func TestOperationalSnapshotExcludesReleasedLeasesAndCountsActualProjectionRows(
 	if snapshot.ProjectionLag != 1 {
 		t.Fatalf("projection lag = %d, want one unprojected authority row", snapshot.ProjectionLag)
 	}
-	if snapshot.StuckRuns != 0 {
-		t.Fatalf("stuck runs = %d, want live fenced work excluded", snapshot.StuckRuns)
+	if snapshot.StuckRuns != 1 {
+		t.Fatalf(
+			"stuck runs = %d, want fresh work excluded and stale long-TTL work counted",
+			snapshot.StuckRuns,
+		)
 	}
 }

@@ -46,6 +46,9 @@ class ObservabilityAssetsTests(unittest.TestCase):
             self.assertGreaterEqual(compose.count("network_mode: host"), 2)
             self.assertIn("--web.listen-address=127.0.0.1:9090", compose)
             self.assertIn("GF_SERVER_HTTP_ADDR: 127.0.0.1", compose)
+            self.assertIn(
+                "--server.http.listen-addr=0.0.0.0:12345", compose
+            )
             self.assertIn('targets: ["127.0.0.1:8080"]', prometheus)
             self.assertIn('targets: ["127.0.0.1:9464"]', prometheus)
             self.assertNotIn("host.docker.internal", compose + prometheus)
@@ -94,6 +97,7 @@ class ObservabilityAssetsTests(unittest.TestCase):
         self.assertIsNotNone(match)
         self.assertGreaterEqual(len(match.group(1).encode("utf-8")), 32)
         self.assertIn("observability stack diagnostics", script)
+        self.assertIn("http://127.0.0.1:12345/-/ready", script)
 
     def test_unstructured_stderr_is_not_ingested_as_json_logs(self) -> None:
         script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(

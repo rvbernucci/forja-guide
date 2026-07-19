@@ -121,6 +121,8 @@ func (reader *PostgresOperationalReader) OperationalSnapshot(
 				  AND attempt.run_id=candidate.run_id
 				  AND attempt.status IN ('queued', 'running', 'succeeded')
 				  AND live_lease.expires_at > clock_timestamp()
+				  AND live_lease.updated_at >
+				      clock_timestamp() - make_interval(secs => $3)
 			   )),
 			(SELECT count(*) FROM forja.leases
 			 WHERE tenant_id=$1 AND repository_id=$2
