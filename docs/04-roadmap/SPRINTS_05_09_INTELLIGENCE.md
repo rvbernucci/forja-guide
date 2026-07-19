@@ -169,7 +169,13 @@ preserving authority and access boundaries.
   before acknowledging delivery. Superseded snapshots tombstone canonical
   point receipts before idempotent Qdrant deletion; failed deletes stay
   fail-closed and retry through the delivery ledger.
-- [ ] Add collection migration and blue-green re-embedding strategy.
+- [x] Add collection migration and blue-green re-embedding strategy. Immutable
+  PostgreSQL generation receipts bind the collection/vector contract; the
+  Qdrant operator verifies a green collection, atomically switches the stable
+  alias, reads it back, retains the prior generation for observation, and
+  permits rollback only when the alias still points to the expected green
+  target. Unit and opt-in live drills cover cutover, rollback, deletion, and
+  replay.
 - [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
 
 ### Acceptance
