@@ -1,4 +1,7 @@
-.PHONY: build check-format smoke smoke-mcp smoke-worker test test-integration test-race validate
+.PHONY: adapters build check-format smoke smoke-mcp smoke-worker test test-integration test-race validate
+
+adapters:
+	npm ci --ignore-scripts --no-audit --no-fund
 
 check-format:
 	@test -z "$$(gofmt -l cmd internal schemas)" || \
@@ -21,6 +24,8 @@ test-integration:
 	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
 		go test -count=1 ./internal/execution \
 		-run '^Test(PipelineApprovedSprintRunsRealWorkerAndPublishes|DeliveryAuthorizationSupportsNewAttemptForSameDelivery)$$'
+	./scripts/rehearse_sprint08_indexing.sh
+	./scripts/rehearse_sprint08_rollback.sh
 	./scripts/rehearse_sprint07_rollback.sh
 	./scripts/rehearse_sprint05_rollback.sh
 	./scripts/smoke_durable_restart.sh
@@ -37,7 +42,7 @@ smoke-mcp:
 smoke-worker:
 	go test -count=1 ./cmd/forja-worker -run TestRunExecutesOneShotWorker
 
-validate: check-format
+validate: adapters check-format
 	go mod verify
 	go vet ./...
 	go test ./...

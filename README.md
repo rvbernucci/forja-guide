@@ -10,8 +10,9 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the closed **Sprint 06 fail-soft observability plane**
-and the in-progress **Sprint 07 artifacts and governed memory candidate** alongside the public
+This repository includes the authoritatively closed **Sprint 07 artifacts and
+governed memory plane** and the in-progress **Sprint 08 deterministic indexing
+candidate** alongside the public
 architecture and roadmap. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
@@ -61,7 +62,7 @@ projection lag, approvals, and crash loops. A pinned local Prometheus, Loki,
 Alloy, Tempo, and Grafana profile provides alerts and a runtime dashboard.
 Telemetry remains disposable and cannot authorize or alter canonical state.
 
-The Sprint 07 candidate adds content-addressed S3-compatible storage behind an
+The closed Sprint 07 plane adds content-addressed S3-compatible storage behind an
 operator-bound adapter, a PostgreSQL-journaled publication and reconciliation
 saga, immutable evidence manifests, conversations and message references,
 human- or policy-governed memory promotion, and tombstone-before-purge
@@ -75,8 +76,17 @@ probe. Artifact references serialize against retention, physical purge binds
 the recorded ETag and provider version, transcript artifact bytes bind the
 canonical final message inventory, and policy memory promotion requires an explicitly
 configured principal with dedicated permission.
-Sprint 07 remains non-authoritative until its independent review and closure
-receipt are published.
+Its protocol-v2 close receipt is published under `docs/evidence/sprint-07`.
+
+The Sprint 08 candidate adds committed-Git extraction for Go, TypeScript,
+JavaScript, and Python; strict file, symbol, relation, and lineage contracts;
+deterministic incremental invalidation; immutable snapshot artifacts; and an
+atomic PostgreSQL event/outbox publication boundary. `forja-index` composes the
+complete Git-to-object-store-to-PostgreSQL path, loads its active baseline, and
+reuses an adapter only when its descriptor and every owned source file remain
+exact. A two-commit command drill proves selective adapter reuse and validates
+the resulting events, outbox records, and receipts. Qdrant and Neo4j remain
+outside this write path and are not yet implemented.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -128,6 +138,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`schemas`](schemas/) | Language-neutral JSON Schema contracts |
 | [`cmd/forjad`](cmd/forjad/) | Experimental Go daemon |
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
+| [`cmd/forja-index`](cmd/forja-index/) | Committed-source deterministic indexing publisher |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
@@ -135,6 +146,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |
 | [`internal/knowledge`](internal/knowledge/) | Governed artifact publication, reconciliation, and retention orchestration |
 | [`internal/objectstore`](internal/objectstore/) | Conditional content-addressed S3 publication and full-body verification |
+| [`internal/indexing`](internal/indexing/) | Git boundary, language adapters, contracts, lineage, and invalidation |
+| [`internal/indexservice`](internal/indexservice/) | Artifact-first canonical index publication saga |
 | [`deploy/observability`](deploy/observability/) | Version-pinned local Prometheus, Loki, Alloy, Tempo, and Grafana stack |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.

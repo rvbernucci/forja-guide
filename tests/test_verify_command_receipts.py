@@ -3,6 +3,7 @@
 import copy
 import hashlib
 import importlib.util
+import json
 import pathlib
 import unittest
 from unittest import mock
@@ -261,6 +262,133 @@ class KnowledgeReceiptEvidenceTests(unittest.TestCase):
         with mock.patch.object(VERIFIER, "load_events", return_value=events), \
              mock.patch.object(VERIFIER, "load_receipts", return_value=[]):
             VERIFIER.verify("events.tsv", "receipts.tsv")
+
+
+class IndexPublicationReceiptTests(unittest.TestCase):
+    """Bind index receipts to the exact validated publication request."""
+
+    tenant_id = "00000000-0000-4000-8000-000000000021"
+    repository_id = "00000000-0000-4000-8000-000000000022"
+    snapshot_id = "snapshot_" + "a" * 64
+
+    def evidence(self, replay=False) -> tuple[dict, list[dict]]:
+        """Return one canonical activation or equivalent-command replay."""
+        response = {
+            "snapshot_id": self.snapshot_id,
+            "schema_version": "1.0",
+            "tenant_id": "tenant_" + self.tenant_id,
+            "repository_id": "repo_" + self.repository_id,
+            "source_commit": "b" * 40,
+            "source_tree": "c" * 40,
+            "configuration_hash": "sha256:" + "d" * 64,
+            "adapter_set_hash": "sha256:" + "e" * 64,
+            "adapters": [],
+            "status": "active",
+            "version": 1,
+            "counts": {
+                "files": 0,
+                "symbols": 0,
+                "relations": 0,
+                "diagnostics": 0,
+            },
+            "artifact_id": "artifact_index_receipt",
+            "artifact_content_hash": "sha256:" + "f" * 64,
+            "created_by": "indexer",
+            "created_at": "2026-07-19T12:00:00Z",
+            "validated_at": "2026-07-19T12:00:01Z",
+        }
+        request_snapshot = dict(response)
+        request_snapshot.pop("validated_at")
+        publication = {
+            "bundle": {
+                "snapshot": request_snapshot,
+                "files": [],
+                "symbols": [],
+                "relations": [],
+            },
+            "adapter_runs": [],
+            "deltas": [],
+            "invalidations": [],
+        }
+        request_identity = VERIFIER.go_json_bytes(publication).decode("utf-8")
+        actor_type = "agent"
+        actor_id = "indexer"
+        causation_id = "run-index-receipt"
+        hash_parts = [
+            "knowledge",
+            "index_publication",
+            request_identity,
+            actor_type,
+            actor_id,
+            causation_id,
+        ]
+        request_hash = hashlib.sha256(
+            "\0".join(hash_parts).encode("utf-8")
+        ).hexdigest()
+        idempotency_key = "index-replay" if replay else "index-activate"
+        event = {
+            "tenant_id": self.tenant_id,
+            "repository_id": self.repository_id,
+            "aggregate_type": "audit" if replay else "index_snapshot",
+            "aggregate_id": "index-replay-id" if replay else self.snapshot_id,
+            "aggregate_version": 1,
+            "event_id": "event-index-replay" if replay else "event-index-activate",
+            "outbox_id": 2 if replay else 1,
+            "event_type": (
+                "index_snapshot.replayed" if replay else "index_snapshot.activated"
+            ),
+            "occurred_us": VERIFIER.parse_utc_us("2026-07-19T12:00:02Z"),
+            "actor_type": actor_type,
+            "actor_id": actor_id,
+            "correlation_id": "correlation-index-receipt",
+            "causation_id": causation_id,
+            "idempotency_key": idempotency_key,
+            "payload": {
+                "snapshot": response,
+                "request_identity_json": request_identity,
+                "request_sha256": request_hash,
+            },
+        }
+        receipt = {
+            "tenant_id": self.tenant_id,
+            "scope": f"index_publish:{self.repository_id}:{self.snapshot_id}",
+            "idempotency_key": idempotency_key,
+            "request_hash": request_hash,
+            "status": 200 if replay else 201,
+            "response": response,
+        }
+        return receipt, [event]
+
+    def test_accepts_activation_with_recomputed_request_identity(self) -> None:
+        """The activation event proves the full publication command hash."""
+        receipt, events = self.evidence()
+        evidence = VERIFIER.verify_receipt(receipt, events)
+        self.assertEqual(evidence["domain_event_ids"], {"event-index-activate"})
+
+    def test_accepts_equivalent_publication_replay(self) -> None:
+        """A different idempotency key has an explicit canonical replay event."""
+        receipt, events = self.evidence(replay=True)
+        evidence = VERIFIER.verify_receipt(receipt, events)
+        self.assertEqual(evidence["domain_event_ids"], {"event-index-replay"})
+
+    def test_rejects_joint_receipt_and_event_hash_tampering(self) -> None:
+        """Matching stored hashes cannot replace recomputation from the request."""
+        receipt, events = self.evidence()
+        receipt["request_hash"] = "0" * 64
+        events[0]["payload"]["request_sha256"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "request hash"):
+            VERIFIER.verify_receipt(receipt, events)
+
+    def test_rejects_request_snapshot_that_differs_from_response(self) -> None:
+        """A receipt cannot pair one publication request with another snapshot."""
+        receipt, events = self.evidence()
+        publication = json.loads(events[0]["payload"]["request_identity_json"])
+        publication["bundle"]["snapshot"]["source_tree"] = "9" * 40
+        events[0]["payload"]["request_identity_json"] = VERIFIER.go_json_bytes(
+            publication
+        ).decode("utf-8")
+        with self.assertRaisesRegex(ValueError, "scope differs"):
+            VERIFIER.verify_receipt(receipt, events)
 
 
 class DeliveryAuthorizationEvidenceTests(unittest.TestCase):

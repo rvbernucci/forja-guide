@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/repository-snapshot.schema.json",
+  "title": "Forja Repository Snapshot",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "snapshot_id", "schema_version", "tenant_id", "repository_id",
+    "source_commit", "source_tree", "configuration_hash",
+    "adapter_set_hash", "adapters", "status", "version", "counts",
+    "created_by", "created_at"
+  ],
+  "properties": {
+    "snapshot_id": {"type": "string", "pattern": "^snapshot_[a-f0-9]{64}$"},
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {"type": "string", "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "source_commit": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+    "source_tree": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+    "configuration_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "adapter_set_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "adapters": {
+      "type": "array", "minItems": 1, "maxItems": 16,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "version", "configuration_hash", "capability_hash"],
+        "properties": {
+          "name": {"enum": ["go", "typescript", "python"]},
+          "version": {"type": "string", "minLength": 1, "maxLength": 80},
+          "configuration_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "capability_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+        }
+      }
+    },
+    "status": {"enum": ["proposed", "extracting", "validated", "active", "failed", "superseded", "invalidated"]},
+    "version": {"type": "integer", "minimum": 1},
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["files", "symbols", "relations", "diagnostics"],
+      "properties": {
+        "files": {"type": "integer", "minimum": 0, "maximum": 1000000},
+        "symbols": {"type": "integer", "minimum": 0, "maximum": 10000000},
+        "relations": {"type": "integer", "minimum": 0, "maximum": 50000000},
+        "diagnostics": {"type": "integer", "minimum": 0, "maximum": 10000000}
+      }
+    },
+    "artifact_id": {"type": "string", "pattern": "^artifact_[A-Za-z0-9_-]+$"},
+    "artifact_content_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "created_by": {"type": "string", "minLength": 1, "maxLength": 160},
+    "created_at": {"type": "string", "format": "date-time"},
+    "validated_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"enum": ["validated", "active", "superseded", "invalidated"]}}},
+      "then": {"required": ["artifact_id", "artifact_content_hash", "validated_at"]}
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["proposed", "extracting", "failed"]}}},
+      "then": {"not": {"anyOf": [{"required": ["artifact_id"]}, {"required": ["artifact_content_hash"]}, {"required": ["validated_at"]}]}}
+    }
+  ]
+}

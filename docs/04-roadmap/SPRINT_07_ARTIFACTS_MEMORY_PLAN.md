@@ -1,6 +1,7 @@
 # Sprint 07 Artifacts, Conversations, and Memory Plan
 
-Status: Candidate pending immutable review
+Status: Closed by the authoritative
+[Sprint 07 receipt](../evidence/sprint-07/close-receipt.json).
 
 The object-storage boundary is governed by
 [ADR-0013](../05-decisions/ADR-0013-CONTENT-ADDRESSED-OBJECT-STORAGE.md).
@@ -129,7 +130,7 @@ gate.
 - [x] Prove tombstones precede purge and derived deletion requests.
 - [x] Rehearse rollback to the authoritative Sprint 06 commit.
 - [x] Run race, integration, security, and independent full-range reviews.
-- [ ] Publish a fail-closed Sprint 07 candidate and close it through the
+- [x] Publish a fail-closed Sprint 07 candidate and close it through the
   two-phase protocol.
 
 ## Acceptance Evidence

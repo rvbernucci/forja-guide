@@ -20,7 +20,8 @@ language.
 13. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
 14. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
 15. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
-16. [Sprint evidence](evidence/)
+16. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
+17. [Sprint evidence](evidence/)
 
 ## Documentation States
 

@@ -35,13 +35,24 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
-          python-version: "3.12"
+          python-version: "3.14.5"
 
       - name: Set up Go
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.5"
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.18.0"
+          cache: npm
+
+      - name: Install pinned language adapter dependencies
+        run: |
+          test "$(node --version | cut -d. -f1)" = "v24"
+          npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Match PostgreSQL client to server
         run: |

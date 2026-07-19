@@ -104,21 +104,25 @@ and residual risk.
 **Outcome:** create canonical repository, symbol, type, schema, and behavior
 metadata before semantic indexing.
 
+**Status:** Implementation complete and independently reviewed; protocol-v2
+closure remains pending and Sprint 09 is not yet authorized. See the
+[Sprint 08 execution plan](SPRINT_08_DETERMINISTIC_INDEXING_PLAN.md).
+
 ### Scope
 
-- [ ] Define `RepositorySnapshot`, `FileCard`, `SymbolCard`, and
+- [x] Define `RepositorySnapshot`, `FileCard`, `SymbolCard`, and
   `RelationEvidence` schemas.
-- [ ] Implement Git change-set and stable entity ID generation.
-- [ ] Implement the TypeScript Compiler API adapter.
-- [ ] Implement the Go `packages/types/ast` adapter.
-- [ ] Implement Python AST structural adapter.
-- [ ] Extract imports, exports, symbols, signatures, references, tests, routes,
+- [x] Implement Git change-set and stable entity ID generation.
+- [x] Implement the TypeScript Compiler API adapter.
+- [x] Implement the Go `packages/types/ast` adapter.
+- [x] Implement Python AST structural adapter.
+- [x] Extract imports, exports, symbols, signatures, references, tests, routes,
   schemas, and generated-file markers.
-- [ ] Add relation confidence and evidence classes.
-- [ ] Create incremental invalidation based on commit and source hashes.
-- [ ] Store canonical index metadata in PostgreSQL and large snapshots in object
+- [x] Add relation confidence and evidence classes.
+- [x] Create incremental invalidation based on commit and source hashes.
+- [x] Store canonical index metadata in PostgreSQL and large snapshots in object
   storage.
-- [ ] Add golden repositories and cross-version fixtures.
+- [x] Add golden repositories and cross-version fixtures.
 
 ### Acceptance
 

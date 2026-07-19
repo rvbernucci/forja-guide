@@ -146,6 +146,17 @@ func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
 	if _, err := tx.Exec(ctx, `
 		DO $$
 		BEGIN
+			IF to_regclass('forja.index_snapshots') IS NOT NULL THEN
+				EXECUTE 'LOCK TABLE
+					forja.index_snapshots,
+					forja.index_files,
+					forja.index_symbols,
+					forja.index_relations,
+					forja.index_adapter_runs,
+					forja.index_deltas,
+					forja.index_invalidations
+				IN ACCESS EXCLUSIVE MODE NOWAIT';
+			END IF;
 			IF to_regclass('forja.artifact_operations') IS NOT NULL THEN
 				EXECUTE 'LOCK TABLE
 					forja.artifact_objects,
@@ -238,9 +249,9 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 			)
 		}
 	}
-	if selected.version == 7 {
+	if selected.version == 7 || selected.version == 8 {
 		if err := lockIncrementalMigrationWriters(ctx, tx); err != nil {
-			return fmt.Errorf("serialize Sprint 07 rollback compatibility check: %w", err)
+			return fmt.Errorf("serialize governed rollback compatibility check: %w", err)
 		}
 	}
 	if _, err := tx.Exec(ctx, selected.down); err != nil {

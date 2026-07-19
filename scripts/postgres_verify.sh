@@ -301,7 +301,7 @@ psql "$FORJA_PG_SAFE_URL" \
     WHERE e.aggregate_type IN (
       'run', 'attempt', 'sprint', 'decision', 'approval', 'audit', 'projection',
       'artifact', 'artifact_operation', 'artifact_manifest', 'conversation',
-      'message', 'memory_candidate', 'memory'
+      'message', 'memory_candidate', 'memory', 'index_snapshot'
     )
     ORDER BY o.outbox_id;
   " >"$work/command-events.tsv"
