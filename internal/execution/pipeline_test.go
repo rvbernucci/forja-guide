@@ -11,10 +11,14 @@ import (
 	"testing"
 	"time"
 
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/delivery"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
@@ -884,14 +888,175 @@ func TestPipelineRefreshesBothAuthoritiesBeforeWorktreeMutation(t *testing.T) {
 			)
 		}
 	}
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	observer := observability.NewObserver(provider, nil)
+	mcpContext, mcpOperation := observer.Start(
+		t.Context(), observability.BoundaryMCP, observability.OperationSubmitSprint,
+	)
 	pipeline, err := NewPipeline(
 		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+		observer,
 	)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := pipeline.Execute(t.Context(), request, fence); err != nil {
-		t.Fatalf("execute with synchronous authority refresh: %v", err)
+	_, executionErr := pipeline.Execute(mcpContext, request, fence)
+	mcpOperation.End(executionErr)
+	if executionErr != nil {
+		t.Fatalf("execute with synchronous authority refresh: %v", executionErr)
+	}
+	assertConnectedPipelineTrace(t, exporter.GetSpans())
+}
+
+func TestPipelineExporterFailureDoesNotChangeCanonicalOutcome(t *testing.T) {
+	request := pipelineRequestFixture(t)
+	fence, repository := authorizedPipelineFixture(t, request)
+	sideEffects := &pipelineSideEffectStub{
+		workerResult: successfulWorkerResult(request),
+		commit: delivery.CommitResult{
+			BaseCommit: request.BaseCommit, ResultCommit: strings.Repeat("c", 40),
+		},
+		bundle: delivery.ValidationBundle{
+			Report: contracts.ValidationReport{Status: "passed"},
+		},
+		publicationResult: delivery.PublicationResult{
+			Receipt: contracts.DeliveryReceipt{Status: "published"}, LeaseReleased: true,
+		},
+	}
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(failingSpanExporter{}))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	pipeline, err := NewPipeline(
+		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+		observability.NewObserver(provider, nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	outcome, err := pipeline.Execute(t.Context(), request, fence)
+	if err != nil {
+		t.Fatalf("telemetry failure changed canonical execution: %v", err)
+	}
+	if outcome.Run.State != string(runstate.StateCompleted) ||
+		outcome.Publication.Receipt.Status != "published" {
+		t.Fatalf("canonical outcome changed by telemetry failure: %#v", outcome)
+	}
+}
+
+type failingSpanExporter struct{}
+
+func (failingSpanExporter) ExportSpans(context.Context, []sdktrace.ReadOnlySpan) error {
+	return errors.New("synthetic telemetry outage")
+}
+
+func (failingSpanExporter) Shutdown(context.Context) error { return nil }
+
+func assertConnectedPipelineTrace(t *testing.T, spans tracetest.SpanStubs) {
+	t.Helper()
+	byName := make(map[string]tracetest.SpanStub, len(spans))
+	for _, span := range spans {
+		byName[span.Name] = span
+	}
+	root, ok := byName["forja.scheduler.execute_delivery"]
+	if !ok {
+		t.Fatalf("scheduler root missing from spans: %#v", spans)
+	}
+	mcpRoot, ok := byName["forja.mcp.submit_sprint"]
+	if !ok {
+		t.Fatalf("synthetic MCP root missing from spans: %#v", spans)
+	}
+	if root.Parent.SpanID() != mcpRoot.SpanContext.SpanID() {
+		t.Fatal("scheduler root is disconnected from the synthetic MCP boundary")
+	}
+	for _, name := range []string{
+		"forja.worker.dispatch_worker",
+		"forja.validation.validate_change",
+		"forja.delivery.publish_change",
+	} {
+		span, ok := byName[name]
+		if !ok {
+			t.Fatalf("pipeline child %q missing from spans: %#v", name, spans)
+		}
+		if span.Parent.SpanID() != root.SpanContext.SpanID() {
+			t.Fatalf("pipeline child %q is disconnected from scheduler root", name)
+		}
+	}
+}
+
+func TestObservedWorkerErrorPrefersCanonicalTerminalReason(t *testing.T) {
+	t.Parallel()
+	result := contracts.WorkerResult{
+		Status: "failed_retryable", TerminationReason: "telemetry_failure",
+	}
+	got := observability.Classify(observedWorkerError(result, errors.New("raw failure")))
+	if got != observability.FailureUnavailable {
+		t.Fatalf("terminal worker reason classified as %q, want %q", got, observability.FailureUnavailable)
+	}
+}
+
+func TestObservedPipelineErrorUsesDurableTerminalOutcome(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		outcome Outcome
+		err     error
+		want    observability.FailureClass
+	}{
+		{
+			name: "validation rejection",
+			outcome: Outcome{Validation: delivery.ValidationBundle{
+				Report: contracts.ValidationReport{Status: "failed"},
+			}},
+			err:  errors.New("validation rejected"),
+			want: observability.FailureValidation,
+		},
+		{
+			name: "blocked worker",
+			outcome: Outcome{Worker: contracts.WorkerResult{
+				Status: "blocked", TerminationReason: "worker_blocked",
+			}},
+			err:  errors.New("worker stopped"),
+			want: observability.FailureWorker,
+		},
+		{
+			name: "worker deadline",
+			outcome: Outcome{Worker: contracts.WorkerResult{
+				Status: "failed_retryable", TerminationReason: "wall_timeout",
+			}},
+			err:  errors.New("worker stopped"),
+			want: observability.FailureDeadline,
+		},
+		{
+			name:    "recovered cancellation",
+			outcome: Outcome{Attempt: persistence.Attempt{Status: "cancelled"}},
+			err:     errors.New("recovered terminal attempt"),
+			want:    observability.FailureCancelled,
+		},
+		{
+			name:    "recovered retryable worker failure",
+			outcome: Outcome{Attempt: persistence.Attempt{Status: "failed_retryable"}},
+			err:     errors.New("recovered terminal attempt"),
+			want:    observability.FailureWorker,
+		},
+		{
+			name: "stable class wins",
+			err:  observability.NewFailure(observability.FailureConflict),
+			want: observability.FailureConflict,
+		},
+		{
+			name: "unknown orchestration failure remains internal",
+			err:  errors.New("unknown"),
+			want: observability.FailureInternal,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			if got := observability.Classify(observedPipelineError(test.outcome, test.err)); got != test.want {
+				t.Fatalf("pipeline outcome classified as %q, want %q", got, test.want)
+			}
+		})
 	}
 }
 
@@ -1430,8 +1595,12 @@ func TestPipelineRecoveryBoundsDetachedPublicationLeaseRenewal(t *testing.T) {
 			Receipt: receipt, LeaseReleased: true,
 		},
 	}
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
 	pipeline, err := NewPipeline(
 		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+		observability.NewObserver(provider, nil),
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -1441,6 +1610,31 @@ func TestPipelineRecoveryBoundsDetachedPublicationLeaseRenewal(t *testing.T) {
 	}
 	if !boundedRenewalObserved {
 		t.Fatal("detached recovery publication renewal did not expose a bounded context")
+	}
+	assertConnectedRecoveryTrace(t, exporter.GetSpans())
+}
+
+func assertConnectedRecoveryTrace(t *testing.T, spans tracetest.SpanStubs) {
+	t.Helper()
+	byName := make(map[string]tracetest.SpanStub, len(spans))
+	for _, span := range spans {
+		byName[span.Name] = span
+	}
+	root, ok := byName["forja.scheduler.recover_delivery"]
+	if !ok {
+		t.Fatalf("recovery root missing from spans: %#v", spans)
+	}
+	for _, name := range []string{
+		"forja.validation.validate_change",
+		"forja.delivery.publish_change",
+	} {
+		span, ok := byName[name]
+		if !ok {
+			t.Fatalf("recovery child %q missing from spans: %#v", name, spans)
+		}
+		if span.Parent.SpanID() != root.SpanContext.SpanID() {
+			t.Fatalf("recovery child %q is disconnected from scheduler root", name)
+		}
 	}
 }
 

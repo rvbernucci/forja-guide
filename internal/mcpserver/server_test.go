@@ -14,11 +14,14 @@ import (
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 
 	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -101,6 +104,30 @@ func TestMCPGovernedLifecycleAndAudit(t *testing.T) {
 	}
 	if audits[3].ToolName != ToolApproveDecision || audits[3].Outcome != "failed" {
 		t.Fatalf("invalid approval audit was not preserved: %#v", audits[3])
+	}
+}
+
+func TestMCPToolProducesContentFreeTrace(t *testing.T) {
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(exporter))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	session, _ := newTestSession(t, observability.NewObserver(provider, nil))
+	secretCorrelation := "corr-mcp-must-not-appear"
+	callTool[control.PlanResult](t, session, ToolPlanSprint, map[string]any{
+		"title": "Observable Sprint", "objective": "Prove the MCP trace boundary",
+		"idempotency_key": "observable-plan-0001", "correlation_id": secretCorrelation,
+	})
+	spans := exporter.GetSpans()
+	if len(spans) != 1 || spans[0].Name != "forja.mcp.plan_sprint" {
+		t.Fatalf("MCP spans = %#v", spans)
+	}
+	if strings.Contains(spans[0].Name, secretCorrelation) {
+		t.Fatal("raw MCP correlation identity leaked into span name")
+	}
+	for _, attribute := range spans[0].Attributes {
+		if strings.Contains(attribute.Value.String(), secretCorrelation) {
+			t.Fatal("raw MCP correlation identity leaked into span attributes")
+		}
 	}
 }
 
@@ -451,7 +478,10 @@ func TestStdioCommandTransport(t *testing.T) {
 	}
 }
 
-func newTestSession(t *testing.T) (*mcp.ClientSession, *control.MemoryRepository) {
+func newTestSession(
+	t *testing.T,
+	observers ...*observability.Observer,
+) (*mcp.ClientSession, *control.MemoryRepository) {
 	t.Helper()
 	repository := control.NewMemoryRepository(clock.Fixed{Time: time.Date(2026, 7, 16, 12, 0, 0, 0, time.UTC)})
 	service, err := control.NewService(repository)
@@ -467,7 +497,7 @@ func newTestSession(t *testing.T) (*mcp.ClientSession, *control.MemoryRepository
 	if err != nil {
 		t.Fatal(err)
 	}
-	adapter, err := New(service, FixedPrincipalResolver{Principal: principal}, "test")
+	adapter, err := New(service, FixedPrincipalResolver{Principal: principal}, "test", observers...)
 	if err != nil {
 		t.Fatal(err)
 	}

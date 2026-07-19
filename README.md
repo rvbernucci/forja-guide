@@ -10,8 +10,8 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the closed **Sprint 04 bounded worker supervisor** and
-the in-progress **Sprint 05 isolated delivery boundary** alongside the public
+This repository includes the closed **Sprint 05 isolated delivery boundary** and
+the in-progress **Sprint 06 observability plane** alongside the public
 architecture and roadmap. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
@@ -52,6 +52,14 @@ Sprint 04 is not a production
 confidentiality boundary: workers require a dedicated disposable host until
 separate-identity containment and credential brokerage close the documented
 Sprint 12 gate.
+
+The in-progress Sprint 06 plane adds W3C-propagated OpenTelemetry traces across
+MCP, HTTP, scheduler, worker, validation, delivery, and PostgreSQL boundaries;
+closed-label Prometheus metrics; context-derived trace IDs in redacted JSON
+logs; and a read-only operational collector for stuck work, leases, outbox,
+projection lag, approvals, and crash loops. A pinned local Prometheus, Loki,
+Alloy, Tempo, and Grafana profile provides alerts and a runtime dashboard.
+Telemetry remains disposable and cannot authorize or alter canonical state.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -107,6 +115,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
+| [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |
+| [`deploy/observability`](deploy/observability/) | Version-pinned local Prometheus, Loki, Alloy, Tempo, and Grafana stack |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.
 

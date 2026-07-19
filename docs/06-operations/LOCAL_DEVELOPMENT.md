@@ -1,6 +1,6 @@
 # Local Development
 
-Status: Sprint 04 closed; Sprint 05 implementation complete and closure pending
+Status: Sprint 05 closed; Sprint 06 observability implementation in progress
 
 ## Current Repository
 
@@ -171,6 +171,14 @@ go run ./cmd/forja run transition \
 
 See the [PostgreSQL recovery runbook](POSTGRESQL_RECOVERY.md).
 
+## Observability
+
+The daemon exposes bounded Prometheus metrics and optional OTLP traces. The
+version-pinned local Prometheus, Loki, Alloy, Tempo, and Grafana profile lives
+in [`deploy/observability`](../../deploy/observability/). Follow the
+[observability runbook](OBSERVABILITY_OPERATIONS.md); telemetry is always a
+derived plane and never authorizes or repairs canonical state.
+
 ## Later Runtime Prerequisites
 
 - Docker or a compatible container runtime;
@@ -229,6 +237,10 @@ Implemented daemon variables are:
 | `FORJA_HTTP_ACTOR_TYPE` | HTTP principal type; defaults to `human` |
 | `FORJA_MCP_ACTOR_ID` | Required authenticated identity for stdio MCP |
 | `FORJA_MCP_ACTOR_TYPE` | Capability profile: `agent` (default, no decide/resume), `worker` (read only), or explicitly trusted `human`/`system` (all control capabilities) |
+| `FORJA_MCP_METRICS_LISTEN` | Loopback Prometheus endpoint for the stdio MCP process; defaults to `127.0.0.1:9464`, or `off` |
+| `FORJA_OTEL_ENABLED` | Enable fail-soft OTLP trace export, default `false` |
+| `FORJA_TRACE_SAMPLE_RATIO` | Root trace sample ratio from `0` to `1`, default `0.1` |
+| `FORJA_TRACEPARENT` | Optional bounded W3C `traceparent` passed to a one-shot worker process; baggage is never accepted |
 | `FORJA_ENDPOINT` | CLI daemon endpoint |
 | `FORJA_TIMEOUT` | CLI request deadline |
 | `CODEX_HOME` | Deployment-owned Codex authentication root passed only to the Codex adapter |

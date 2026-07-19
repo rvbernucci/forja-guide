@@ -16,6 +16,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/delivery"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
@@ -139,6 +140,7 @@ type Pipeline struct {
 	registry          *contracts.Registry
 	ownerID           string
 	heartbeatInterval func(time.Duration) time.Duration
+	observer          *observability.Observer
 }
 
 // NewPipeline constructs one repository-bound orchestration pipeline.
@@ -149,6 +151,7 @@ func NewPipeline(
 	validator Validator,
 	publisher Publisher,
 	ownerID string,
+	observers ...*observability.Observer,
 ) (*Pipeline, error) {
 	if repository == nil || worktrees == nil || worker == nil || validator == nil || publisher == nil {
 		return nil, fmt.Errorf("execution pipeline requires repository, worktree, worker, validator, and publisher services")
@@ -156,6 +159,13 @@ func NewPipeline(
 	ownerID = strings.TrimSpace(ownerID)
 	if ownerID == "" || len(ownerID) > 160 {
 		return nil, fmt.Errorf("execution pipeline owner ID must contain between 1 and 160 bytes")
+	}
+	if len(observers) > 1 {
+		return nil, fmt.Errorf("execution pipeline accepts at most one observer")
+	}
+	observer := observability.NewObserver(nil, nil)
+	if len(observers) == 1 && observers[0] != nil {
+		observer = observers[0]
 	}
 	registry, err := contracts.NewRegistry()
 	if err != nil {
@@ -170,6 +180,7 @@ func NewPipeline(
 		registry:          registry,
 		ownerID:           ownerID,
 		heartbeatInterval: deliveryHeartbeatInterval,
+		observer:          observer,
 	}, nil
 }
 
@@ -184,6 +195,13 @@ func (p *Pipeline) Execute(
 	if ctx == nil {
 		return Outcome{}, fmt.Errorf("execution context is required")
 	}
+	ctx, operation := p.observer.Start(
+		ctx,
+		observability.BoundaryScheduler,
+		observability.OperationExecuteDelivery,
+	)
+	observability.AddCorrelation(ctx, request.RunID, &request.AttemptID)
+	defer func() { operation.End(observedPipelineError(outcome, resultErr)) }()
 	if err := validateDeliveryRequestDocument(p.registry, request); err != nil {
 		return Outcome{}, fmt.Errorf("validate approved delivery request: %w", err)
 	}
@@ -395,7 +413,13 @@ func (p *Pipeline) Execute(
 	outcome.Run = run
 
 	workerTask := workerTaskFrom(request, worktree)
-	workerResult, workerErr := p.worker.Execute(executionCtx, workerTask)
+	workerContext, workerOperation := p.observer.Start(
+		executionCtx,
+		observability.BoundaryWorker,
+		observability.OperationDispatchWorker,
+	)
+	workerResult, workerErr := p.worker.Execute(workerContext, workerTask)
+	workerOperation.End(observedWorkerError(workerResult, workerErr))
 	// Stop the guard before persisting the attempt so its final renewal outcome
 	// and the durable worker status cannot disagree after a restart.
 	leaseSet, guardErr := guard.Stop()
@@ -551,7 +575,7 @@ func (p *Pipeline) Execute(
 	}
 	outcome.Run = run
 
-	bundle, err := p.validator.Validate(executionCtx, request, commit)
+	bundle, err := p.validateObserved(executionCtx, request, commit)
 	if err != nil {
 		return outcome, errors.Join(
 			fmt.Errorf("validate result commit: %w", err),
@@ -618,7 +642,7 @@ func (p *Pipeline) Execute(
 		)
 	}
 
-	publication, publicationErr := p.publisher.Publish(
+	publication, publicationErr := p.publishObserved(
 		publicationCtx, request, commit, bundle, leaseSet,
 	)
 	cancelPublication()
@@ -677,6 +701,126 @@ func (p *Pipeline) Execute(
 		outcome.Run = run
 	}
 	return outcome, errors.Join(publicationErr, transitionErr)
+}
+
+func observedWorkerError(result contracts.WorkerResult, err error) error {
+	if result.Status == "" || result.Status == "succeeded" {
+		return err
+	}
+	switch result.TerminationReason {
+	case "cancelled":
+		return context.Canceled
+	case "wall_timeout", "inactivity_timeout":
+		return context.DeadlineExceeded
+	case "budget_rejected", "output_limit", "input_token_limit",
+		"output_token_limit", "tool_call_limit":
+		return observability.NewFailure(observability.FailureResourceLimit)
+	case "start_failure", "telemetry_failure":
+		return observability.NewFailure(observability.FailureUnavailable)
+	default:
+		return observability.NewFailure(observability.FailureWorker)
+	}
+}
+
+// observedPipelineError preserves an already stable failure class and derives
+// routine terminal outcomes from the durable stage result when the returned
+// orchestration error is intentionally generic.
+func observedPipelineError(outcome Outcome, err error) error {
+	if err == nil || observability.Classify(err) != observability.FailureInternal {
+		return err
+	}
+	if outcome.Validation.Report.Status != "" && outcome.Validation.Report.Status != "passed" {
+		return observability.NewFailure(observability.FailureValidation)
+	}
+	if outcome.Worker.Status != "" && outcome.Worker.Status != "succeeded" {
+		return observedWorkerError(outcome.Worker, err)
+	}
+	switch outcome.Attempt.Status {
+	case "cancelled":
+		return context.Canceled
+	case "blocked", "failed_retryable", "failed_terminal":
+		return observability.NewFailure(observability.FailureWorker)
+	default:
+		return err
+	}
+}
+
+func (p *Pipeline) loadValidationObserved(
+	ctx context.Context,
+	request contracts.DeliveryRequest,
+) (delivery.ValidationBundle, error) {
+	ctx, operation := p.observer.Start(
+		ctx, observability.BoundaryValidation, observability.OperationValidateChange,
+	)
+	bundle, err := p.validator.Load(ctx, request)
+	operation.End(observedValidationError(bundle, err))
+	return bundle, err
+}
+
+func (p *Pipeline) validateObserved(
+	ctx context.Context,
+	request contracts.DeliveryRequest,
+	commit delivery.CommitResult,
+) (delivery.ValidationBundle, error) {
+	ctx, operation := p.observer.Start(
+		ctx, observability.BoundaryValidation, observability.OperationValidateChange,
+	)
+	bundle, err := p.validator.Validate(ctx, request, commit)
+	operation.End(observedValidationError(bundle, err))
+	return bundle, err
+}
+
+func observedValidationError(bundle delivery.ValidationBundle, err error) error {
+	if err != nil {
+		if errors.Is(err, delivery.ErrValidationEvidenceNotFound) {
+			return observability.NewFailure(observability.FailureNotFound)
+		}
+		return err
+	}
+	if bundle.Report.Status != "passed" {
+		return observability.NewFailure(observability.FailureValidation)
+	}
+	return nil
+}
+
+func (p *Pipeline) publishObserved(
+	ctx context.Context,
+	request contracts.DeliveryRequest,
+	commit delivery.CommitResult,
+	bundle delivery.ValidationBundle,
+	leaseSet persistence.LeaseSet,
+) (delivery.PublicationResult, error) {
+	ctx, operation := p.observer.Start(
+		ctx, observability.BoundaryDelivery, observability.OperationPublishChange,
+	)
+	publication, err := p.publisher.Publish(ctx, request, commit, bundle, leaseSet)
+	operation.End(observedPublicationError(publication, err))
+	return publication, err
+}
+
+func (p *Pipeline) recoverPublicationObserved(
+	ctx context.Context,
+	request contracts.DeliveryRequest,
+	commit delivery.CommitResult,
+	bundle delivery.ValidationBundle,
+	leaseSet persistence.LeaseSet,
+) (delivery.PublicationResult, error) {
+	ctx, operation := p.observer.Start(
+		ctx, observability.BoundaryDelivery, observability.OperationPublishChange,
+	)
+	publication, err := p.publisher.Recover(ctx, request, commit, bundle, leaseSet)
+	operation.End(observedPublicationError(publication, err))
+	return publication, err
+}
+
+func observedPublicationError(publication delivery.PublicationResult, err error) error {
+	if err != nil {
+		return err
+	}
+	if publication.Receipt.Status != "published" {
+		return observability.NewFailure(observability.FailureUnavailable)
+	}
+	return nil
 }
 
 func (p *Pipeline) authorize(

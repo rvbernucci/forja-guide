@@ -78,3 +78,9 @@ jobs:
           FORJA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
           PGPASSWORD: postgres
         run: make test-integration
+
+      - name: Rehearse observability stack on clean Linux host
+        env:
+          FORJA_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
+          PGPASSWORD: postgres
+        run: scripts/observability_stack_smoke.sh

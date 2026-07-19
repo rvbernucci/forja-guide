@@ -1,53 +1,60 @@
 # Observability Architecture
 
-Status: Proposed
+Status: Sprint 06 foundation implemented; closure pending
+
+The trust, propagation, persistence, and failure behavior of this subsystem is
+recorded in
+[ADR-0012](../05-decisions/ADR-0012-FAIL-SOFT-CONTENT-FREE-OBSERVABILITY.md).
 
 ## Stack
 
-- OpenTelemetry for context propagation and telemetry generation.
+- OpenTelemetry for W3C context propagation and content-free traces.
 - Prometheus for metrics.
 - Loki for structured logs.
 - Grafana for dashboards and alert exploration.
-- Object storage for long-term evidence bundles.
+- Tempo for local trace exploration.
+- Object storage for long-term evidence bundles beginning in Sprint 07.
 
 ## Correlation IDs
 
-Every signal carries, when applicable:
+Structured logs may carry the canonical trace and span IDs derived from their
+Go context. High-cardinality business identifiers are not metric labels.
+Traces may carry irreversible hashes for correlation and causation, but never
+their raw values. The current stable span attributes are:
 
 ```text
-tenant_id
-repository_id
-sprint_id
-run_id
-task_id
-attempt_id
-worker_id
-trace_id
-model_provider
-model_name
-tool_name
+forja.boundary
+forja.operation
+forja.outcome
+forja.failure_class
+forja.correlation_hash
+forja.causation_hash
 ```
 
-Prometheus labels must remain low-cardinality. High-cardinality identifiers
-belong in logs and traces.
+A synthetic governed-delivery test proves one connected trace tree from an MCP
+parent context through scheduler, worker dispatch, independent validation, and
+publication. This verifies context composition without claiming a public MCP
+scheduler command; that product surface remains outside Sprint 06.
+
+Prometheus labels are closed enums. Tenant, repository, Sprint, Run, task,
+attempt, worker, correlation, and causation identifiers are forbidden labels.
 
 ## Metrics
 
-Core metrics:
+Implemented foundation metrics:
 
-- run duration and queue delay;
-- state transition counts;
-- worker starts, exits, timeouts, and cancellations;
-- retry and recovery counts;
-- lease contention and expiration;
-- validation pass rate;
-- approval latency;
-- context retrieval latency and candidate counts;
-- graph path success and gap rate;
-- Qdrant and Neo4j projection lag;
-- token and model cost;
-- evidence completeness;
-- operator intervention rate.
+- boundary operation count, duration, outcome, and stable failure class;
+- in-flight operations;
+- telemetry-plane failures;
+- stuck active runs and expired leases;
+- pending, in-flight, and dead outbox rows;
+- canonical outbox-to-projection checkpoint lag;
+- pending approval count;
+- worker crash-loop count;
+- process and Go runtime metrics.
+
+Retrieval quality, graph quality, model cost, token budgets, and evidence
+completeness are added only with the subsystems that own those measurements.
 
 ## Logs
 
@@ -59,21 +66,23 @@ Logs are structured JSON and never contain:
 - customer content without explicit classification;
 - unredacted command output.
 
-Large worker logs are written to object storage and referenced from canonical
-artifact metadata.
+Worker output is currently bounded before persistence. PostgreSQL attempt
+events retain only hashes, termination metadata, usage, and bounded evidence
+references, not stdout or stderr bodies. Durable large-log object storage and
+retention are Sprint 07 work.
 
 ## Dashboards
 
-Initial dashboards:
+The provisioned Sprint 06 dashboard covers:
 
-1. Factory overview.
-2. Active runs and queue.
-3. Worker health and saturation.
-4. Validation and failure taxonomy.
-5. Retrieval and graph quality.
-6. Projection freshness.
-7. Cost and token budgets.
-8. Approvals and security events.
+1. Operational state collection health.
+2. Active anomaly counts and projection freshness.
+3. Operation throughput and P95 boundary latency.
+4. Stable failure taxonomy.
+5. Redacted JSON logs.
+
+Retrieval, graph, and model-cost dashboards remain intentionally absent until
+their canonical producers exist.
 
 ## SLO Candidates
 
@@ -86,4 +95,3 @@ Initial dashboards:
 - evidence completeness.
 
 SLOs become binding only after baseline measurement.
-

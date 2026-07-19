@@ -43,7 +43,12 @@ type Store struct {
 }
 
 // Open validates a pool configuration and establishes bounded connections.
-func Open(ctx context.Context, databaseURL string, maxConnections int32) (*pgxpool.Pool, error) {
+func Open(
+	ctx context.Context,
+	databaseURL string,
+	maxConnections int32,
+	queryTracers ...pgx.QueryTracer,
+) (*pgxpool.Pool, error) {
 	if strings.TrimSpace(databaseURL) == "" {
 		return nil, fault.New(
 			fault.CodeInvalidArgument,
@@ -68,6 +73,16 @@ func Open(ctx context.Context, databaseURL string, maxConnections int32) (*pgxpo
 		)
 	}
 	config.MaxConns = maxConnections
+	if len(queryTracers) > 1 {
+		return nil, fault.New(
+			fault.CodeInvalidArgument,
+			"postgres.Open",
+			"at most one PostgreSQL query tracer is supported",
+		)
+	}
+	if len(queryTracers) == 1 {
+		config.ConnConfig.Tracer = queryTracers[0]
+	}
 	config.MinConns = 0
 	config.MaxConnIdleTime = 5 * time.Minute
 	config.MaxConnLifetime = time.Hour

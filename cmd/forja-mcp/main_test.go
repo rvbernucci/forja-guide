@@ -3,11 +3,65 @@ package main
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
+	"net/http"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/rvbernucci/forja-guide/internal/control"
 )
+
+func TestMCPMetricsListenDefaultsToLoopbackAndRejectsRemoteBind(t *testing.T) {
+	t.Parallel()
+	listen, err := mcpMetricsListen(func(string) (string, bool) { return "", false })
+	if err != nil || listen != defaultMCPMetricsListen {
+		t.Fatalf("default metrics listen = %q, %v", listen, err)
+	}
+	if _, err := mcpMetricsListen(func(string) (string, bool) {
+		return "0.0.0.0:9464", true
+	}); err == nil {
+		t.Fatal("remote MCP metrics bind was accepted")
+	}
+}
+
+func TestMCPMetricsEndpointServesAndShutsDown(t *testing.T) {
+	t.Parallel()
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	endpoint, err := startMCPMetricsEndpoint(
+		"127.0.0.1:0",
+		http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+			_, _ = io.WriteString(writer, "forja_test_metric 1\n")
+		}),
+		logger,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { endpoint.shutdown(logger) })
+	request, err := http.NewRequestWithContext(
+		t.Context(),
+		http.MethodGet,
+		"http://"+endpoint.listener.Addr().String(),
+		nil,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(body), "forja_test_metric 1") {
+		t.Fatalf("unexpected metrics body %q", body)
+	}
+}
 
 func TestStdioPermissionsSeparateProposalFromDecisionAuthority(t *testing.T) {
 	tests := []struct {

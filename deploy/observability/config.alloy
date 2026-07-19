@@ -1,0 +1,22 @@
+logging {
+  level  = "info"
+  format = "logfmt"
+}
+
+local.file_match "forja" {
+  path_targets = [{
+    "__path__"     = "/var/log/forja/*.jsonl",
+    "service_name" = "forja",
+  }]
+}
+
+loki.source.file "forja" {
+  targets    = local.file_match.forja.targets
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

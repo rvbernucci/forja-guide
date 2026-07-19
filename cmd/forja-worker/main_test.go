@@ -115,6 +115,17 @@ func TestRunRejectsInvalidAndOversizedTasks(t *testing.T) {
 	}
 }
 
+func TestEnvironmentLookupUsesLastExactAssignment(t *testing.T) {
+	t.Parallel()
+	lookup := environmentLookup([]string{"A=first", "AB=wrong", "A=second", "invalid"})
+	if value, ok := lookup("A"); !ok || value != "second" {
+		t.Fatalf("A = %q, %v", value, ok)
+	}
+	if _, ok := lookup("missing"); ok {
+		t.Fatal("missing environment key was invented")
+	}
+}
+
 func validCLITask(repository, evidence string) contracts.WorkerTask {
 	return contracts.WorkerTask{
 		TaskID:            "task_00000000-0000-4000-8000-000000000001",
@@ -131,8 +142,10 @@ func validCLITask(repository, evidence string) contracts.WorkerTask {
 		EvidenceOutputDir: evidence,
 		AttemptOrdinal:    1,
 		Budgets: contracts.WorkerBudgets{
-			WallClockMS:         6000,
-			InactivityMS:        2500,
+			// This is an integration fixture, not a timeout-behavior test. Leave
+			// enough headroom for process startup under a concurrent full suite.
+			WallClockMS:         15000,
+			InactivityMS:        7500,
 			MaxOutputBytes:      4096,
 			CancellationGraceMS: 50,
 			MaxRetries:          1,

@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const redacted = "[REDACTED]"
@@ -54,18 +56,35 @@ func (h *redactingHandler) Handle(ctx context.Context, record slog.Record) error
 	}
 	clean := slog.NewRecord(record.Time, record.Level, message, record.PC)
 	record.Attrs(func(attribute slog.Attr) bool {
+		if reservedTraceKey(attribute.Key) {
+			return true
+		}
 		clean.AddAttrs(redactAttr(attribute))
 		return true
 	})
+	spanContext := trace.SpanContextFromContext(ctx)
+	if spanContext.IsValid() {
+		clean.AddAttrs(
+			slog.String("trace_id", spanContext.TraceID().String()),
+			slog.String("span_id", spanContext.SpanID().String()),
+		)
+	}
 	return h.inner.Handle(ctx, clean)
 }
 
 func (h *redactingHandler) WithAttrs(attributes []slog.Attr) slog.Handler {
 	clean := make([]slog.Attr, 0, len(attributes))
 	for _, attribute := range attributes {
+		if reservedTraceKey(attribute.Key) {
+			continue
+		}
 		clean = append(clean, redactAttr(attribute))
 	}
 	return &redactingHandler{inner: h.inner.WithAttrs(clean)}
+}
+
+func reservedTraceKey(key string) bool {
+	return key == "trace_id" || key == "span_id"
 }
 
 func (h *redactingHandler) WithGroup(name string) slog.Handler {

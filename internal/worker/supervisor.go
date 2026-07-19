@@ -20,6 +20,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	publicschemas "github.com/rvbernucci/forja-guide/schemas"
 )
 
@@ -38,6 +39,7 @@ type Supervisor struct {
 	events    EventSink
 	environ   []string
 	now       func() time.Time
+	observer  *observability.Observer
 }
 
 // NewSupervisor creates one bounded worker supervisor.
@@ -47,6 +49,7 @@ func NewSupervisor(
 	isolation InvocationIsolationPolicy,
 	events EventSink,
 	environ []string,
+	observers ...*observability.Observer,
 ) (*Supervisor, error) {
 	if registry == nil {
 		return nil, fmt.Errorf("worker supervisor requires a contract registry")
@@ -67,6 +70,13 @@ func NewSupervisor(
 	if environ == nil {
 		environ = os.Environ()
 	}
+	if len(observers) > 1 {
+		return nil, fmt.Errorf("worker supervisor accepts at most one observer")
+	}
+	observer := observability.NewObserver(nil, nil)
+	if len(observers) == 1 && observers[0] != nil {
+		observer = observers[0]
+	}
 	return &Supervisor{
 		registry:  registry,
 		adapter:   adapter,
@@ -74,6 +84,7 @@ func NewSupervisor(
 		events:    events,
 		environ:   append([]string(nil), environ...),
 		now:       time.Now,
+		observer:  observer,
 	}, nil
 }
 
@@ -81,7 +92,16 @@ func NewSupervisor(
 func (s *Supervisor) Execute(
 	ctx context.Context,
 	task contracts.WorkerTask,
-) (contracts.WorkerResult, error) {
+) (output contracts.WorkerResult, executeErr error) {
+	ctx, operation := s.observer.Start(
+		ctx,
+		observability.BoundaryWorker,
+		observability.OperationRunWorker,
+	)
+	observability.AddCorrelation(ctx, task.RunID, &task.AttemptID)
+	defer func() {
+		operation.End(observedWorkerExecutionError(output, executeErr))
+	}()
 	if err := s.validateTask(ctx, task); err != nil {
 		return contracts.WorkerResult{}, err
 	}
@@ -239,6 +259,29 @@ func (s *Supervisor) Execute(
 	validationErr := s.validateResult(result)
 	finishErr := s.emitFinished(context.WithoutCancel(ctx), task, result)
 	return result, errors.Join(eventErr, contaminationErr, validationErr, finishErr)
+}
+
+func workerObservationError(result contracts.WorkerResult) error {
+	switch result.TerminationReason {
+	case "cancelled":
+		return context.Canceled
+	case "wall_timeout", "inactivity_timeout":
+		return context.DeadlineExceeded
+	case "budget_rejected", "output_limit", "input_token_limit",
+		"output_token_limit", "tool_call_limit":
+		return observability.NewFailure(observability.FailureResourceLimit)
+	case "start_failure", "telemetry_failure":
+		return observability.NewFailure(observability.FailureUnavailable)
+	default:
+		return observability.NewFailure(observability.FailureWorker)
+	}
+}
+
+func observedWorkerExecutionError(result contracts.WorkerResult, err error) error {
+	if result.Status == "" || result.Status == "succeeded" {
+		return err
+	}
+	return workerObservationError(result)
 }
 
 func (s *Supervisor) monitor(

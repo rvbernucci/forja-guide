@@ -19,7 +19,41 @@ import (
 	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 )
+
+func TestWorkerObservationUsesStableFailureTaxonomy(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		reason string
+		want   observability.FailureClass
+	}{
+		{"cancelled", observability.FailureCancelled},
+		{"wall_timeout", observability.FailureDeadline},
+		{"inactivity_timeout", observability.FailureDeadline},
+		{"output_limit", observability.FailureResourceLimit},
+		{"start_failure", observability.FailureUnavailable},
+		{"process_failure", observability.FailureWorker},
+		{"worker_blocked", observability.FailureWorker},
+	}
+	for _, test := range tests {
+		result := contracts.WorkerResult{TerminationReason: test.reason}
+		if got := observability.Classify(workerObservationError(result)); got != test.want {
+			t.Fatalf("reason %q classified as %q, want %q", test.reason, got, test.want)
+		}
+	}
+}
+
+func TestWorkerObservationPrefersTerminalReasonWhenExecutionAlsoErrors(t *testing.T) {
+	t.Parallel()
+	result := contracts.WorkerResult{
+		Status: "failed_retryable", TerminationReason: "telemetry_failure",
+	}
+	observedErr := observedWorkerExecutionError(result, errors.New("raw failure"))
+	if got := observability.Classify(observedErr); got != observability.FailureUnavailable {
+		t.Fatalf("terminal worker reason classified as %q, want %q", got, observability.FailureUnavailable)
+	}
+}
 
 type processAdapter struct {
 	mode       string
