@@ -93,8 +93,14 @@ symbol projector writes Qdrant first, records canonical point provenance in
 PostgreSQL, and only then acknowledges its fenced delivery. The operator
 adapter can create physical collections, apply required payload indexes, and
 verify physical generation, vector dimensions, strict filtering and payload
-indexes, then atomically switch a verified alias; alias observation, rebuild,
-rollback, the evaluation harness, and Neo4j remain pending.
+indexes, then atomically switch a verified alias. Live blue-green cutover,
+guarded rollback, derived-store deletion/replay, and a schema-validated offline
+evaluation harness are implemented. The retrieval plane now also includes a
+Bedrock Titan v2 adapter using the AWS SDK for Go v2 and the standard AWS
+credential chain; production activation still requires a workload-role
+deployment, region/model-access evidence, private evaluation results, and the
+remaining canonical card families. Neo4j traversal remains pending for Sprint
+10.
 
 When a canonical snapshot is superseded, the projector first tombstones every
 affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the

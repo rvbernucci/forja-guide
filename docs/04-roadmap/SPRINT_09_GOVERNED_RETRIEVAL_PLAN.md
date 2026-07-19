@@ -6,7 +6,8 @@ Status: In progress. Authorized by the authoritative
 The retrieval boundary is governed by
 [ADR-0002](../05-decisions/ADR-0002-POSTGRES-SYSTEM-OF-RECORD.md),
 [ADR-0003](../05-decisions/ADR-0003-DERIVED-INTELLIGENCE-STORES.md), and
-[ADR-0015](../05-decisions/ADR-0015-GOVERNED-HYBRID-RETRIEVAL.md).
+[ADR-0015](../05-decisions/ADR-0015-GOVERNED-HYBRID-RETRIEVAL.md), and
+[ADR-0016](../05-decisions/ADR-0016-BEDROCK-TITAN-EMBEDDING-PROVIDER.md).
 
 ## Outcome
 
@@ -27,6 +28,9 @@ payload to establish identity, authority, freshness, or access.
 - Embedding providers receive only the governed textual card or query. Provider
   output must match the configured model, version, dimensions, and finite-value
   contract before publication or search.
+- The selected implementation provider is Bedrock Titan Text Embeddings v2
+  through the AWS SDK for Go v2. Its production identity is an AWS workload
+  role; legacy Coolify bearer credentials are outside the Forja adapter.
 - Projection writes consume canonical outbox history through independent,
   fenced per-projector delivery state. They never participate in the source
   transaction and cannot mark the canonical event globally authoritative.
@@ -152,6 +156,10 @@ documentation evidence.
 
 ### 5. Runtime, observability, and operations
 
+- [x] Add a Bedrock Titan v2 embedding adapter using the AWS SDK for Go v2,
+  standard AWS credential chain, bounded request/response handling, and
+  fail-closed provider output validation. Production activation still requires
+  an explicit region/model-access receipt and a workload-role deployment.
 - [ ] Add a bounded one-shot projection and query CLI without embedding secrets
   in process arguments or output.
 - [x] Add low-cardinality metrics and traces for latency, checkpoint lag, and
