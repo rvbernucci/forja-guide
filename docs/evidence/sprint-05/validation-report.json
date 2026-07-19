@@ -1,0 +1,78 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "05",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+  "validators": [
+    {
+      "name": "protected main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29665750739",
+      "head_sha": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+      "database": "PostgreSQL 18"
+    },
+    {
+      "name": "restart-recovery hardening pull request workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29665599912",
+      "head_sha": "85b508f24e66204094e59cd728fedad60ac1de2a"
+    },
+    {
+      "name": "isolated Codex CLI implementation review chain",
+      "type": "independent",
+      "result": "findings_resolved",
+      "model": "gpt-5.6-sol",
+      "reviewed_commit": "c2549e4e3c416410fe39996f43d6293ecb131d60",
+      "reviewed_range_base": "d6eda8dc12a5ecf5a6e2783f7302a6d38a9b9ed4",
+      "artifact_path": "docs/evidence/sprint-05/reviews/merged-implementation-review.md",
+      "artifact_sha256": "b8cb1450ebb909349674a53a443a501640b7a80499bfaa04a0ad8724eedd3071",
+      "summary": "Iterative review and exact-public-commit follow-up resolved three post-merge recovery findings; the final public implementation review reported no actionable correctness issue."
+    },
+    {
+      "name": "CodeRabbit pull request status context",
+      "type": "automated_status",
+      "result": "completed_without_review_due_to_rate_limit",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/33",
+      "summary": "The status completed successfully, but the service explicitly reported that no review ran because its usage limit was reached. It is not counted as independent validation."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit after this non-authoritative package is published to main."
+    }
+  ],
+  "resolved_review_findings": {
+    "post_merge_count": 3,
+    "themes": [
+      "pre-upgrade run-event replay compatibility",
+      "publication recovery after external evidence loss",
+      "durable Git reconciliation marker precedence"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "one independently approved task reaches a validated namespaced publication",
+      "result": "proven"
+    },
+    {
+      "criterion": "concurrent or stale authors cannot share delivery authority",
+      "result": "proven"
+    },
+    {
+      "criterion": "worker output cannot widen write, commit, validation, or publication authority",
+      "result": "proven"
+    },
+    {
+      "criterion": "restart recovery uses durable evidence and requires no manual database edits",
+      "result": "proven"
+    },
+    {
+      "criterion": "rollback either demonstrates Sprint 04 compatibility or refuses unsafe history loss",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-18T23:49:40Z"
+}
