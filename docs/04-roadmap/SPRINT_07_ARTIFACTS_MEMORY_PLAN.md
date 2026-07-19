@@ -69,25 +69,25 @@ gate.
 
 ### 1. Contracts and persistence boundary
 
-- [ ] Publish strict conversation, message, memory-candidate, memory-record,
+- [x] Publish strict conversation, message, memory-candidate, memory-record,
   and artifact-bundle-manifest schemas.
-- [ ] Preserve the released `artifact.schema.json` 1.0 contract unchanged.
-- [ ] Add semantic Go validation for ordering, hashes, lifecycle coupling, and
+- [x] Preserve the released `artifact.schema.json` 1.0 contract unchanged.
+- [x] Add semantic Go validation for ordering, hashes, lifecycle coupling, and
   duplicate references.
-- [ ] Record the PostgreSQL/S3 saga and memory-promotion decisions in ADRs.
-- [ ] Define bounded object, manifest, message, and citation limits.
+- [x] Record the PostgreSQL/S3 saga and memory-promotion decisions in ADRs.
+- [x] Define bounded object, manifest, message, and citation limits.
 
 ### 2. PostgreSQL authority
 
-- [ ] Add migration 007 with artifact blobs, artifact records, operation
+- [x] Add migration 007 with artifact blobs, artifact records, operation
   journal, conversations, messages, content parts, citations, memory
   candidates, memory records, supersession edges, and bundle entries.
-- [ ] Enforce tenant and repository ownership through composite keys.
-- [ ] Protect immutable messages, content parts, citations, and bundle entries
+- [x] Enforce tenant and repository ownership through composite keys.
+- [x] Protect immutable messages, content parts, citations, and bundle entries
   from update or delete.
 - [ ] Commit aggregate state, append-only event, outbox row, and idempotency
   receipt atomically.
-- [ ] Extend schema verification and rollback compatibility checks.
+- [x] Extend schema verification and rollback compatibility checks.
 
 ### 3. Content-addressed object storage
 

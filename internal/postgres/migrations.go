@@ -143,6 +143,25 @@ func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
 		IN ACCESS EXCLUSIVE MODE NOWAIT`); err != nil {
 		return fmt.Errorf("lock incremental migration writers: %w", err)
 	}
+	if _, err := tx.Exec(ctx, `
+		DO $$
+		BEGIN
+			IF to_regclass('forja.artifact_operations') IS NOT NULL THEN
+				EXECUTE 'LOCK TABLE
+					forja.artifact_objects,
+					forja.artifact_operations,
+					forja.artifacts,
+					forja.artifact_bundle_manifests,
+					forja.conversations,
+					forja.messages,
+					forja.memory_candidates,
+					forja.memory_records
+				IN ACCESS EXCLUSIVE MODE NOWAIT';
+			END IF;
+		END
+		$$`); err != nil {
+		return fmt.Errorf("lock Sprint 07 migration writers: %w", err)
+	}
 	return nil
 }
 
@@ -217,6 +236,11 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 				"rollback migration %d: Sprint 05 delivery authorization history or queued blocked-run resume history is incompatible with the Sprint 04 verifier",
 				selected.version,
 			)
+		}
+	}
+	if selected.version == 7 {
+		if err := lockIncrementalMigrationWriters(ctx, tx); err != nil {
+			return fmt.Errorf("serialize Sprint 07 rollback compatibility check: %w", err)
 		}
 	}
 	if _, err := tx.Exec(ctx, selected.down); err != nil {

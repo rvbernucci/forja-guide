@@ -25,7 +25,7 @@ func TestSprint05RollbackRunsSprint04BinaryAgainstDowngradedSchema(t *testing.T)
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate current schema before rollback: %v", err)
 	}
-	for _, version := range []int{6, 5, 4} {
+	for _, version := range []int{7, 6, 5, 4} {
 		if err := RollbackLast(t.Context(), pool); err != nil {
 			t.Fatalf("rollback migration %03d: %v", version, err)
 		}
@@ -207,6 +207,7 @@ func TestSprint05RollbackRefusesPersistedDeliveryAuthorization(t *testing.T) {
 			if err := Migrate(t.Context(), pool); err != nil {
 				t.Fatalf("migrate current schema: %v", err)
 			}
+			rollbackToMigrationVersion(t, pool, 6)
 			if _, err := pool.Exec(
 				t.Context(), test.insert, DefaultTenantID, DefaultRepositoryID,
 			); err != nil {
@@ -235,6 +236,7 @@ func TestSprint05RollbackRefusesConcurrentCommandWriter(t *testing.T) {
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate current schema: %v", err)
 	}
+	rollbackToMigrationVersion(t, pool, 6)
 	writer, err := pool.Begin(t.Context())
 	if err != nil {
 		t.Fatal(err)

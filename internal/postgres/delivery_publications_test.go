@@ -706,6 +706,7 @@ func TestDeliveryPublicationConflictIsTerminal(t *testing.T) {
 
 func TestMigrationRollbackPreservesLeaseAndPublicationAuthority(t *testing.T) {
 	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 6)
 	store := newIntegrationStore(t, pool)
 	leaseSet := acquirePublicationLeaseSet(
 		t, store, publicationTestDelivery, publicationTestAttempt,
