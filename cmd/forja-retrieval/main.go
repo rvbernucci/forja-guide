@@ -125,7 +125,7 @@ func queryOnce(parent context.Context, arguments []string, _ io.Writer, stderr i
 	service := retrieval.QueryService{
 		Client: runtime.qdrant, CollectionName: runtime.collection,
 		Embedder: runtime.embedder, Sparse: retrieval.HashingSparseEncoder{},
-		Resolver: runtime.store, QueryTimeout: *timeout,
+		Resolver: runtime.store, Freshness: runtime.store, QueryTimeout: *timeout,
 	}
 	result, err := service.Search(ctx, query)
 	if err != nil {

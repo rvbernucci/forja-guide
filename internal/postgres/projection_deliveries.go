@@ -11,6 +11,7 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
+	"github.com/rvbernucci/forja-guide/internal/retrieval"
 )
 
 // EnsureProjectionConsumer atomically creates one independent consumer and
@@ -252,6 +253,33 @@ func (s *Store) RequeueProjectionDelivery(ctx context.Context, projectorName str
 		return fault.New(fault.CodeConflict, "postgres.RequeueProjectionDelivery", "projection delivery is not dead")
 	}
 	return nil
+}
+
+// RetrievalProjectionLag returns the number of Qdrant retrieval deliveries
+// that have not reached a durable published state. It is aggregate-only and
+// intentionally fails when the retrieval consumer is not active, preventing a
+// query from treating an unregistered derived plane as fresh.
+func (s *Store) RetrievalProjectionLag(ctx context.Context) (int64, error) {
+	var active bool
+	var lag int64
+	err := s.pool.QueryRow(ctx, `
+		SELECT
+			EXISTS(
+				SELECT 1 FROM forja.projection_consumers
+				WHERE tenant_id=$1 AND repository_id=$2 AND projector_name=$3 AND status='active'
+			),
+			count(*) FILTER (WHERE state <> 'published')
+		FROM forja.projection_deliveries
+		WHERE tenant_id=$1 AND repository_id=$2 AND projector_name=$3`,
+		s.tenantID, s.repositoryID, retrieval.DefaultQdrantProjectorName,
+	).Scan(&active, &lag)
+	if err != nil {
+		return 0, databaseError("postgres.RetrievalProjectionLag", err)
+	}
+	if !active {
+		return 0, fault.New(fault.CodeUnavailable, "postgres.RetrievalProjectionLag", "retrieval projection consumer is not active")
+	}
+	return lag, nil
 }
 
 func advanceProjectionCheckpoint(ctx context.Context, tx pgx.Tx, tenantID, repositoryID, projectorName string) error {

@@ -28,6 +28,9 @@ func TestProjectionDeliveriesBackfillAndAdvanceIndependently(t *testing.T) {
 	if _, err := store.CreateRun(t.Context(), firstRun, "projection delivery backlog", testMetadata("projection-delivery-first")); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := store.RetrievalProjectionLag(t.Context()); !fault.IsCode(err, fault.CodeUnavailable) {
+		t.Fatalf("inactive retrieval consumer lag error=%v", err)
+	}
 	configuration := sha256.Sum256([]byte("qdrant-retrieval-v1"))
 	if err := store.EnsureProjectionConsumer(t.Context(), "qdrant.retrieval", configuration); err != nil {
 		t.Fatal(err)
@@ -38,6 +41,9 @@ func TestProjectionDeliveriesBackfillAndAdvanceIndependently(t *testing.T) {
 	}
 	if err := store.CompleteProjectionDelivery(t.Context(), "qdrant.retrieval", claimed[0].OutboxID, "worker-a", claimed[0].FencingToken); err != nil {
 		t.Fatal(err)
+	}
+	if lag, err := store.RetrievalProjectionLag(t.Context()); err != nil || lag != 0 {
+		t.Fatalf("published retrieval lag=%d err=%v", lag, err)
 	}
 	if err := store.CompleteProjectionDelivery(t.Context(), "qdrant.retrieval", claimed[0].OutboxID, "worker-a", claimed[0].FencingToken); !fault.IsCode(err, fault.CodeConflict) {
 		t.Fatalf("stale completion error=%v", err)
@@ -56,6 +62,9 @@ func TestProjectionDeliveriesBackfillAndAdvanceIndependently(t *testing.T) {
 	}
 	if _, err := store.CreateRun(t.Context(), secondRun, "projection delivery fanout", testMetadata("projection-delivery-second")); err != nil {
 		t.Fatal(err)
+	}
+	if lag, err := store.RetrievalProjectionLag(t.Context()); err != nil || lag != 1 {
+		t.Fatalf("pending retrieval lag=%d err=%v", lag, err)
 	}
 	claimed, err = store.ClaimProjectionDeliveries(t.Context(), "qdrant.retrieval", "worker-b", 10, time.Minute)
 	if err != nil || len(claimed) != 1 || claimed[0].AggregateID != secondRun.String() {

@@ -224,6 +224,34 @@ func TestValidateRetrievalResultAllowsOnlyBoundedSortedAmbiguities(t *testing.T)
 	}
 }
 
+func TestValidateRetrievalResultBindsFreshnessToProjectionLag(t *testing.T) {
+	t.Parallel()
+	query := validRetrievalQuery()
+	policyHash, err := RetrievalPolicyHash(query.Policy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := RetrievalResult{
+		RequestID: query.RequestID, SchemaVersion: RetrievalSchemaVersion,
+		Status: "complete", ProjectionFreshness: "fresh", ProjectionLagEvents: 1,
+		Accepted: []RetrievalCandidate{}, Rejections: []RetrievalRejection{},
+		Receipt: RetrievalReceipt{PolicyHash: policyHash},
+	}
+	if err := ValidateRetrievalResult(query, result); err == nil {
+		t.Fatal("fresh result with projection lag accepted")
+	}
+	result.Status = "degraded"
+	result.ProjectionFreshness = "stale"
+	result.ProjectionLagEvents = 0
+	if err := ValidateRetrievalResult(query, result); err == nil {
+		t.Fatal("stale result without projection lag accepted")
+	}
+	result.ProjectionLagEvents = 1
+	if err := ValidateRetrievalResult(query, result); err != nil {
+		t.Fatalf("stale result with projection lag rejected: %v", err)
+	}
+}
+
 func TestFuseRetrievalRanksIsWeightedAndStable(t *testing.T) {
 	t.Parallel()
 	policy := validRetrievalQuery().Policy

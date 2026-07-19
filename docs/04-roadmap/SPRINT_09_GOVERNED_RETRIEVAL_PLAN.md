@@ -161,8 +161,12 @@ documentation evidence.
 - [x] Return bounded, scope-authorized canonical entity-ID alternatives for a
   genuine ambiguity while rejecting every ambiguous result as context.
 - [x] Degrade to explicit bounded gaps when either Qdrant rank path or the
-  canonical resolver is unavailable. Canonical exact-lookup fallback remains
-  a future optional availability optimization.
+  canonical resolver is unavailable. Before any rank path runs, the runtime
+  now reads the dedicated Qdrant projector backlog from PostgreSQL: any
+  non-zero lag returns a `stale` degraded receipt with no accepted context,
+  and an unavailable projector status returns an `unknown` degraded receipt.
+  Canonical exact-lookup fallback remains a future optional availability
+  optimization.
 
 ### 5. Runtime, observability, and operations
 

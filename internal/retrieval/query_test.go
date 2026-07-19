@@ -63,6 +63,40 @@ func TestQueryServiceDegradesWhenQdrantIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestQueryServiceFailsClosedWhenProjectionIsBehind(t *testing.T) {
+	t.Parallel()
+	query := governedQuery()
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion)
+	query.ExpectedGeneration = &generation
+	client := &recordingQdrantQueryClient{}
+	service := QueryService{
+		Client: client, CollectionName: "forja_retrieval_v1", Embedder: failingEmbedder{},
+		Sparse: failingSparseEncoder{}, Resolver: staticResolver{}, Freshness: staticProjectionFreshness{lag: 7},
+	}
+	result, err := service.Search(t.Context(), query)
+	if err != nil || result.Status != "degraded" || result.ProjectionFreshness != "stale" ||
+		result.ProjectionLagEvents != 7 || len(result.Accepted) != 0 || len(result.Gaps) != 1 ||
+		result.Gaps[0] != "projection_lag" || len(client.requests) != 0 {
+		t.Fatalf("result=%#v err=%v requests=%#v", result, err, client.requests)
+	}
+}
+
+func TestQueryServiceDegradesWhenProjectionFreshnessIsUnavailable(t *testing.T) {
+	t.Parallel()
+	query := governedQuery()
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion)
+	query.ExpectedGeneration = &generation
+	service := QueryService{
+		Client: &recordingQdrantQueryClient{}, CollectionName: "forja_retrieval_v1", Embedder: failingEmbedder{},
+		Sparse: failingSparseEncoder{}, Resolver: staticResolver{}, Freshness: staticProjectionFreshness{err: errors.New("unavailable")},
+	}
+	result, err := service.Search(t.Context(), query)
+	if err != nil || result.Status != "degraded" || result.ProjectionFreshness != "unknown" ||
+		len(result.Gaps) != 1 || result.Gaps[0] != "projection_freshness_unavailable" {
+		t.Fatalf("result=%#v err=%v", result, err)
+	}
+}
+
 func TestQueryServiceRunsLexicalOnlyWithoutEmbedding(t *testing.T) {
 	t.Parallel()
 	point, err := BuildPoint(t.Context(), validCardSource(), contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion), fixtureEmbedder{}, HashingSparseEncoder{})
@@ -203,6 +237,15 @@ type recordingQdrantQueryClient struct {
 }
 
 type blockingQdrantQueryClient struct{}
+
+type staticProjectionFreshness struct {
+	lag int64
+	err error
+}
+
+func (value staticProjectionFreshness) RetrievalProjectionLag(context.Context) (int64, error) {
+	return value.lag, value.err
+}
 
 type failingEmbedder struct{ fixtureEmbedder }
 

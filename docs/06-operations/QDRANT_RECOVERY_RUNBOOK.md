@@ -132,6 +132,14 @@ interrupted delivery for fenced retry; query failures return no authoritative
 context. Do not redirect output to a shared log or pass keys through shell
 arguments.
 
+Before Qdrant is queried, `forja-retrieval query` reads the aggregate backlog
+for the dedicated `qdrant.retrieval` projector from canonical PostgreSQL. The
+result includes only the scalar `projection_lag_events`. A non-zero backlog
+returns a bounded degraded result with `projection_freshness: "stale"` and no
+accepted context. A missing or inactive projector returns `unknown` freshness
+and no accepted context. This prevents a live but lagging vector collection
+from being presented as authoritative context.
+
 ## Failure Handling
 
 - If Qdrant upsert or deletion fails after canonical state changed, do not
@@ -140,6 +148,9 @@ arguments.
 - If Qdrant query or canonical resolution is unavailable, `QueryService`
   returns a bounded degraded receipt with no accepted context, rather than
   broadening scope or trusting cached payloads.
+- If the dedicated retrieval projector has any unpublished delivery, a query
+  returns a `projection_lag` degraded receipt. Drain or repair the projector;
+  do not bypass this gate by calling Qdrant directly.
 - `QueryService` bounds a full retrieval request to five seconds by default;
   `ProjectionWorker` bounds each delivery to fifteen seconds. Operators may
   configure shorter limits but never more than thirty seconds. A timed-out

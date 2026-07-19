@@ -13,6 +13,7 @@
     "schema_version": {"const": "1.0"},
     "status": {"enum": ["complete", "degraded", "blocked"]},
     "projection_freshness": {"enum": ["fresh", "stale", "unknown"]},
+    "projection_lag_events": {"type": "integer", "minimum": 0, "maximum": 1000000},
     "collection_generation": {"type": "string", "pattern": "^retrieval_generation_[a-f0-9]{64}$"},
     "accepted": {
       "type": "array", "maxItems": 100,

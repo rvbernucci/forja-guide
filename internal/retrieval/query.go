@@ -20,6 +20,13 @@ type QdrantQueryClient interface {
 	Query(context.Context, *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error)
 }
 
+// ProjectionFreshnessReader reports bounded aggregate lag for the exact
+// derived projector that backs retrieval. It never returns query text, vector
+// values, entity identities, or payloads.
+type ProjectionFreshnessReader interface {
+	RetrievalProjectionLag(context.Context) (int64, error)
+}
+
 // QueryService executes bounded hybrid discovery and constructs a validated
 // result receipt. It never returns a Qdrant payload directly as context.
 type QueryService struct {
@@ -28,6 +35,7 @@ type QueryService struct {
 	Embedder       Embedder
 	Sparse         SparseEncoder
 	Resolver       CanonicalResolver
+	Freshness      ProjectionFreshnessReader
 	Observer       *observability.Observer
 	QueryTimeout   time.Duration
 }
@@ -52,8 +60,24 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	defer cancel()
 	ctx = queryContext
 	descriptor := service.Embedder.Descriptor()
-	if descriptor.SparseEncoderVersion != service.Sparse.Version() || query.ExpectedGeneration == nil || *query.ExpectedGeneration != contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion) {
+	if (query.Policy.SparseWeight > 0 && descriptor.SparseEncoderVersion != service.Sparse.Version()) ||
+		query.ExpectedGeneration == nil || *query.ExpectedGeneration != contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion) {
 		return contracts.RetrievalResult{}, fmt.Errorf("retrieval query does not bind the configured embedding generation")
+	}
+	projectionLag := int64(0)
+	if service.Freshness != nil {
+		var freshnessErr error
+		projectionLag, freshnessErr = service.Freshness.RetrievalProjectionLag(ctx)
+		if freshnessErr != nil {
+			result = degradedResult(query, "projection_freshness_unavailable", "unknown", 0)
+			service.recordQueryStats(ctx, result)
+			return result, nil
+		}
+		if projectionLag > 0 {
+			result = degradedResult(query, "projection_lag", "stale", projectionLag)
+			service.recordQueryStats(ctx, result)
+			return result, nil
+		}
 	}
 	var denseCandidates, sparseCandidates []contracts.RetrievalCandidate
 	if query.Policy.DenseWeight > 0 {
@@ -70,7 +94,7 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 		}
 		densePoints, queryErr := service.Client.Query(ctx, denseRequest)
 		if queryErr != nil {
-			result = degradedResult(query, "qdrant_dense_unavailable")
+			result = degradedResult(query, "qdrant_dense_unavailable", "unknown", projectionLag)
 			service.recordQueryStats(ctx, result)
 			return result, nil
 		}
@@ -87,7 +111,7 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 		}
 		sparsePoints, queryErr := service.Client.Query(ctx, sparseRequest)
 		if queryErr != nil {
-			result = degradedResult(query, "qdrant_sparse_unavailable")
+			result = degradedResult(query, "qdrant_sparse_unavailable", "unknown", projectionLag)
 			service.recordQueryStats(ctx, result)
 			return result, nil
 		}
@@ -96,14 +120,14 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	fused, malformed := fuseCandidateRanks(denseCandidates, sparseCandidates, query.Policy)
 	accepted, rejected, ambiguities, err := ResolveRankedCandidates(ctx, query, fused, service.Resolver)
 	if err != nil {
-		result = degradedResult(query, "canonical_resolver_unavailable")
+		result = degradedResult(query, "canonical_resolver_unavailable", "unknown", projectionLag)
 		service.recordQueryStats(ctx, result)
 		return result, nil
 	}
 	rejected = append(rejected, malformed...)
 	result = contracts.RetrievalResult{
 		RequestID: query.RequestID, SchemaVersion: contracts.RetrievalSchemaVersion,
-		Status: "complete", ProjectionFreshness: "fresh", CollectionGeneration: query.ExpectedGeneration,
+		Status: "complete", ProjectionFreshness: "fresh", ProjectionLagEvents: projectionLag, CollectionGeneration: query.ExpectedGeneration,
 		Accepted: accepted, Rejections: rejected,
 		Ambiguities: ambiguities,
 		Receipt:     receipt(query, len(denseCandidates), len(sparseCandidates), len(fused), len(accepted), len(rejected)),
@@ -122,10 +146,10 @@ func (service QueryService) queryTimeout() time.Duration {
 	return service.QueryTimeout
 }
 
-func degradedResult(query contracts.RetrievalQuery, gap string) contracts.RetrievalResult {
+func degradedResult(query contracts.RetrievalQuery, gap, freshness string, projectionLag int64) contracts.RetrievalResult {
 	return contracts.RetrievalResult{
 		RequestID: query.RequestID, SchemaVersion: contracts.RetrievalSchemaVersion,
-		Status: "degraded", ProjectionFreshness: "unknown", CollectionGeneration: query.ExpectedGeneration,
+		Status: "degraded", ProjectionFreshness: freshness, ProjectionLagEvents: projectionLag, CollectionGeneration: query.ExpectedGeneration,
 		Accepted: []contracts.RetrievalCandidate{}, Rejections: []contracts.RetrievalRejection{}, Gaps: []string{gap},
 		Receipt: receipt(query, 0, 0, 0, 0, 0),
 	}

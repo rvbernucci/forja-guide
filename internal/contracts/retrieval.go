@@ -156,6 +156,7 @@ type RetrievalResult struct {
 	SchemaVersion        string               `json:"schema_version"`
 	Status               string               `json:"status"`
 	ProjectionFreshness  string               `json:"projection_freshness"`
+	ProjectionLagEvents  int64                `json:"projection_lag_events,omitempty"`
 	CollectionGeneration *string              `json:"collection_generation,omitempty"`
 	Accepted             []RetrievalCandidate `json:"accepted"`
 	Rejections           []RetrievalRejection `json:"rejections"`
@@ -354,6 +355,11 @@ func ValidateRetrievalResult(query RetrievalQuery, result RetrievalResult) error
 	}
 	if _, ok := retrievalProjectionFreshness[result.ProjectionFreshness]; !ok {
 		return fmt.Errorf("retrieval projection freshness is invalid")
+	}
+	if result.ProjectionLagEvents < 0 || result.ProjectionLagEvents > 1_000_000 ||
+		(result.ProjectionFreshness == "fresh" && result.ProjectionLagEvents != 0) ||
+		(result.ProjectionFreshness == "stale" && result.ProjectionLagEvents == 0) {
+		return fmt.Errorf("retrieval projection lag is invalid")
 	}
 	if result.CollectionGeneration != nil && !retrievalGenerationIDPattern.MatchString(*result.CollectionGeneration) {
 		return fmt.Errorf("retrieval result collection generation is invalid")
