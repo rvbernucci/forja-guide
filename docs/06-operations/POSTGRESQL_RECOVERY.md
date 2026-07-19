@@ -1,11 +1,16 @@
 # PostgreSQL Recovery
 
 Status: Implemented in Sprint 02; governed command and delivery recovery
-extended through Sprint 05
+extended through Sprint 07
 
 PostgreSQL is Forja's canonical operational authority. A recovery is complete
 only when the database restores and its event streams pass continuity checks.
 Qdrant and Neo4j are derived stores and are rebuilt later from the outbox.
+From Sprint 07 onward, a complete recovery point also requires the matching
+S3-compatible provider snapshot. See
+[Artifact Storage Operations](ARTIFACT_STORAGE_OPERATIONS.md) for the
+two-plane backup, restore, reconciliation, retention, and credential-rotation
+procedure.
 
 At the execution layer, `Pipeline.Recover` revalidates immutable human request
 approval and a live replacement scheduler fence. It never assumes an old

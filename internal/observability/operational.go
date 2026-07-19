@@ -11,14 +11,19 @@ import (
 
 // OperationalSnapshot contains only aggregate, content-free runtime state.
 type OperationalSnapshot struct {
-	StuckRuns        int64
-	ExpiredLeases    int64
-	PendingOutbox    int64
-	InflightOutbox   int64
-	DeadOutbox       int64
-	ProjectionLag    int64
-	PendingApprovals int64
-	WorkerCrashLoops int64
+	StuckRuns                 int64
+	ExpiredLeases             int64
+	PendingOutbox             int64
+	InflightOutbox            int64
+	DeadOutbox                int64
+	ProjectionLag             int64
+	PendingApprovals          int64
+	WorkerCrashLoops          int64
+	ArtifactReconciliation    int64
+	ArtifactIntegrityFailures int64
+	TombstonedArtifactObjects int64
+	ProposedMemoryCandidates  int64
+	ActiveMemories            int64
 }
 
 // OperationalReader obtains one bounded aggregate snapshot.
@@ -154,7 +159,21 @@ func (reader *PostgresOperationalReader) OperationalSnapshot(
 			 )),
 			(SELECT count(*) FROM forja.decisions
 			 WHERE tenant_id=$1 AND repository_id=$2 AND status='pending'),
-			(SELECT count(*) FROM crash_loops)`,
+			(SELECT count(*) FROM crash_loops),
+			(SELECT count(*) FROM forja.artifact_operations
+			 WHERE tenant_id=$1 AND repository_id=$2
+			   AND state IN ('reserved', 'uploading', 'verified', 'reconciliation_required')),
+			(SELECT count(*) FROM forja.artifact_operations
+			 WHERE tenant_id=$1 AND repository_id=$2
+			   AND state='failed' AND failure_class='integrity'),
+			(SELECT count(*) FROM forja.artifact_objects
+			 WHERE tenant_id=$1 AND repository_id=$2 AND state='tombstoned'),
+			(SELECT count(*) FROM forja.memory_candidates
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='proposed'
+			   AND (expires_at IS NULL OR expires_at > clock_timestamp())),
+			(SELECT count(*) FROM forja.memory_records
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='active'
+			   AND (expires_at IS NULL OR expires_at > clock_timestamp()))`,
 		reader.tenantID,
 		reader.repositoryID,
 		int64(thresholds.StuckAfter/time.Second),
@@ -169,6 +188,11 @@ func (reader *PostgresOperationalReader) OperationalSnapshot(
 		&snapshot.ProjectionLag,
 		&snapshot.PendingApprovals,
 		&snapshot.WorkerCrashLoops,
+		&snapshot.ArtifactReconciliation,
+		&snapshot.ArtifactIntegrityFailures,
+		&snapshot.TombstonedArtifactObjects,
+		&snapshot.ProposedMemoryCandidates,
+		&snapshot.ActiveMemories,
 	)
 	return snapshot, err
 }
@@ -248,6 +272,11 @@ func (collector *OperationalCollector) Collect(channel chan<- prometheus.Metric)
 		{"projection_lag", snapshot.ProjectionLag},
 		{"pending_approvals", snapshot.PendingApprovals},
 		{"worker_crash_loops", snapshot.WorkerCrashLoops},
+		{"artifact_reconciliation", snapshot.ArtifactReconciliation},
+		{"artifact_integrity_failures", snapshot.ArtifactIntegrityFailures},
+		{"tombstoned_artifact_objects", snapshot.TombstonedArtifactObjects},
+		{"proposed_memory_candidates", snapshot.ProposedMemoryCandidates},
+		{"active_memories", snapshot.ActiveMemories},
 	}
 	for _, item := range values {
 		channel <- prometheus.MustNewConstMetric(

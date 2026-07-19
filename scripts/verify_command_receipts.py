@@ -12,6 +12,19 @@ from collections import defaultdict
 
 
 DOMAIN_AGGREGATES = {"run", "attempt", "sprint", "decision", "approval"}
+KNOWLEDGE_AGGREGATES = {
+    "artifact",
+    "artifact_manifest",
+    "conversation",
+    "memory",
+    "memory_candidate",
+    "message",
+}
+RECEIPT_BOUND_ARTIFACT_OPERATION_EVENTS = {
+    "artifact.publication_activated",
+    "artifact.publication_reconciled",
+    "artifact.publication_reconciliation_failed",
+}
 MUTATING_TOOLS = {
     "forja.plan_sprint",
     "forja.submit_sprint",
@@ -209,12 +222,180 @@ def parse_scope(scope):
         "resolve_decision": 3,
         "resume_run": 3,
         "authorize_delivery": 4,
+        "artifact_publication": 3,
+        "conversation_create": 3,
+        "message_append": 3,
+        "artifact_manifest_create": 3,
+        "conversation_close": 3,
+        "conversation_tombstone": 3,
+        "memory_candidate_propose": 3,
+        "memory_promote": 3,
+        "memory_candidate_resolve": 3,
+        "memory_transition": 4,
+        "artifact_reconcile_complete": 3,
+        "artifact_reconcile_fail": 4,
+        "artifact_tombstone": 3,
+        "artifact_object_purge": 4,
     }
     if not parts or parts[0] not in expected_lengths:
         raise ValueError(f"unsupported command receipt scope {scope!r}")
     if len(parts) != expected_lengths[parts[0]] or not parts[1]:
         raise ValueError(f"malformed command receipt scope {scope!r}")
     return parts
+
+
+KNOWLEDGE_COMMANDS = {
+    "conversation_create",
+    "message_append",
+    "artifact_manifest_create",
+    "conversation_close",
+    "conversation_tombstone",
+    "memory_candidate_propose",
+    "memory_promote",
+    "memory_candidate_resolve",
+    "memory_transition",
+    "artifact_reconcile_complete",
+    "artifact_reconcile_fail",
+    "artifact_tombstone",
+    "artifact_object_purge",
+}
+
+
+def ordered_fields(value, fields, optional=()):
+    if not isinstance(value, dict):
+        raise ValueError("ordered contract value must be an object")
+    allowed = set(fields)
+    if not set(value).issubset(allowed) or any(
+        field not in value for field in fields if field not in optional
+    ):
+        raise ValueError("ordered contract value has unexpected fields")
+    return {field: value[field] for field in fields if field in value}
+
+
+def ordered_provenance(value):
+    return ordered_fields(
+        value,
+        ["source_type", "source_refs", "source_commit"],
+        {"source_commit"},
+    )
+
+
+def ordered_content_part(value):
+    return ordered_fields(
+        value,
+        [
+            "part_id", "ordinal", "kind", "artifact_id", "content_hash",
+            "media_type", "size_bytes",
+        ],
+    )
+
+
+def ordered_citation(value):
+    ordered = ordered_fields(
+        value,
+        [
+            "citation_id", "ordinal", "source_artifact_id",
+            "source_content_hash", "locator",
+        ],
+    )
+    ordered["locator"] = ordered_fields(ordered["locator"], ["kind", "value"])
+    return ordered
+
+
+def ordered_conversation(value):
+    return ordered_fields(
+        value,
+        [
+            "conversation_id", "schema_version", "tenant_id", "repository_id",
+            "status", "version", "retention_class", "created_by",
+            "transcript_artifact_id", "transcript_manifest_id", "created_at",
+            "updated_at", "closed_at", "tombstoned_at",
+        ],
+        {
+            "transcript_artifact_id", "transcript_manifest_id", "closed_at",
+            "tombstoned_at",
+        },
+    )
+
+
+def ordered_manifest(value):
+    ordered = ordered_fields(
+        value,
+        [
+            "manifest_id", "schema_version", "tenant_id", "repository_id",
+            "family", "entries", "total_size_bytes", "source_refs",
+            "created_by", "created_at",
+        ],
+    )
+    ordered["entries"] = [
+        ordered_fields(
+            entry,
+            ["logical_path", "artifact_id", "content_hash", "size_bytes", "media_type"],
+        )
+        for entry in ordered["entries"]
+    ]
+    return ordered
+
+
+def ordered_candidate(value):
+    return ordered_fields(
+        value,
+        [
+            "candidate_id", "schema_version", "tenant_id", "repository_id",
+            "conversation_id", "source_message_ids", "kind",
+            "proposed_artifact_id", "proposed_content_hash", "status", "version",
+            "proposed_by", "proposed_at", "expires_at", "memory_id",
+            "resolved_by", "resolution_reason", "resolved_at",
+        ],
+        {
+            "expires_at", "memory_id", "resolved_by", "resolution_reason",
+            "resolved_at",
+        },
+    )
+
+
+def ordered_memory(value):
+    return ordered_fields(
+        value,
+        [
+            "memory_id", "schema_version", "tenant_id", "repository_id",
+            "source_candidate_id", "kind", "status", "version",
+            "content_artifact_id", "content_hash", "authority_class",
+            "promoted_by", "promotion_reason", "promoted_at", "expires_at",
+            "supersedes", "superseded_by", "superseded_at", "expired_at",
+            "tombstoned_at",
+        ],
+        {"superseded_by", "superseded_at", "expired_at", "tombstoned_at"},
+    )
+
+
+def ordered_artifact_intent(value):
+    ordered = ordered_fields(
+        value,
+        [
+            "OperationID", "ArtifactID", "RunID", "Kind", "ContentHash",
+            "SizeBytes", "MediaType", "CreatedBy", "Provenance", "Metadata",
+        ],
+    )
+    ordered["Provenance"] = ordered_provenance(ordered["Provenance"])
+    metadata = ordered["Metadata"]
+    if isinstance(metadata, dict):
+        ordered["Metadata"] = {key: metadata[key] for key in sorted(metadata)}
+    return ordered
+
+
+def find_event_type(events, aggregate_type, event_type, aggregate_id=None):
+    matches = [
+        event for event in events
+        if event["aggregate_type"] == aggregate_type
+        and event["event_type"] == event_type
+        and (aggregate_id is None or event["aggregate_id"] == aggregate_id)
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"expected one {aggregate_type}/{event_type} event, found {len(matches)}"
+        )
+    return matches[0]
 
 
 def find_event(events, aggregate_type, event_type, payload, aggregate_id=None):
@@ -747,6 +928,237 @@ def validate_sprint_cancellation_event(event, run_id):
         raise ValueError("Sprint cancellation payload moves backward in time")
 
 
+def verify_artifact_publication_receipt(receipt, candidates, scope_parts):
+    artifact_id = scope_parts[2]
+    response = receipt["response"]
+    primary = find_event(
+        candidates, "artifact", "artifact.activated", response, aggregate_id=artifact_id
+    )
+    publication = find_event_type(
+        candidates,
+        "artifact_operation",
+        "artifact.publication_activated",
+    )
+    payload = publication["payload"]
+    require_object(payload, {"Intent", "State", "Version", "CreatedAt", "UpdatedAt"}, "artifact publication")
+    intent = ordered_artifact_intent(payload["Intent"])
+    if (
+        intent["ArtifactID"] != artifact_id
+        or publication["aggregate_id"] != intent["OperationID"]
+        or response.get("artifact_id") != artifact_id
+    ):
+        raise ValueError("artifact publication scope differs from its canonical events")
+    verify_response(receipt, 201, response)
+    verify_hash(
+        receipt,
+        primary,
+        ["artifact_publication", go_json_bytes(intent).decode("utf-8")],
+    )
+    return {
+        "identity": event_identity(primary),
+        "stable_identity": stable_command_identity(primary),
+        "tool_name": "",
+        "domain_event_ids": {primary["event_id"], publication["event_id"]},
+        "audit_event_ids": set(),
+    }
+
+
+def verify_knowledge_receipt(receipt, candidates, scope_parts):
+    command = scope_parts[0]
+    response = receipt["response"]
+    repository_id = scope_parts[1]
+    domain_events = []
+
+    if command == "conversation_create":
+        primary = find_event(
+            candidates, "conversation", "conversation.created", response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 201
+        parts = [
+            response["conversation_id"], response["retention_class"],
+            response["created_by"],
+        ]
+    elif command == "message_append":
+        primary = find_event(
+            candidates, "message", "message.appended", response,
+            aggregate_id=scope_parts[2],
+        )
+        companion = find_event_type(
+            candidates, "conversation", "conversation.message_appended",
+            response["conversation_id"],
+        )
+        domain_events.append(companion)
+        draft = {
+            "MessageID": response["message_id"],
+            "ConversationID": response["conversation_id"],
+            "Role": response["role"],
+            "AuthorID": response["author_id"],
+            "SupersedesMessageID": response.get("supersedes_message_id"),
+            "ContentParts": [ordered_content_part(part) for part in response["content_parts"]],
+            "Citations": None if response["citations"] is None else [
+                ordered_citation(citation) for citation in response["citations"]
+            ],
+        }
+        status = 201
+        parts = [go_json_bytes(draft).decode("utf-8")]
+    elif command == "artifact_manifest_create":
+        primary = find_event(
+            candidates, "artifact_manifest", "artifact_manifest.created", response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 201
+        manifest_intent = ordered_manifest(response)
+        manifest_intent["created_at"] = "0001-01-01T00:00:00Z"
+        parts = [go_json_bytes(manifest_intent).decode("utf-8")]
+    elif command == "conversation_close":
+        primary = find_event(
+            candidates, "conversation", "conversation.closed", response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 200
+        parts = [
+            response["conversation_id"], str(response["version"] - 1),
+            response["transcript_artifact_id"], response["transcript_manifest_id"],
+        ]
+    elif command == "conversation_tombstone":
+        primary = find_event(
+            candidates, "conversation", "conversation.tombstoned", response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 200
+        parts = [response["conversation_id"], str(response["version"] - 1)]
+    elif command == "memory_candidate_propose":
+        primary = find_event(
+            candidates, "memory_candidate", "memory_candidate.proposed", response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 201
+        candidate_intent = ordered_candidate(response)
+        candidate_intent["proposed_at"] = "0001-01-01T00:00:00Z"
+        parts = [go_json_bytes(candidate_intent).decode("utf-8")]
+    elif command == "memory_promote":
+        primary = find_event(
+            candidates, "memory", "memory.promoted", response,
+            aggregate_id=scope_parts[2],
+        )
+        promoted_candidate = find_event_type(
+            candidates, "memory_candidate", "memory_candidate.promoted",
+            response["source_candidate_id"],
+        )
+        domain_events.append(promoted_candidate)
+        domain_events.extend(
+            event for event in candidates
+            if event["aggregate_type"] == "memory"
+            and event["event_type"] == "memory.superseded"
+        )
+        memory_intent = ordered_memory(response)
+        memory_intent["promoted_at"] = "0001-01-01T00:00:00Z"
+        command_value = {
+            "Memory": memory_intent,
+            "ExpectedCandidateVersion": promoted_candidate["payload"]["version"] - 1,
+        }
+        status = 201
+        parts = [go_json_bytes(command_value).decode("utf-8")]
+    elif command == "memory_candidate_resolve":
+        event_type = "memory_candidate." + response["status"]
+        primary = find_event(
+            candidates, "memory_candidate", event_type, response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 200
+        parts = [
+            response["candidate_id"], str(response["version"] - 1),
+            response["status"], response["resolution_reason"],
+        ]
+    elif command == "memory_transition":
+        primary = find_event(
+            candidates, "memory", "memory." + scope_parts[3], response,
+            aggregate_id=scope_parts[2],
+        )
+        status = 200
+        parts = [response["memory_id"], str(response["version"] - 1), scope_parts[3]]
+    elif command == "artifact_reconcile_complete":
+        primary = find_event(
+            candidates, "artifact", "artifact.activated", response,
+            aggregate_id=response["artifact_id"],
+        )
+        publication = find_event_type(
+            candidates, "artifact_operation", "artifact.publication_reconciled",
+            scope_parts[2],
+        )
+        domain_events.append(publication)
+        status = 200
+        parts = [scope_parts[2]]
+    elif command == "artifact_reconcile_fail":
+        primary = find_event_type(
+            candidates,
+            "artifact_operation",
+            "artifact.publication_reconciliation_failed",
+            scope_parts[2],
+        )
+        require_object(primary["payload"], {"publication", "failure_class"}, "artifact reconciliation failure")
+        if primary["payload"]["failure_class"] != scope_parts[3]:
+            raise ValueError("artifact reconciliation failure class differs from scope")
+        if canonical_json(primary["payload"]["publication"]) != canonical_json(response):
+            raise ValueError("artifact reconciliation failure response differs from event")
+        status = 200
+        parts = [scope_parts[2], scope_parts[3]]
+    elif command == "artifact_tombstone":
+        matches = [
+            event for event in candidates
+            if event["aggregate_type"] == "artifact"
+            and event["event_type"] == "artifact.tombstoned"
+            and isinstance(event["payload"], dict)
+            and canonical_json(event["payload"].get("artifact")) == canonical_json(response)
+            and event["aggregate_id"] == scope_parts[2]
+        ]
+        if len(matches) != 1 or matches[0]["payload"].get("deleted") is not False:
+            raise ValueError("artifact tombstone lacks its exact pre-delete event")
+        primary = matches[0]
+        status = 200
+        parts = [scope_parts[2], str(primary["aggregate_version"] - 1)]
+    elif command == "artifact_object_purge":
+        primary = find_event_type(
+            candidates, "artifact", "artifact.object_purged",
+        )
+        content_hash = "sha256:" + scope_parts[3]
+        require_object(
+            primary["payload"],
+            {"content_hash", "provider_etag", "provider_version", "deleted"},
+            "artifact purge",
+        )
+        if (
+            primary["payload"]["content_hash"] != content_hash
+            or not isinstance(primary["payload"]["provider_etag"], str)
+            or not primary["payload"]["provider_etag"].strip()
+            or not isinstance(primary["payload"]["provider_version"], str)
+            or primary["payload"]["deleted"] is not True
+        ):
+            raise ValueError("artifact purge event differs from its scope")
+        status = 200
+        parts = [
+            content_hash,
+            primary["payload"]["provider_etag"],
+            primary["payload"]["provider_version"],
+        ]
+    else:
+        raise AssertionError(f"unreachable knowledge command {command}")
+
+    if not primary["repository_id"] == repository_id:
+        raise ValueError("knowledge receipt repository differs from event")
+    verify_response(receipt, status, response)
+    verify_hash(receipt, primary, ["knowledge", *parts])
+    domain_events.append(primary)
+    return {
+        "identity": event_identity(primary),
+        "stable_identity": stable_command_identity(primary),
+        "tool_name": "",
+        "domain_event_ids": {event["event_id"] for event in domain_events},
+        "audit_event_ids": set(),
+    }
+
+
 def verify_receipt(receipt, events):
     scope_parts = parse_scope(receipt["scope"])
     command = scope_parts[0]
@@ -759,6 +1171,14 @@ def verify_receipt(receipt, events):
         and event["repository_id"] == repository_id
         and event["idempotency_key"] == receipt["idempotency_key"]
     ]
+    if command == "artifact_publication":
+        if not candidates:
+            raise ValueError(f"receipt {receipt['scope']} has no canonical command events")
+        return verify_artifact_publication_receipt(receipt, candidates, scope_parts)
+    if command in KNOWLEDGE_COMMANDS:
+        if not candidates:
+            raise ValueError(f"receipt {receipt['scope']} has no canonical command events")
+        return verify_knowledge_receipt(receipt, candidates, scope_parts)
     empty_reconciliation = (
         command == "reconcile_attempts"
         and isinstance(response, dict)
@@ -1188,6 +1608,16 @@ def is_generated_migration_event(event, events):
     )
 
 
+def requires_command_receipt(event):
+    """Identify canonical events that must be consumed by one durable receipt."""
+    if event["aggregate_type"] in DOMAIN_AGGREGATES | KNOWLEDGE_AGGREGATES:
+        return True
+    return (
+        event["aggregate_type"] == "artifact_operation"
+        and event["event_type"] in RECEIPT_BOUND_ARTIFACT_OPERATION_EVENTS
+    )
+
+
 def verify(command_events_path, receipts_path):
     events = load_events(command_events_path)
     receipts = load_receipts(receipts_path)
@@ -1345,7 +1775,7 @@ def verify(command_events_path, receipts_path):
         ] = evidence
 
     for event in events:
-        if event["aggregate_type"] in DOMAIN_AGGREGATES:
+        if requires_command_receipt(event):
             if is_generated_migration_event(event, events):
                 continue
             if (

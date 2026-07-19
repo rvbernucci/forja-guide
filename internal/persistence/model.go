@@ -221,6 +221,95 @@ type DeliveryPublicationRepository interface {
 	) (DeliveryPublication, error)
 }
 
+// ArtifactPublicationIntent is the immutable command authorized before bytes
+// leave PostgreSQL. Object keys and provider settings are deliberately absent.
+type ArtifactPublicationIntent struct {
+	OperationID string
+	ArtifactID  string
+	RunID       *string
+	Kind        string
+	ContentHash string
+	SizeBytes   int64
+	MediaType   string
+	CreatedBy   string
+	Provenance  contracts.Provenance
+	Metadata    map[string]any
+}
+
+// ArtifactPublication is the recoverable database side of the object saga.
+type ArtifactPublication struct {
+	Intent    ArtifactPublicationIntent
+	State     string
+	Version   int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// ArtifactEvidence is transport evidence observed only after complete body
+// verification. It cannot create authority without the prepared intent.
+type ArtifactEvidence struct {
+	ObjectKey              string
+	ETag                   string
+	VersionID              string
+	ProviderChecksumSHA256 string
+}
+
+// ArtifactReconciliationCandidate is a stale canonical publication whose
+// provider body must be re-verified before PostgreSQL may finalize it.
+type ArtifactReconciliationCandidate struct {
+	Publication  ArtifactPublication
+	ExpectedETag string
+}
+
+// ArtifactReconciliationRepository exposes recovery commands separately from
+// the original publisher's idempotency and actor identity.
+type ArtifactReconciliationRepository interface {
+	ListArtifactReconciliationCandidates(
+		context.Context,
+		time.Time,
+		int,
+	) ([]ArtifactReconciliationCandidate, error)
+	CompleteArtifactReconciliation(
+		context.Context,
+		string,
+		ArtifactEvidence,
+		runstate.CommandMetadata,
+	) (contracts.Artifact, error)
+	FailArtifactReconciliation(
+		context.Context,
+		string,
+		string,
+		runstate.CommandMetadata,
+	) (ArtifactPublication, error)
+}
+
+// ArtifactPublicationRepository atomically journals and finalizes the
+// PostgreSQL half of content-addressed object publication.
+type ArtifactPublicationRepository interface {
+	PrepareArtifactPublication(
+		context.Context,
+		ArtifactPublicationIntent,
+		runstate.CommandMetadata,
+	) (ArtifactPublication, *contracts.Artifact, error)
+	MarkArtifactPublicationUploading(
+		context.Context,
+		ArtifactPublicationIntent,
+		runstate.CommandMetadata,
+	) (ArtifactPublication, error)
+	CompleteArtifactPublication(
+		context.Context,
+		ArtifactPublicationIntent,
+		ArtifactEvidence,
+		runstate.CommandMetadata,
+	) (contracts.Artifact, error)
+	FailArtifactPublication(
+		context.Context,
+		ArtifactPublicationIntent,
+		string,
+		runstate.CommandMetadata,
+	) (ArtifactPublication, error)
+}
+
 // OutboxMessage is a claimed canonical event awaiting projection.
 type OutboxMessage struct {
 	OutboxID         int64

@@ -40,6 +40,15 @@ func TestServiceChecksAuthorizationBeforePersistence(t *testing.T) {
 	}
 }
 
+func TestMemoryPromotionPermissionRejectsAgentAndWorkerPrincipals(t *testing.T) {
+	t.Parallel()
+	for _, actorType := range []string{"agent", "worker"} {
+		if _, err := NewPrincipal(actorType, actorType+"-memory-promoter", PermissionMemoryPromote); !fault.IsCode(err, fault.CodePermissionDenied) {
+			t.Fatalf("%s memory promotion permission error = %v", actorType, err)
+		}
+	}
+}
+
 func TestServiceRejectsCrossRepositoryPrincipalBeforePersistence(t *testing.T) {
 	t.Parallel()
 	repository := NewMemoryRepository(nil)

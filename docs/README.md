@@ -19,7 +19,8 @@ language.
 12. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
 13. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
 14. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
-15. [Sprint evidence](evidence/)
+15. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
+16. [Sprint evidence](evidence/)
 
 ## Documentation States
 

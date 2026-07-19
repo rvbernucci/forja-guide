@@ -1,10 +1,12 @@
 # Data Architecture
 
-Status: Partially Implemented
+Status: Canonical PostgreSQL and object-storage layers implemented; derived intelligence stores planned
 
 The PostgreSQL authority, transactional event/outbox boundary, idempotency,
-leases, checkpoints, dead letters, and run projection replay are implemented
-in Sprint 02. Object storage, Qdrant, and Neo4j remain planned.
+leases, checkpoints, dead letters, run projection replay, governed
+conversation/memory model, and content-addressed S3-compatible object layer
+are implemented. Qdrant and Neo4j remain derived layers planned for later
+Sprints.
 
 Applied migrations are checksum-pinned. Canonical events are protected from
 `UPDATE` and `DELETE` by the database, not only by repository convention.
@@ -56,8 +58,9 @@ Object storage contains large or immutable bodies:
 - generated reports;
 - model or index snapshots.
 
-PostgreSQL stores the object URI, hash, media type, size, encryption metadata,
-retention policy, and provenance.
+PostgreSQL stores the internally derived object key, hash, media type, size,
+provider verification evidence, operation journal, retention state, and
+provenance. Object keys are not public command input.
 
 ### Qdrant
 

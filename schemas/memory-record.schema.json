@@ -1,0 +1,119 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/memory-record.schema.json",
+  "title": "Forja Governed Memory Record",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "memory_id",
+    "schema_version",
+    "tenant_id",
+    "repository_id",
+    "source_candidate_id",
+    "kind",
+    "status",
+    "version",
+    "content_artifact_id",
+    "content_hash",
+    "authority_class",
+    "promoted_by",
+    "promotion_reason",
+    "promoted_at",
+    "supersedes"
+  ],
+  "properties": {
+    "memory_id": {
+      "type": "string",
+      "pattern": "^memory_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "source_candidate_id": {
+      "type": "string",
+      "pattern": "^memory_candidate_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "kind": {"enum": ["fact", "preference", "decision", "lesson"]},
+    "status": {"enum": ["active", "superseded", "expired", "tombstoned"]},
+    "version": {"type": "integer", "minimum": 1},
+    "content_artifact_id": {
+      "type": "string",
+      "pattern": "^artifact_[A-Za-z0-9_-]+$"
+    },
+    "content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "authority_class": {"enum": ["human_approved", "policy_approved"]},
+    "promoted_by": {"type": "string", "minLength": 1, "maxLength": 160},
+    "promotion_reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "promoted_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": ["string", "null"], "format": "date-time"},
+    "supersedes": {
+      "type": "array",
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^memory_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      }
+    },
+    "superseded_by": {
+      "type": "string",
+      "pattern": "^memory_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "superseded_at": {"type": "string", "format": "date-time"},
+    "expired_at": {"type": "string", "format": "date-time"},
+    "tombstoned_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "active"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["superseded_by"]},
+            {"required": ["superseded_at"]},
+            {"required": ["expired_at"]},
+            {"required": ["tombstoned_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "superseded"}}},
+      "then": {
+        "required": ["superseded_by", "superseded_at"],
+        "not": {
+          "anyOf": [
+            {"required": ["expired_at"]},
+            {"required": ["tombstoned_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "expired"}}},
+      "then": {
+        "required": ["expired_at"],
+        "not": {
+          "anyOf": [
+            {"required": ["superseded_by"]},
+            {"required": ["superseded_at"]},
+            {"required": ["tombstoned_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "tombstoned"}}},
+      "then": {"required": ["tombstoned_at"]}
+    }
+  ]
+}

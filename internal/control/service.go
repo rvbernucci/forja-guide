@@ -22,6 +22,7 @@ const (
 	PermissionCancel         Permission = "run:cancel"
 	PermissionResume         Permission = "run:resume"
 	PermissionLegacyRunWrite Permission = "legacy_run:write"
+	PermissionMemoryPromote  Permission = "memory:promote"
 
 	auditToolPlanSprint      = "forja.plan_sprint"
 	auditToolSubmitSprint    = "forja.submit_sprint"
@@ -104,12 +105,23 @@ func NewScopedPrincipal(
 				fmt.Sprintf("unknown permission %q", permission),
 			)
 		}
+		if permission == PermissionMemoryPromote &&
+			(principal.ActorType == "agent" || principal.ActorType == "worker") {
+			return Principal{}, fault.New(
+				fault.CodePermissionDenied,
+				"control.NewPrincipal",
+				"agents and workers cannot hold memory promotion authority",
+			)
+		}
 		principal.Permissions[permission] = struct{}{}
 	}
 	return principal, nil
 }
 
 func validPermission(permission Permission) bool {
+	if permission == PermissionMemoryPromote {
+		return true
+	}
 	for _, candidate := range AllPermissions {
 		if candidate == permission {
 			return true

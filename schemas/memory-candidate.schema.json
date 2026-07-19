@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/memory-candidate.schema.json",
+  "title": "Forja Memory Candidate",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "candidate_id",
+    "schema_version",
+    "tenant_id",
+    "repository_id",
+    "conversation_id",
+    "source_message_ids",
+    "kind",
+    "proposed_artifact_id",
+    "proposed_content_hash",
+    "status",
+    "version",
+    "proposed_by",
+    "proposed_at"
+  ],
+  "properties": {
+    "candidate_id": {
+      "type": "string",
+      "pattern": "^memory_candidate_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "conversation_id": {
+      "type": "string",
+      "pattern": "^conversation_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "source_message_ids": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 128,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "pattern": "^message_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+      }
+    },
+    "kind": {"enum": ["fact", "preference", "decision", "lesson"]},
+    "proposed_artifact_id": {
+      "type": "string",
+      "pattern": "^artifact_[A-Za-z0-9_-]+$"
+    },
+    "proposed_content_hash": {
+      "type": "string",
+      "pattern": "^sha256:[a-f0-9]{64}$"
+    },
+    "status": {"enum": ["proposed", "promoted", "rejected", "expired"]},
+    "version": {"type": "integer", "minimum": 1},
+    "proposed_by": {"type": "string", "minLength": 1, "maxLength": 160},
+    "proposed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"},
+    "memory_id": {
+      "type": "string",
+      "pattern": "^memory_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "resolved_by": {"type": "string", "minLength": 1, "maxLength": 160},
+    "resolution_reason": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "resolved_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "proposed"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["memory_id"]},
+            {"required": ["resolved_by"]},
+            {"required": ["resolution_reason"]},
+            {"required": ["resolved_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "promoted"}}},
+      "then": {
+        "required": ["memory_id", "resolved_by", "resolution_reason", "resolved_at"]
+      }
+    },
+    {
+      "if": {"properties": {"status": {"enum": ["rejected", "expired"]}}},
+      "then": {
+        "required": ["resolved_by", "resolution_reason", "resolved_at"],
+        "not": {"required": ["memory_id"]}
+      }
+    }
+  ]
+}

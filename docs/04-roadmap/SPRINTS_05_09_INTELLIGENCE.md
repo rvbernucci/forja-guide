@@ -73,19 +73,22 @@ and residual risk.
 **Outcome:** preserve durable work and learning without treating chat history as
 truth.
 
+**Status:** In progress. See the
+[Sprint 07 execution plan](SPRINT_07_ARTIFACTS_MEMORY_PLAN.md).
+
 ### Scope
 
-- [ ] Implement artifact metadata and provenance tables.
-- [ ] Integrate S3-compatible object storage.
-- [ ] Verify upload hashes and idempotent object writes.
-- [ ] Implement conversations, messages, content parts, and citations.
-- [ ] Separate raw messages, working summaries, memory candidates, and durable
+- [x] Implement artifact metadata and provenance tables.
+- [x] Integrate S3-compatible object storage.
+- [x] Verify upload hashes and idempotent object writes.
+- [x] Implement conversations, messages, content parts, and citations.
+- [x] Separate raw messages, working summaries, memory candidates, and durable
   memory records.
-- [ ] Add memory promotion, supersession, expiry, and deletion workflows.
-- [ ] Add retention and tombstone projection events.
-- [ ] Add tenant-safe object and metadata authorization.
-- [ ] Add immutable evidence bundle manifests.
-- [ ] Test restore, missing objects, hash mismatch, and partial upload behavior.
+- [x] Add memory promotion, supersession, expiry, and deletion workflows.
+- [x] Add retention and tombstone projection events.
+- [x] Add tenant-safe object and metadata authorization.
+- [x] Add immutable evidence bundle manifests.
+- [x] Test restore, missing objects, hash mismatch, and partial upload behavior.
 
 ### Acceptance
 

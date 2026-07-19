@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import pathlib
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -156,6 +157,110 @@ class EmptyReconciliationReceiptTests(unittest.TestCase):
         receipt["response"]["authority"]["resource_id"] = "other-scheduler"
         with self.assertRaises(ValueError):
             VERIFIER.verify_receipt(receipt, [])
+
+
+class KnowledgeReceiptEvidenceTests(unittest.TestCase):
+    """Bind knowledge receipts to their exact canonical event evidence."""
+
+    tenant_id = "00000000-0000-4000-8000-000000000011"
+    repository_id = "00000000-0000-4000-8000-000000000012"
+    conversation_id = "conversation_00000000-0000-4000-8000-000000000013"
+
+    def evidence(self) -> tuple[dict, list[dict]]:
+        """Return a valid conversation creation receipt and event."""
+        response = {
+            "conversation_id": self.conversation_id,
+            "schema_version": "1.0",
+            "tenant_id": "tenant_" + self.tenant_id,
+            "repository_id": "repo_" + self.repository_id,
+            "status": "active",
+            "version": 1,
+            "retention_class": "project",
+            "created_by": "co-architect",
+            "created_at": "2026-07-19T12:00:00Z",
+            "updated_at": "2026-07-19T12:00:00Z",
+        }
+        event = {
+            "tenant_id": self.tenant_id,
+            "repository_id": self.repository_id,
+            "aggregate_type": "conversation",
+            "aggregate_id": self.conversation_id,
+            "aggregate_version": 1,
+            "event_id": "event-knowledge-1",
+            "outbox_id": 1,
+            "event_type": "conversation.created",
+            "occurred_us": VERIFIER.parse_utc_us(response["created_at"]),
+            "actor_type": "agent",
+            "actor_id": "co-architect",
+            "correlation_id": "correlation-knowledge-1",
+            "causation_id": "",
+            "idempotency_key": "create-conversation-1",
+            "payload": response,
+        }
+        hash_parts = [
+            "knowledge",
+            self.conversation_id,
+            response["retention_class"],
+            response["created_by"],
+            event["actor_type"],
+            event["actor_id"],
+            event["causation_id"],
+        ]
+        receipt = {
+            "tenant_id": self.tenant_id,
+            "scope": f"conversation_create:{self.repository_id}:{self.conversation_id}",
+            "idempotency_key": event["idempotency_key"],
+            "request_hash": hashlib.sha256(
+                "\0".join(hash_parts).encode("utf-8")
+            ).hexdigest(),
+            "status": 201,
+            "response": response,
+        }
+        return receipt, [event]
+
+    def test_accepts_exact_knowledge_receipt(self) -> None:
+        """The canonical response and request identity form valid evidence."""
+        receipt, events = self.evidence()
+        evidence = VERIFIER.verify_receipt(receipt, events)
+        self.assertEqual(evidence["domain_event_ids"], {"event-knowledge-1"})
+
+    def test_rejects_mutated_response(self) -> None:
+        """A receipt cannot rewrite its canonical conversation payload."""
+        receipt, events = self.evidence()
+        receipt["response"]["retention_class"] = "legal_hold"
+        with self.assertRaises(ValueError):
+            VERIFIER.verify_receipt(receipt, events)
+
+    def test_rejects_mutated_request_hash(self) -> None:
+        """Matching JSON cannot conceal a different command identity."""
+        receipt, events = self.evidence()
+        receipt["request_hash"] = "0" * 64
+        with self.assertRaisesRegex(ValueError, "request hash"):
+            VERIFIER.verify_receipt(receipt, events)
+
+    def test_rejects_cross_repository_event(self) -> None:
+        """A receipt cannot adopt evidence from another repository."""
+        receipt, events = self.evidence()
+        events[0]["repository_id"] = "00000000-0000-4000-8000-000000000099"
+        with self.assertRaises(ValueError):
+            VERIFIER.verify_receipt(receipt, events)
+
+    def test_rejects_orphan_knowledge_event(self) -> None:
+        """Every canonical knowledge event must be consumed by a receipt."""
+        _, events = self.evidence()
+        with mock.patch.object(VERIFIER, "load_events", return_value=events), \
+             mock.patch.object(VERIFIER, "load_receipts", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "has no matching receipt"):
+                VERIFIER.verify("events.tsv", "receipts.tsv")
+
+    def test_ignores_nonterminal_artifact_saga_event(self) -> None:
+        """A pre-activation saga event has no completed command receipt yet."""
+        _, events = self.evidence()
+        events[0]["aggregate_type"] = "artifact_operation"
+        events[0]["event_type"] = "artifact.publication_uploading"
+        with mock.patch.object(VERIFIER, "load_events", return_value=events), \
+             mock.patch.object(VERIFIER, "load_receipts", return_value=[]):
+            VERIFIER.verify("events.tsv", "receipts.tsv")
 
 
 class DeliveryAuthorizationEvidenceTests(unittest.TestCase):

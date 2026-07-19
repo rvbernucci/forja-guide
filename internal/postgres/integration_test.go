@@ -3894,7 +3894,10 @@ func resetDatabase(t *testing.T, pool *pgxpool.Pool) {
 
 func newIntegrationStore(t *testing.T, pool *pgxpool.Pool) *Store {
 	t.Helper()
-	store, err := NewStore(pool, nil, DefaultTenantID, DefaultRepositoryID)
+	store, err := NewStore(
+		pool, nil, DefaultTenantID, DefaultRepositoryID,
+		WithMemoryPolicyPrincipal("memory-policy"),
+	)
 	if err != nil {
 		t.Fatalf("create integration store: %v", err)
 	}

@@ -232,6 +232,7 @@ func TestMigrationSixRequiresEveryLegacyLeaseSetToDrain(t *testing.T) {
 
 func TestMigrationSixFailsFastBehindLeaseSetReader(t *testing.T) {
 	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 6)
 	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("prepare migration 006 retry: %v", err)
 	}
@@ -271,6 +272,7 @@ func TestMigrationSixFailsFastBehindLeaseSetReader(t *testing.T) {
 
 func TestMigrationFiveRollbackFailsFastBehindPublicationReader(t *testing.T) {
 	pool := migratedPool(t)
+	rollbackToMigrationVersion(t, pool, 6)
 	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback migration 006: %v", err)
 	}

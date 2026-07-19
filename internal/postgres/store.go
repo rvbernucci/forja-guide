@@ -35,11 +35,27 @@ const (
 
 // Store implements durable run, lease, outbox, and projection repositories.
 type Store struct {
-	pool         *pgxpool.Pool
-	clock        clock.Clock
-	machine      *runstate.Machine
-	tenantID     string
-	repositoryID string
+	pool                    *pgxpool.Pool
+	clock                   clock.Clock
+	machine                 *runstate.Machine
+	tenantID                string
+	repositoryID            string
+	memoryPolicyPrincipalID string
+}
+
+// StoreOption configures a trust boundary that cannot be inferred from command input.
+type StoreOption func(*Store) error
+
+// WithMemoryPolicyPrincipal authorizes exactly one system identity for policy promotion.
+func WithMemoryPolicyPrincipal(actorID string) StoreOption {
+	return func(store *Store) error {
+		actorID = strings.TrimSpace(actorID)
+		if actorID == "" || utf8.RuneCountInString(actorID) > 160 {
+			return fault.New(fault.CodeInvalidArgument, "postgres.WithMemoryPolicyPrincipal", "memory policy principal ID is invalid")
+		}
+		store.memoryPolicyPrincipalID = actorID
+		return nil
+	}
 }
 
 // Open validates a pool configuration and establishes bounded connections.
@@ -114,6 +130,7 @@ func NewStore(
 	source clock.Clock,
 	tenantID string,
 	repositoryID string,
+	options ...StoreOption,
 ) (*Store, error) {
 	if pool == nil {
 		return nil, fault.New(
@@ -132,13 +149,22 @@ func NewStore(
 			"tenant and repository IDs are required",
 		)
 	}
-	return &Store{
+	store := &Store{
 		pool:         pool,
 		clock:        source,
 		machine:      runstate.NewMachine(source),
 		tenantID:     tenantID,
 		repositoryID: repositoryID,
-	}, nil
+	}
+	for _, option := range options {
+		if option == nil {
+			return nil, fault.New(fault.CodeInvalidArgument, "postgres.NewStore", "store option is nil")
+		}
+		if err := option(store); err != nil {
+			return nil, err
+		}
+	}
+	return store, nil
 }
 
 // Ready reports whether the canonical database can accept requests.

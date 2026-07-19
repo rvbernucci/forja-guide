@@ -21,6 +21,7 @@ test-integration:
 	FORJA_TEST_DELIVERY_DATABASE_URL="$$FORJA_TEST_DATABASE_URL" \
 		go test -count=1 ./internal/execution \
 		-run '^Test(PipelineApprovedSprintRunsRealWorkerAndPublishes|DeliveryAuthorizationSupportsNewAttemptForSameDelivery)$$'
+	./scripts/rehearse_sprint07_rollback.sh
 	./scripts/rehearse_sprint05_rollback.sh
 	./scripts/smoke_durable_restart.sh
 

@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/conversation.schema.json",
+  "title": "Forja Conversation",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "conversation_id",
+    "schema_version",
+    "tenant_id",
+    "repository_id",
+    "status",
+    "version",
+    "retention_class",
+    "created_by",
+    "created_at",
+    "updated_at"
+  ],
+  "properties": {
+    "conversation_id": {
+      "type": "string",
+      "pattern": "^conversation_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {
+      "type": "string",
+      "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "repository_id": {
+      "type": "string",
+      "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "status": {"enum": ["active", "closed", "tombstoned"]},
+    "version": {"type": "integer", "minimum": 1},
+    "retention_class": {
+      "enum": ["ephemeral", "project", "regulated", "indefinite"]
+    },
+    "created_by": {"type": "string", "minLength": 1, "maxLength": 160},
+    "transcript_artifact_id": {
+      "type": "string",
+      "pattern": "^artifact_[A-Za-z0-9_-]+$"
+    },
+    "transcript_manifest_id": {
+      "type": "string",
+      "pattern": "^manifest_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "closed_at": {"type": "string", "format": "date-time"},
+    "tombstoned_at": {"type": "string", "format": "date-time"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"status": {"const": "active"}}},
+      "then": {
+        "not": {
+          "anyOf": [
+            {"required": ["transcript_artifact_id"]},
+            {"required": ["transcript_manifest_id"]},
+            {"required": ["closed_at"]},
+            {"required": ["tombstoned_at"]}
+          ]
+        }
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "closed"}}},
+      "then": {
+        "required": ["transcript_artifact_id", "transcript_manifest_id", "closed_at"],
+        "not": {"required": ["tombstoned_at"]}
+      }
+    },
+    {
+      "if": {"properties": {"status": {"const": "tombstoned"}}},
+      "then": {
+        "required": ["tombstoned_at"],
+        "oneOf": [
+          {
+            "required": ["transcript_artifact_id", "transcript_manifest_id", "closed_at"]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {"required": ["transcript_artifact_id"]},
+                {"required": ["transcript_manifest_id"]},
+                {"required": ["closed_at"]}
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
