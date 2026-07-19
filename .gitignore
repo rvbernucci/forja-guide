@@ -42,3 +42,7 @@ qdrant_storage/
 neo4j_data/
 postgres_data/
 
+# Private retrieval-evaluation corpora and captured outcomes. The one tracked
+# README documents the local layout; every dataset remains outside public Git.
+/private-evaluations/*
+!/private-evaluations/README.md

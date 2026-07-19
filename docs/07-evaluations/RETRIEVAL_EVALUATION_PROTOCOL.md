@@ -23,6 +23,13 @@ It uses symbolic identities only and is not representative of production
 quality. Private corpus locations, query text, cards, expected answers, and
 source identifiers must not be committed to this public repository.
 
+For local controlled runs, use the ignored
+[`private-evaluations`](../../private-evaluations/README.md) boundary. The
+repository validator permits only its explanatory README to be tracked; every
+corpus, captured outcome, and report below it remains outside public Git.
+Production evaluation storage must add its own access control, encryption,
+backup, and retention policy.
+
 ## Contract
 
 Each corpus uses
