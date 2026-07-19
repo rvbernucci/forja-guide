@@ -109,6 +109,13 @@ Qdrant host also requires `FORJA_QDRANT_TLS=true` and
 `FORJA_QDRANT_API_KEY` from a secret boundary. AWS authentication uses the
 standard SDK chain, with a workload role as the production target.
 
+Do not bridge Bedrock access by SSHing into Coolify, inspecting a container, or
+copying an application API key into the Forja process. A wrapper may govern a
+short-lived, allowlisted re-embedding operation, but AWS credentials must be
+resolved directly by the Go SDK from the workload identity. See
+[`ADR-0016`](../05-decisions/ADR-0016-BEDROCK-TITAN-EMBEDDING-PROVIDER.md) for
+the permission boundary and private activation evidence.
+
 The query is a strict `retrieval-query.schema.json` document in a private
 file. The configured tenant, repository, and derived Titan generation must
 match it. Results and projection receipts are atomically written with mode

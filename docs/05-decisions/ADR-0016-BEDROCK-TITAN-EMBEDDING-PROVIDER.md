@@ -61,6 +61,30 @@ raw vectors, or secrets. The job runs under a service identity that has only
 `bedrock:InvokeModel` permission for the selected model and the minimal Qdrant
 write path needed by the projector.
 
+## Deployment Identity Handoff
+
+The Forja process must obtain short-lived AWS credentials directly through the
+standard SDK chain from its workload identity, such as an ECS task role, EKS
+web identity, or instance role. The deployment identity is scoped separately
+from PostgreSQL, S3, and Qdrant credentials. It needs only the selected
+Bedrock Runtime action for the pinned model; it must not receive AWS account
+administration, IAM mutation, or a broad Bedrock wildcard.
+
+Existing application wrappers that SSH into a host or inspect a container to
+copy a long-lived Bedrock API key are not a valid Forja credential adapter.
+They may inform the future allowlisted operation/grant protocol, but the
+Forja process must never read, forward, persist, or log an application bearer
+key. No deployment script or runtime flag may carry `CHAVE_API_AWS_BEDROCK`,
+`AWS_BEARER_TOKEN_BEDROCK`, an `Authorization` header, or a secret value.
+
+Before enabling re-embedding or private evaluation, the deployment operator
+must retain private evidence that the workload role can invoke exactly
+`amazon.titan-embed-text-v2:0` in the configured region, that the result is a
+1024-dimension vector, and that the process cannot retrieve unrelated Coolify
+environment values. The existing opt-in compatibility probe is appropriate for
+that limited evidence when run inside the workload; its output must remain
+redacted and must not become a committed artifact.
+
 ## Consequences
 
 - A Bedrock failure is bounded and causes no point publication or checkpoint
