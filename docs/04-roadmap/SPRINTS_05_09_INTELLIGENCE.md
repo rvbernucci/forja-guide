@@ -149,8 +149,10 @@ preserving authority and access boundaries.
   Collection verification and rollback remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
   The deterministic symbol-card adapter and generic card contract are complete.
-- [x] Implement the dense/sparse request contracts and deterministic sparse
-  lexical encoder. Live embedding and Qdrant query execution remain pending.
+- [x] Implement the dense/sparse request contracts, deterministic sparse
+  lexical encoder, Qdrant candidate execution, bounded RRF fusion, degraded
+  receipts, and mandatory PostgreSQL resolution. Concrete embedding-provider
+  deployment remains pending.
 - [x] Apply tenant, repository, status, authority, stale, language, and kind
   filters before ranking.
 - [x] Implement weighted reciprocal rank fusion.

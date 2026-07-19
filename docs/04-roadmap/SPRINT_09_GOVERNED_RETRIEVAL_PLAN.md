@@ -125,6 +125,8 @@ documentation evidence.
   before either rank list is produced.
 - [x] Fuse bounded dense and sparse rankings with explainable weighted
   reciprocal rank fusion.
+- [x] Execute both Qdrant rank paths, treat their payloads as untrusted, and
+  return a bounded degraded receipt when either path is unavailable.
 - [x] Define and test the fail-closed canonical resolver boundary for identity,
   source hash, source commit, lifecycle, scope, and duplicate checks.
 - [x] Resolve symbol candidates against canonical PostgreSQL identity, source

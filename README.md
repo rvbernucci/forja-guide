@@ -88,7 +88,7 @@ exact. A two-commit command drill proves selective adapter reuse and validates
 the resulting events, outbox records, and receipts. Sprint 09 now adds strict
 retrieval contracts, deterministic symbol cards and sparse lexical vectors,
 independent fenced projection delivery, a Qdrant point writer with mandatory
-pre-ranking filters, and a fail-closed canonical-resolution boundary. The
+pre-ranking filters, a live hybrid candidate query path, and a fail-closed canonical-resolution boundary. The
 symbol projector writes Qdrant first, records canonical point provenance in
 PostgreSQL, and only then acknowledges its fenced delivery. The operator
 adapter can create physical collections, apply required payload indexes, and
