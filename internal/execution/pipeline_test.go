@@ -13,6 +13,7 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/control"
@@ -257,6 +258,55 @@ func TestPipelinePersistsCanonicalFailureWhenWorkerReturnsNoResult(t *testing.T)
 			"failure was not durably closed: run=%#v attempt=%#v outcome=%#v quarantines=%d releases=%d",
 			repository.run, repository.attempt, outcome, sideEffects.quarantines, repository.releases,
 		)
+	}
+}
+
+func TestPipelineFailureCleanupPreservesTraceAfterCancellation(t *testing.T) {
+	request := pipelineRequestFixture(t)
+	_, repository := authorizedPipelineFixture(t, request)
+	repository.run.State = string(runstate.StateRunning)
+	runID, err := identity.ParseRunID(request.RunID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var observed trace.SpanContext
+	var observedDeadline bool
+	var observedErr error
+	repository.transitionContextHook = func(ctx context.Context, target runstate.State) error {
+		if target == runstate.StateFailedRetryable {
+			observed = trace.SpanContextFromContext(ctx)
+			_, observedDeadline = ctx.Deadline()
+			observedErr = ctx.Err()
+		}
+		return nil
+	}
+	sideEffects := &pipelineSideEffectStub{}
+	pipeline, err := NewPipeline(
+		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	parentCtx, parent := provider.Tracer("pipeline-test").Start(t.Context(), "parent")
+	cancelledCtx, cancel := context.WithCancel(parentCtx)
+	cancel()
+
+	err = pipeline.failRun(
+		cancelledCtx, request, runID, repository.run,
+		runstate.StateFailedRetryable, "worker-failed-retryable",
+	)
+	parent.End()
+	if err != nil {
+		t.Fatalf("persist failure after cancellation: %v", err)
+	}
+	if !observed.IsValid() || observed.TraceID() != parent.SpanContext().TraceID() {
+		t.Fatalf("failure cleanup trace = %v, want parent %v", observed, parent.SpanContext())
+	}
+	if !observedDeadline || observedErr != nil {
+		t.Fatalf("failure cleanup context deadline=%v err=%v", observedDeadline, observedErr)
 	}
 }
 
@@ -1590,6 +1640,10 @@ func TestPipelineRecoveryBoundsDetachedPublicationLeaseRenewal(t *testing.T) {
 		LeaseSetID: request.AttemptID, OwnerID: "pipeline-test",
 	}
 	boundedRenewalObserved := false
+	var renewalTrace trace.SpanContext
+	var completionTrace trace.SpanContext
+	var completionDeadline bool
+	var completionErr error
 	repository.leaseSetRenewHook = func(ctx context.Context, ordinal int) error {
 		if ordinal != 2 {
 			return nil
@@ -1602,6 +1656,15 @@ func TestPipelineRecoveryBoundsDetachedPublicationLeaseRenewal(t *testing.T) {
 			return fmt.Errorf("detached recovery renewal deadline is %s", remaining)
 		}
 		boundedRenewalObserved = true
+		renewalTrace = trace.SpanContextFromContext(ctx)
+		return nil
+	}
+	repository.transitionContextHook = func(ctx context.Context, target runstate.State) error {
+		if target == runstate.StateCompleted {
+			completionTrace = trace.SpanContextFromContext(ctx)
+			_, completionDeadline = ctx.Deadline()
+			completionErr = ctx.Err()
+		}
 		return nil
 	}
 	receipt := pipelineReceiptFixture(request)
@@ -1632,7 +1695,70 @@ func TestPipelineRecoveryBoundsDetachedPublicationLeaseRenewal(t *testing.T) {
 	if !boundedRenewalObserved {
 		t.Fatal("detached recovery publication renewal did not expose a bounded context")
 	}
+	if !renewalTrace.IsValid() || completionTrace.TraceID() != renewalTrace.TraceID() {
+		t.Fatalf("completion trace = %v, want recovery trace %v", completionTrace, renewalTrace)
+	}
+	if !completionDeadline || completionErr != nil {
+		t.Fatalf("completion context deadline=%v err=%v", completionDeadline, completionErr)
+	}
 	assertConnectedRecoveryTrace(t, exporter.GetSpans())
+}
+
+func TestPipelineRecoveryJournalInspectionPreservesTrace(t *testing.T) {
+	request := pipelineRequestFixture(t)
+	recoveryFence, repository := authorizedPipelineFixture(t, request)
+	repository.run.State = string(runstate.StateValidating)
+	repository.attempt.Status = "succeeded"
+	repository.leaseFound = true
+	repository.leaseState = "active"
+	repository.leaseSet = persistence.LeaseSet{
+		LeaseSetID: request.AttemptID, OwnerID: "pipeline-test",
+	}
+	var firstLookup trace.SpanContext
+	var journalLookup trace.SpanContext
+	var journalDeadline bool
+	var journalErr error
+	repository.publicationContextHook = func(ctx context.Context, ordinal int) {
+		switch ordinal {
+		case 1:
+			firstLookup = trace.SpanContextFromContext(ctx)
+		case 2:
+			journalLookup = trace.SpanContextFromContext(ctx)
+			_, journalDeadline = ctx.Deadline()
+			journalErr = ctx.Err()
+		}
+	}
+	sideEffects := &pipelineSideEffectStub{
+		commit: delivery.CommitResult{
+			BaseCommit: request.BaseCommit, ResultCommit: strings.Repeat("c", 40),
+		},
+		bundle: delivery.ValidationBundle{
+			Report: contracts.ValidationReport{Status: "passed"},
+		},
+		publicationErr: errors.New("synthetic publication outage"),
+	}
+	provider := sdktrace.NewTracerProvider()
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	pipeline, err := NewPipeline(
+		repository, sideEffects, sideEffects, sideEffects, sideEffects, "pipeline-test",
+		observability.NewObserver(provider, nil),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pipeline.Recover(t.Context(), request, recoveryFence); err == nil ||
+		!strings.Contains(err.Error(), "synthetic publication outage") {
+		t.Fatalf("publication outage recovery error = %v", err)
+	}
+	if repository.publicationLookups != 2 {
+		t.Fatalf("publication journal lookups = %d, want 2", repository.publicationLookups)
+	}
+	if !firstLookup.IsValid() || journalLookup.TraceID() != firstLookup.TraceID() {
+		t.Fatalf("journal trace = %v, want recovery trace %v", journalLookup, firstLookup)
+	}
+	if !journalDeadline || journalErr != nil {
+		t.Fatalf("journal context deadline=%v err=%v", journalDeadline, journalErr)
+	}
 }
 
 func assertConnectedRecoveryTrace(t *testing.T, spans tracetest.SpanStubs) {
@@ -2053,31 +2179,34 @@ func nonSuccessWorkerResult(
 }
 
 type pipelineRepositoryStub struct {
-	authority             control.Authority
-	run                   contracts.Run
-	attempt               persistence.Attempt
-	authorization         persistence.DeliveryAuthorization
-	transitions           int
-	leaseAcquisitions     int
-	releases              int
-	publication           persistence.DeliveryPublication
-	publicationFound      bool
-	leaseSet              persistence.LeaseSet
-	leaseState            string
-	leaseFound            bool
-	verifyErr             error
-	releaseErr            error
-	schedulerRenewals     int
-	schedulerRenewHook    func(context.Context, int) error
-	leaseSetRenewals      int
-	leaseSetRenewErrAfter int
-	leaseSetRenewErr      error
-	leaseSetRenewHook     func(context.Context, int) error
-	acquireErr            error
-	startErr              error
-	finishErr             error
-	releaseHook           func() error
-	transitionHook        func(runstate.State) error
+	authority              control.Authority
+	run                    contracts.Run
+	attempt                persistence.Attempt
+	authorization          persistence.DeliveryAuthorization
+	transitions            int
+	leaseAcquisitions      int
+	releases               int
+	publication            persistence.DeliveryPublication
+	publicationFound       bool
+	leaseSet               persistence.LeaseSet
+	leaseState             string
+	leaseFound             bool
+	verifyErr              error
+	releaseErr             error
+	schedulerRenewals      int
+	schedulerRenewHook     func(context.Context, int) error
+	leaseSetRenewals       int
+	leaseSetRenewErrAfter  int
+	leaseSetRenewErr       error
+	leaseSetRenewHook      func(context.Context, int) error
+	acquireErr             error
+	startErr               error
+	finishErr              error
+	releaseHook            func() error
+	transitionHook         func(runstate.State) error
+	transitionContextHook  func(context.Context, runstate.State) error
+	publicationLookups     int
+	publicationContextHook func(context.Context, int)
 }
 
 func (s *pipelineRepositoryStub) Authority() control.Authority { return s.authority }
@@ -2087,12 +2216,17 @@ func (s *pipelineRepositoryStub) GetRun(context.Context, identity.RunID) (contra
 }
 
 func (s *pipelineRepositoryStub) TransitionRun(
-	_ context.Context,
+	ctx context.Context,
 	_ identity.RunID,
 	_ int,
 	target runstate.State,
 	_ runstate.CommandMetadata,
 ) (contracts.Run, error) {
+	if s.transitionContextHook != nil {
+		if err := s.transitionContextHook(ctx, target); err != nil {
+			return contracts.Run{}, err
+		}
+	}
 	if s.transitionHook != nil {
 		if err := s.transitionHook(target); err != nil {
 			return contracts.Run{}, err
@@ -2109,10 +2243,14 @@ func (s *pipelineRepositoryStub) GetAttempt(context.Context, string) (persistenc
 }
 
 func (s *pipelineRepositoryStub) GetDeliveryPublication(
-	context.Context,
-	string,
-	string,
+	ctx context.Context,
+	_ string,
+	_ string,
 ) (persistence.DeliveryPublication, bool, error) {
+	s.publicationLookups++
+	if s.publicationContextHook != nil {
+		s.publicationContextHook(ctx, s.publicationLookups)
+	}
 	return s.publication, s.publicationFound, nil
 }
 

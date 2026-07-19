@@ -49,6 +49,8 @@ class ObservabilityAssetsTests(unittest.TestCase):
             self.assertIn(
                 "--server.http.listen-addr=0.0.0.0:12345", compose
             )
+            self.assertIn("--storage.path=/var/lib/alloy/data", compose)
+            self.assertIn("alloy-data:/var/lib/alloy/data", compose)
             self.assertIn('targets: ["127.0.0.1:8080"]', prometheus)
             self.assertIn('targets: ["127.0.0.1:9464"]', prometheus)
             self.assertNotIn("host.docker.internal", compose + prometheus)

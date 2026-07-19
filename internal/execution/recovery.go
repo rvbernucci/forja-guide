@@ -339,7 +339,9 @@ func (p *Pipeline) resumeSucceeded(
 		if publicationErr == nil {
 			publicationErr = fmt.Errorf("publication recovery returned no durable receipt")
 		}
-		journalCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+		journalCtx, cancel := context.WithTimeout(
+			context.WithoutCancel(ctx), cleanupTimeout,
+		)
 		defer cancel()
 		record, found, journalErr := p.repository.GetDeliveryPublication(
 			journalCtx, request.DeliveryID, request.AttemptID,
@@ -359,7 +361,9 @@ func (p *Pipeline) resumeSucceeded(
 		}
 		return outcome, errors.Join(publicationErr, journalErr)
 	}
-	completionCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	completionCtx, cancel := context.WithTimeout(
+		context.WithoutCancel(ctx), cleanupTimeout,
+	)
 	defer cancel()
 	run, transitionErr := p.transition(
 		completionCtx, request, runID, run, runstate.StateCompleted, "recovery-run-completed",
