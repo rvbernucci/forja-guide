@@ -19,6 +19,7 @@
 | [0015](ADR-0015-GOVERNED-HYBRID-RETRIEVAL.md) | Discover with hybrid search and resolve against canonical authority | Accepted for Sprint 09 |
 | [0016](ADR-0016-BEDROCK-TITAN-EMBEDDING-PROVIDER.md) | Use Bedrock Titan through the AWS Go SDK with workload identity | Accepted for Sprint 09 implementation |
 | [0017](ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md) | Retrieve memory through authorized derived bodies | Accepted for Sprint 09 implementation |
+| [0018](ADR-0018-GOVERNED-INCIDENT-RETRIEVAL.md) | Derive safe incident cards from immutable attempt failures | Accepted for Sprint 09 implementation |
 
 Use zero-padded sequential identifiers. Accepted ADRs are not edited to reverse
 their decision; a new ADR supersedes them.

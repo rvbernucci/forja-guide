@@ -106,7 +106,9 @@ operations require PostgreSQL readiness, a verified Qdrant endpoint, the
 governed S3 configuration, and standard AWS credential configuration; they
 never accept secrets as flags or write query text to receipts. Production
 activation still requires a workload-role deployment, region/model-access
-evidence, private evaluation results, and the incident card family. Neo4j
+evidence, and private evaluation results. Incident cards now derive only from
+the matching immutable terminal attempt event and retain classification,
+severity, identifiers, and evidence hashes, never worker output. Neo4j
 traversal remains pending for Sprint 10.
 
 When a canonical snapshot is superseded, the projector first tombstones every

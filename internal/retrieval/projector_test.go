@@ -105,6 +105,34 @@ func TestProjectionWorkerProjectsActiveMemoryFromCanonicalLookup(t *testing.T) {
 	}
 }
 
+func TestProjectionWorkerProjectsOnlyCanonicalFailureIncidents(t *testing.T) {
+	t.Parallel()
+	incident := projectionIncident(t)
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 74, AggregateType: "attempt", AggregateID: incident.AttemptID, EventType: "attempt.finished", Attempts: 1, FencingToken: 3,
+	}}}}
+	writer := &recordingPointWriter{}
+	worker := projectionWorker(store, staticIndexSource{}, &recordingPointRecorder{}, writer)
+	worker.Incidents = staticIncidentSource{incident: incident, found: true}
+	if _, err := worker.ProcessOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.points) != 1 || writer.points[0].ArtifactFamily != "incident" || writer.points[0].EntityID != incident.IncidentID {
+		t.Fatalf("points=%#v", writer.points)
+	}
+
+	store = &recordingDeliveries{claimed: []persistence.ProjectionDelivery{{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 75, AggregateType: "attempt", AggregateID: incident.AttemptID, EventType: "attempt.started", Attempts: 1, FencingToken: 3,
+	}}}}
+	writer = &recordingPointWriter{}
+	worker = projectionWorker(store, staticIndexSource{}, &recordingPointRecorder{}, writer)
+	worker.Incidents = staticIncidentSource{found: false}
+	run, err := worker.ProcessOnce(t.Context())
+	if err != nil || run != (ProjectionRun{Claimed: 1, Published: 1, Skipped: 1}) || len(writer.points) != 0 {
+		t.Fatalf("run=%#v points=%#v err=%v", run, writer.points, err)
+	}
+}
+
 func TestProjectionWorkerRetriesAndDoesNotCheckpointFailedWrite(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)
@@ -260,8 +288,18 @@ type staticMemorySource struct {
 	err    error
 }
 
+type staticIncidentSource struct {
+	incident contracts.Incident
+	found    bool
+	err      error
+}
+
 func (source staticMemorySource) GetActiveMemory(context.Context, string) (MemoryRetrievalRecord, bool, error) {
 	return source.record, source.found, source.err
+}
+
+func (source staticIncidentSource) GetIncidentForAttempt(context.Context, string) (contracts.Incident, bool, error) {
+	return source.incident, source.found, source.err
 }
 
 func (source staticDecisionSource) GetDecision(context.Context, string) (contracts.Decision, bool, error) {
@@ -270,6 +308,24 @@ func (source staticDecisionSource) GetDecision(context.Context, string) (contrac
 
 func (source staticIndexSource) GetActiveIndexBundle(context.Context) (indexing.IndexBundle, bool, error) {
 	return source.bundle, source.found, source.err
+}
+
+func projectionIncident(t *testing.T) contracts.Incident {
+	t.Helper()
+	incident := contracts.Incident{
+		IncidentID: "incident_attempt_11111111-2222-4333-8444-555555555555", SchemaVersion: contracts.IncidentSchemaVersion,
+		TenantID: retrievalTenantID, RepositoryID: retrievalRepositoryID,
+		RunID: "run_11111111-2222-4333-8444-555555555555", AttemptID: "attempt_11111111-2222-4333-8444-555555555555",
+		AttemptVersion: 3, EventID: "event_projection_incident", EventType: "attempt.finished",
+		Status: "open", Severity: "critical", Classification: "process_failure", Retryable: false,
+		OccurredAt: time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC), EvidenceRefs: []string{},
+	}
+	var err error
+	incident.SourceHash, err = contracts.IncidentSourceHash(incident)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return incident
 }
 
 type recordingPointWriter struct {

@@ -17,6 +17,9 @@ import (
 // Unsupported families return no match rather than being trusted from derived
 // projection metadata.
 func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, error) {
+	if candidates, found, err := s.resolveIncidentRetrievalPoint(ctx, pointID); err != nil || found {
+		return candidates, err
+	}
 	if candidates, found, err := s.resolveMemoryRetrievalPoint(ctx, pointID); err != nil || found {
 		return candidates, err
 	}
@@ -71,6 +74,44 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		return nil, databaseError("postgres.ResolveRetrievalPoint.rows", err)
 	}
 	return result, nil
+}
+
+func (s *Store) resolveIncidentRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, bool, error) {
+	var generation, entityID, storedHash, status, authorityClass string
+	var stale bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
+		FROM forja.retrieval_projection_points
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='incident'`,
+		s.tenantID, s.repositoryID, pointID,
+	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, true, databaseError("postgres.ResolveRetrievalPoint.incidentPoint", err)
+	}
+	attemptID, valid := contracts.AttemptIDFromIncidentID(entityID)
+	if !valid || status != "active" || authorityClass != "canonical" || stale {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	incident, found, err := s.GetIncidentForAttempt(ctx, attemptID)
+	if err != nil {
+		return nil, true, err
+	}
+	if !found {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	source, err := retrieval.BuildIncidentSource(incident)
+	if err != nil || storedHash != source.SourceHash || pointID != contracts.RetrievalPointID(generation, incident.IncidentID, source.SourceHash) {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	return []retrieval.CanonicalCandidate{{
+		PointID: pointID, CollectionGeneration: generation,
+		TenantID: "tenant_" + s.tenantID, RepositoryID: "repo_" + s.repositoryID,
+		EntityID: incident.IncidentID, ArtifactFamily: "incident", SourceHash: source.SourceHash,
+		Status: "active", AuthorityClass: "canonical", ProofRefs: source.ProofRefs,
+	}}, true, nil
 }
 
 func (s *Store) resolveMemoryRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, bool, error) {

@@ -108,6 +108,38 @@ func TestBuildDecisionSourceRequiresResolvedCanonicalDecisionAndIsStable(t *test
 	}
 }
 
+func TestBuildIncidentSourceIsBoundedAndNeverIncludesRawOutput(t *testing.T) {
+	t.Parallel()
+	incident := contracts.Incident{
+		IncidentID:    "incident_attempt_11111111-2222-4333-8444-555555555555",
+		SchemaVersion: contracts.IncidentSchemaVersion,
+		TenantID:      retrievalTenantID, RepositoryID: retrievalRepositoryID,
+		RunID:          "run_11111111-2222-4333-8444-555555555555",
+		AttemptID:      "attempt_11111111-2222-4333-8444-555555555555",
+		AttemptVersion: 3, EventID: "event_incident_fixture", EventType: "attempt.finished",
+		Status: "open", Severity: "critical", Classification: "process_failure", Retryable: false,
+		OccurredAt:   time.Date(2026, 7, 19, 18, 0, 0, 0, time.UTC),
+		EvidenceRefs: []string{"worker_stderr#sha256=" + strings.Repeat("b", 64), "worker_stdout#sha256=" + strings.Repeat("a", 64)},
+	}
+	var err error
+	incident.SourceHash, err = contracts.IncidentSourceHash(incident)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, err := BuildIncidentSource(incident)
+	if err != nil || source.ArtifactFamily != "incident" || source.EntityID != incident.IncidentID {
+		t.Fatalf("source=%#v err=%v", source, err)
+	}
+	card, err := BuildCardText(source)
+	if err != nil || !strings.Contains(card, "classification: process_failure") || strings.Contains(card, "stdout: ") || strings.Contains(card, "stderr: ") {
+		t.Fatalf("incident card=%q err=%v", card, err)
+	}
+	incident.Retryable = true
+	if _, err := BuildIncidentSource(incident); err == nil {
+		t.Fatal("severity/retryability mismatch was accepted")
+	}
+}
+
 func TestHashingSparseEncoderIsStableAndNormalized(t *testing.T) {
 	t.Parallel()
 	encoder := HashingSparseEncoder{}

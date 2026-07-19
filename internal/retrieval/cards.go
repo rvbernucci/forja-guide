@@ -127,6 +127,32 @@ func BuildDecisionSource(tenantID, repositoryID string, decision contracts.Decis
 	}, nil
 }
 
+// BuildIncidentSource produces a bounded, safe operational card. Incidents
+// intentionally retain only terminal classification and immutable references;
+// raw worker output remains outside retrieval and context assembly.
+func BuildIncidentSource(incident contracts.Incident) (CardSource, error) {
+	if err := contracts.ValidateIncident(incident); err != nil {
+		return CardSource{}, fmt.Errorf("validate incident: %w", err)
+	}
+	body := "severity: " + incident.Severity +
+		"\nclassification: " + incident.Classification +
+		"\nretryable: " + fmt.Sprintf("%t", incident.Retryable) +
+		"\nevent_type: " + incident.EventType
+	return CardSource{
+		TenantID: incident.TenantID, RepositoryID: incident.RepositoryID,
+		EntityID: incident.IncidentID, ArtifactFamily: "incident", SourceHash: incident.SourceHash,
+		AuthorityClass: "canonical", Status: "active",
+		Title: "incident: " + incident.Classification, Body: body,
+		ProofRefs: append([]string{
+			"incident:" + incident.IncidentID,
+			"attempt:" + incident.AttemptID,
+			"run:" + incident.RunID,
+			"event:" + incident.EventID,
+			"incident_source_hash:" + incident.SourceHash,
+		}, incident.EvidenceRefs...),
+	}, nil
+}
+
 func validateDecisionForRetrieval(decision contracts.Decision) error {
 	if decision.SchemaVersion != "1.0" || !strings.HasPrefix(decision.DecisionID, "decision_") ||
 		!strings.HasPrefix(decision.SprintID, "sprint_") || !strings.HasPrefix(decision.RunID, "run_") ||

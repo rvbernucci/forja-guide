@@ -28,6 +28,12 @@ type ActiveDecisionSource interface {
 	GetDecision(context.Context, string) (contracts.Decision, bool, error)
 }
 
+// ActiveIncidentSource exposes a safe canonical incident view derived from a
+// terminal attempt event. It never exposes raw worker output to the projector.
+type ActiveIncidentSource interface {
+	GetIncidentForAttempt(context.Context, string) (contracts.Incident, bool, error)
+}
+
 // ProjectionRun reports bounded, non-content operational outcomes. It is
 // suitable for metrics and receipts without leaking prompts, cards, or paths.
 type ProjectionRun struct {
@@ -46,6 +52,7 @@ type ProjectionWorker struct {
 	Deliveries   persistence.ProjectionDeliveryRepository
 	Source       ActiveIndexSource
 	Decisions    ActiveDecisionSource
+	Incidents    ActiveIncidentSource
 	Memories     ActiveMemorySource
 	MemoryBodies MemoryBodyReader
 	Recorder     persistence.RetrievalPointRepository
@@ -131,6 +138,9 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionR
 }
 
 func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if delivery.AggregateType == "attempt" {
+		return worker.projectIncident(ctx, delivery)
+	}
 	if delivery.AggregateType == "decision" {
 		return worker.projectDecision(ctx, delivery)
 	}
@@ -184,6 +194,34 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 		if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
 			return false, fmt.Errorf("record retrieval point provenance: %w", err)
 		}
+	}
+	return false, nil
+}
+
+func (worker ProjectionWorker) projectIncident(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if worker.Incidents == nil {
+		return false, fmt.Errorf("canonical incident source is required")
+	}
+	incident, found, err := worker.Incidents.GetIncidentForAttempt(ctx, delivery.AggregateID)
+	if err != nil {
+		return false, fmt.Errorf("load canonical incident: %w", err)
+	}
+	if !found {
+		return true, nil
+	}
+	source, err := BuildIncidentSource(incident)
+	if err != nil {
+		return false, err
+	}
+	point, err := BuildPoint(ctx, source, worker.Generation, worker.Embedder, worker.Sparse)
+	if err != nil {
+		return false, err
+	}
+	if err := worker.Writer.UpsertPoint(ctx, point); err != nil {
+		return false, err
+	}
+	if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
+		return false, fmt.Errorf("record retrieval point provenance: %w", err)
 	}
 	return false, nil
 }

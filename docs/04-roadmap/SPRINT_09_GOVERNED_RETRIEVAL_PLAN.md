@@ -6,8 +6,10 @@ Status: In progress. Authorized by the authoritative
 The retrieval boundary is governed by
 [ADR-0002](../05-decisions/ADR-0002-POSTGRES-SYSTEM-OF-RECORD.md),
 [ADR-0003](../05-decisions/ADR-0003-DERIVED-INTELLIGENCE-STORES.md), and
-[ADR-0015](../05-decisions/ADR-0015-GOVERNED-HYBRID-RETRIEVAL.md), and
-[ADR-0016](../05-decisions/ADR-0016-BEDROCK-TITAN-EMBEDDING-PROVIDER.md).
+[ADR-0015](../05-decisions/ADR-0015-GOVERNED-HYBRID-RETRIEVAL.md),
+[ADR-0016](../05-decisions/ADR-0016-BEDROCK-TITAN-EMBEDDING-PROVIDER.md),
+[ADR-0017](../05-decisions/ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md), and
+[ADR-0018](../05-decisions/ADR-0018-GOVERNED-INCIDENT-RETRIEVAL.md).
 
 ## Outcome
 
@@ -87,13 +89,16 @@ documentation evidence.
 - [x] Add Go contract types and semantic validation for scopes, filters,
   vectors, ranks, finite scores, model descriptors, and bounded collections.
 - [x] Build the generic deterministic card boundary plus canonical symbol,
-  test, decision, and memory adapters. A test card is emitted only for a
+  test, decision, memory, and incident adapters. A test card is emitted only for a
   symbol canonically marked as a test and resolves only while that flag remains
   true. Decisions and memories are re-derived from PostgreSQL. A memory also
   requires an active exact artifact/object binding, an integrity-verified
   provider version, and the bounded redacted body contract in
   [ADR-0017](../05-decisions/ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md).
-  Incidents do not yet have a canonical model.
+  Incident cards are derived exclusively from the matching immutable terminal
+  attempt event; they include only safe classification, identifiers, and
+  evidence hashes under
+  [ADR-0018](../05-decisions/ADR-0018-GOVERNED-INCIDENT-RETRIEVAL.md).
 - [x] Generate stable point IDs and byte-stable card text from canonical input.
 - [x] Implement a versioned deterministic lexical encoder for sparse vectors.
 
@@ -145,12 +150,12 @@ documentation evidence.
   return a bounded degraded receipt when either path is unavailable.
 - [x] Define and test the fail-closed canonical resolver boundary for identity,
   source hash, source commit, lifecycle, scope, and duplicate checks.
-- [x] Resolve symbol, test, decision, and memory candidates against canonical
+- [x] Resolve symbol, test, decision, memory, and incident candidates against canonical
   PostgreSQL identity, source hash, source commit where applicable, lifecycle,
   and repository authority. Test cards additionally require the canonical
   `is_test` flag; memory cards independently re-read their exact authorized
-  object version and rebuild the redacted card before acceptance. Incidents
-  remain absent until a canonical adapter exists.
+  object version and rebuild the redacted card before acceptance. Incident cards
+  independently re-read the exact attempt and immutable event before acceptance.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
 - [x] Return bounded, scope-authorized canonical entity-ID alternatives for a

@@ -149,10 +149,9 @@ preserving authority and access boundaries.
   physical generation/vector/index verification. Alias observation and guarded
   rollback are implemented. Opt-in live integration now covers physical
   blue-green cutover, guarded rollback, collection deletion, and replay.
-- [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
-  The deterministic symbol/test-card adapters and generic card contract are
-  complete; decision, memory, and incident await their owning canonical
-  sources.
+- [x] Produce embeddable symbol, decision, test, memory, and incident cards.
+  Every family rebuilds from its owning canonical source. Incident cards derive
+  only from immutable failed-attempt evidence; they are not log cards.
 - [x] Implement the dense/sparse request contracts, deterministic sparse
   lexical encoder, Qdrant candidate execution, bounded RRF fusion, degraded
   receipts, and mandatory PostgreSQL resolution. Concrete embedding-provider

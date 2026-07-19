@@ -73,7 +73,7 @@ func projectOnce(parent context.Context, arguments []string, _ io.Writer, stderr
 	defer cancel()
 	writer := retrieval.QdrantPointWriter{Client: runtime.qdrant, CollectionName: runtime.collection}
 	worker := retrieval.ProjectionWorker{
-		Deliveries: runtime.store, Source: runtime.store, Decisions: runtime.store, Memories: runtime.store,
+		Deliveries: runtime.store, Source: runtime.store, Decisions: runtime.store, Incidents: runtime.store, Memories: runtime.store,
 		MemoryBodies: runtime.memoryBodies, Recorder: runtime.store,
 		Writer: writer, Deleter: writer, Embedder: runtime.embedder, Sparse: retrieval.HashingSparseEncoder{},
 		WorkerID: *workerID, Generation: runtime.generation,

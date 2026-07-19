@@ -45,6 +45,7 @@ contracts.
 | [`message.schema.json`](../../schemas/message.schema.json) | Immutable message parts and source citations |
 | [`memory-candidate.schema.json`](../../schemas/memory-candidate.schema.json) | Untrusted proposed learning and resolution lifecycle |
 | [`memory-record.schema.json`](../../schemas/memory-record.schema.json) | Explicitly promoted durable memory |
+| [`incident.schema.json`](../../schemas/incident.schema.json) | Safe immutable retrieval view of a failed terminal attempt |
 | [`artifact-bundle-manifest.schema.json`](../../schemas/artifact-bundle-manifest.schema.json) | Immutable content-addressed bundle inventory |
 
 The Go kernel embeds these schemas, compiles cross-schema references offline at
