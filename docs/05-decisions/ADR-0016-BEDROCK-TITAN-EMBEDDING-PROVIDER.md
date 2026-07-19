@@ -16,8 +16,8 @@ Use Amazon Bedrock Runtime through the AWS SDK for Go v2. The first provider
 candidate is Titan Text Embeddings v2, configured as:
 
 ```text
-model: amazon.titan-embed-g1-text-02
-version: g1-text-v2-1024
+model: amazon.titan-embed-text-v2:0
+version: titan-text-v2-1024
 dimensions: 1024
 normalization: true
 region: explicit runtime configuration
@@ -29,9 +29,27 @@ The adapter never reads `CHAVE_API_AWS_BEDROCK`, `AWS_BEARER_TOKEN_BEDROCK`, or
 an application-specific secret. It makes no network call while being constructed.
 
 Before activation, an operator must prove that the exact model ID has access in
-the selected region. The historical MarIAna identifier
-`amazon.titan-embed-text-v2:0` is not silently substituted: its compatibility
-must be measured and any change is a new collection generation.
+the selected region. The model contract is not silently substituted: a model,
+version, or dimension change creates a new collection generation. In particular,
+the similarly named `amazon.titan-embed-g1-text-02` is a G1 model and does not
+support the v2 `dimensions` and `normalize` parameters used here.
+
+The opt-in compatibility probe is intentionally one short embedding call and
+never prints its text or vector values:
+
+```bash
+FORJA_BEDROCK_LIVE=1 FORJA_BEDROCK_REGION=us-east-1 \
+  go test ./internal/retrieval -run '^TestLiveBedrockTitanEmbedding$' -count=1
+```
+
+## Live Compatibility Evidence
+
+On 2026-07-19, the standard AWS credential chain resolved a local AWS profile,
+the Bedrock control plane reported `amazon.titan-embed-text-v2:0` as active in
+`us-east-1`, and the opt-in probe received one valid 1024-dimension vector.
+The run recorded neither AWS identity details, input text, vector values, nor
+credentials. It proves API compatibility only; it is not a production
+workload-role attestation.
 
 ## Execution Boundary
 

@@ -158,8 +158,10 @@ documentation evidence.
 
 - [x] Add a Bedrock Titan v2 embedding adapter using the AWS SDK for Go v2,
   standard AWS credential chain, bounded request/response handling, and
-  fail-closed provider output validation. Production activation still requires
-  an explicit region/model-access receipt and a workload-role deployment.
+  fail-closed provider output validation. The opt-in live compatibility probe
+  verifies the selected model and a real 1024-dimension vector without printing
+  card text or vector values. Production activation still requires a
+  workload-role deployment and private evaluation evidence.
 - [ ] Add a bounded one-shot projection and query CLI without embedding secrets
   in process arguments or output.
 - [x] Add low-cardinality metrics and traces for latency, checkpoint lag, and

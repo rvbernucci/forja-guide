@@ -12,14 +12,15 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/bedrockruntime"
+	"github.com/aws/smithy-go"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
 
 const (
-	// BedrockTitanTextEmbeddingV2Model is the current AWS model ID selected for
-	// governed retrieval. Operators must still verify model access in the region.
-	BedrockTitanTextEmbeddingV2Model      = "amazon.titan-embed-g1-text-02"
-	BedrockTitanTextEmbeddingV2Version    = "g1-text-v2-1024"
+	// BedrockTitanTextEmbeddingV2Model supports the selectable 1024-dimension,
+	// normalized vectors required by governed retrieval.
+	BedrockTitanTextEmbeddingV2Model      = "amazon.titan-embed-text-v2:0"
+	BedrockTitanTextEmbeddingV2Version    = "titan-text-v2-1024"
 	BedrockTitanTextEmbeddingV2Dimensions = 1024
 	maxBedrockEmbeddingResponseBytes      = 1 << 20
 )
@@ -121,7 +122,7 @@ func (e *BedrockTitanEmbedder) Embed(ctx context.Context, text string) ([]float6
 		Accept: aws.String("application/json"), Body: body,
 	})
 	if err != nil {
-		return nil, errors.New("Bedrock Titan embedding request failed")
+		return nil, safeBedrockInvokeError(err)
 	}
 	if output == nil || output.ContentType == nil || *output.ContentType != "application/json" ||
 		len(output.Body) == 0 || len(output.Body) > maxBedrockEmbeddingResponseBytes {
@@ -142,6 +143,17 @@ func (e *BedrockTitanEmbedder) Embed(ctx context.Context, text string) ([]float6
 		}
 	}
 	return append([]float64(nil), response.Embedding...), nil
+}
+
+func safeBedrockInvokeError(err error) error {
+	var apiError smithy.APIError
+	if errors.As(err, &apiError) {
+		code := apiError.ErrorCode()
+		if len(code) > 0 && len(code) <= 120 {
+			return fmt.Errorf("Bedrock Titan embedding request failed: %s", code)
+		}
+	}
+	return errors.New("Bedrock Titan embedding request failed")
 }
 
 func validateBedrockTitanConfig(config BedrockTitanConfig) error {
