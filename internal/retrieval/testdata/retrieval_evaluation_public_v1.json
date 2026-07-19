@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "retrieval_eval_public_synthetic_v1",
+  "split": "public",
+  "cases": [
+    {
+      "case_id": "identifier_login_handler",
+      "required_entity_ids": ["symbol_login_handler", "test_login_handler"]
+    },
+    {
+      "case_id": "conceptual_session_policy",
+      "required_entity_ids": ["decision_session_policy"]
+    },
+    {
+      "case_id": "stale_source_rejected",
+      "expected_no_accepted": true
+    },
+    {
+      "case_id": "cross_tenant_rejected",
+      "expected_no_accepted": true
+    }
+  ]
+}

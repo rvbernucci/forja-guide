@@ -17,11 +17,12 @@ language.
 10. [Master development plan](04-roadmap/MASTER_DEVELOPMENT_PLAN.md)
 11. [Architecture decisions](05-decisions/)
 12. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
-13. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
-14. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
-15. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
-16. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
-17. [Sprint evidence](evidence/)
+13. [Retrieval evaluation protocol](07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md)
+14. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
+15. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
+16. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
+17. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
+18. [Sprint evidence](evidence/)
 
 ## Documentation States
 

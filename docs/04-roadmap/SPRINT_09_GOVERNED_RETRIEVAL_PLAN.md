@@ -160,7 +160,9 @@ documentation evidence.
 
 ### 6. Evaluation and closure
 
-- [ ] Create tuning, holdout, OOD, leakage, stale, and adversarial fixtures.
+- [ ] Create access-controlled tuning, holdout, OOD, leakage, stale, and
+  adversarial fixtures. A public synthetic corpus schema, fixture, and
+  deterministic scorer now exist, but cannot validate production quality.
 - [ ] Compare lexical-only, dense-only, unweighted RRF, and weighted RRF.
 - [ ] Measure Recall@K, Precision@K, MRR, nDCG, entity-resolution accuracy,
   stale rejection, cross-tenant leakage, latency, and projection freshness.

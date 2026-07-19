@@ -1,0 +1,59 @@
+# Governed Retrieval Evaluation Protocol
+
+Status: Sprint 09 implementation protocol. It evaluates retrieval outside the
+runtime authority path; expected entities and private labels never enter a
+retrieval request, Qdrant payload, trace, metric, or context pack.
+
+## Corpus Splits
+
+| Split | Storage | Permitted use |
+| --- | --- | --- |
+| `public` | Versioned repository fixture | Contract and regression smoke tests |
+| `tuning` | Access-controlled evaluation store | Select weights, limits, or model versions |
+| `holdout` | Access-controlled evaluation store | Final quality claims only |
+| `ood` | Access-controlled evaluation store | Unseen repositories, languages, and vocabulary |
+| `adversarial` | Access-controlled evaluation store | Leakage, stale, malformed, and scope-bypass resistance |
+| `regression` | Access-controlled evaluation store | Reproduce a fixed prior failure |
+
+The public synthetic corpus is
+[`internal/retrieval/testdata/retrieval_evaluation_public_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_v1.json).
+It uses symbolic identities only and is not representative of production
+quality. Private corpus locations, query text, cards, expected answers, and
+source identifiers must not be committed to this public repository.
+
+## Contract
+
+Each corpus uses
+[`schemas/retrieval-evaluation-corpus.schema.json`](../../schemas/retrieval-evaluation-corpus.schema.json).
+A positive case has one or more `required_entity_ids`; a safety case has only
+`expected_no_accepted: true`. Case IDs must be unique inside a corpus.
+
+Capture each evaluated run separately as `EvaluationOutcome` values: only the
+ordered, canonically accepted entity IDs are scored. Rejected Qdrant payloads
+are never credited as retrieved context.
+
+## Metrics
+
+`ScoreRankings` computes deterministic macro averages at an explicit bounded
+K:
+
+- Recall@K measures required entities recovered.
+- Precision@K measures relevance of the accepted positions actually returned,
+  up to K; an intentionally short governed result is not treated as unsafe.
+- MRR measures the rank of the first required entity.
+- nDCG@K measures the ordering of all required entities.
+- `expected_no_accepted_pass / expected_no_accepted_cases` measures the safety
+  subset for stale, cross-tenant, and other mandatory-rejection cases.
+
+Every report must record corpus ID, corpus SHA-256, split, code commit,
+embedding descriptor, sparse encoder version, policy hash, K, sample count,
+metric values, wall-clock timings, and any degraded outcomes. Never select
+weights, models, or policies using holdout/OOD/adversarial results.
+
+## Required Comparisons
+
+For the same frozen corpus and canonical resolver, compare lexical-only,
+dense-only, unweighted RRF, and the configured weighted RRF. Reports must keep
+all failed/degraded runs and demonstrate zero accepted results for every stale
+and unauthorized safety case. Quality claims require a separate holdout run;
+the public fixture only verifies evaluator behavior.
