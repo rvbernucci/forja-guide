@@ -64,8 +64,11 @@ columns.
 - A correction uses `supersedes_message_id` and preserves the original.
 - Closing a conversation requires an immutable transcript bundle manifest.
 - That manifest must cite the conversation ID, exact conversation version, and
-  SHA-256 inventory of every ordered message ID and content hash. Appending a
-  message after manifest creation makes the transcript stale and unclosable.
+  SHA-256 inventory of every ordered message ID and content hash. The
+  transcript artifact itself must be the canonical JSON inventory whose full
+  SHA-256, size, and `application/json` media type are recomputed at close.
+  Appending a message after publication makes the transcript stale and
+  unclosable; caller-supplied source references cannot bless arbitrary bytes.
 - Tombstoning hides the conversation from ordinary reads and emits a deletion
   projection event; it does not rewrite message history.
 

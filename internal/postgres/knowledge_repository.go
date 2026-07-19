@@ -3,6 +3,7 @@ package postgres
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -353,15 +354,18 @@ func (s *Store) CloseConversation(
 	if conversation.Status != "active" || conversation.Version != command.ExpectedVersion {
 		return contracts.Conversation{}, fault.New(fault.CodeConflict, "postgres.CloseConversation", "conversation is not a matching active version")
 	}
-	requiredSourceRefs, err := conversationTranscriptSourceRefs(
+	requiredSourceRefs, expectedTranscript, err := conversationTranscriptBinding(
 		ctx, tx, s.tenantID, s.repositoryID, command.ConversationID, command.ExpectedVersion,
 	)
 	if err != nil {
 		return contracts.Conversation{}, err
 	}
-	var sourceRefsJSON []byte
+	var sourceRefsJSON, transcriptDigest []byte
+	var transcriptSize int64
+	var transcriptMediaType string
 	if err := tx.QueryRow(ctx, `
-		SELECT manifest.source_refs
+		SELECT manifest.source_refs, artifact.content_sha256,
+		       artifact.size_bytes, artifact.media_type
 		FROM forja.artifacts AS artifact
 		JOIN forja.artifact_bundle_entries AS entry
 		  ON entry.tenant_id=artifact.tenant_id
@@ -378,8 +382,13 @@ func (s *Store) CloseConversation(
 		  AND manifest.manifest_id=$4 AND manifest.family='conversation_transcript'
 		LIMIT 1
 		FOR SHARE OF artifact`, s.tenantID, s.repositoryID, command.TranscriptArtifact, command.TranscriptManifest,
-	).Scan(&sourceRefsJSON); err != nil {
+	).Scan(&sourceRefsJSON, &transcriptDigest, &transcriptSize, &transcriptMediaType); err != nil {
 		return contracts.Conversation{}, databaseError("postgres.CloseConversation.transcript", err)
+	}
+	expectedDigest := sha256.Sum256(expectedTranscript)
+	if !bytes.Equal(transcriptDigest, expectedDigest[:]) ||
+		transcriptSize != int64(len(expectedTranscript)) || transcriptMediaType != "application/json" {
+		return contracts.Conversation{}, fault.New(fault.CodeInvalidArgument, "postgres.CloseConversation", "transcript artifact is not the canonical final message inventory")
 	}
 	var sourceRefs []string
 	if err := json.Unmarshal(sourceRefsJSON, &sourceRefs); err != nil {
@@ -425,33 +434,67 @@ func conversationTranscriptSourceRefs(
 	tenantID, repositoryID, conversationID string,
 	conversationVersion int,
 ) ([]string, error) {
+	refs, _, err := conversationTranscriptBinding(
+		ctx, tx, tenantID, repositoryID, conversationID, conversationVersion,
+	)
+	return refs, err
+}
+
+func conversationTranscriptBinding(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID, repositoryID, conversationID string,
+	conversationVersion int,
+) ([]string, []byte, error) {
 	rows, err := tx.Query(ctx, `
 		SELECT sequence_number, message_id, encode(content_sha256, 'hex')
 		FROM forja.messages
 		WHERE tenant_id=$1 AND repository_id=$2 AND conversation_id=$3
 		ORDER BY sequence_number`, tenantID, repositoryID, conversationID)
 	if err != nil {
-		return nil, databaseError("postgres.conversationTranscriptSourceRefs", err)
+		return nil, nil, databaseError("postgres.conversationTranscriptBinding", err)
 	}
 	defer rows.Close()
-	parts := []string{conversationID, fmt.Sprint(conversationVersion)}
+	type transcriptMessage struct {
+		SequenceNumber int    `json:"sequence_number"`
+		MessageID      string `json:"message_id"`
+		ContentHash    string `json:"content_hash"`
+	}
+	messages := make([]transcriptMessage, 0)
 	for rows.Next() {
 		var sequence int
 		var messageID, digestHex string
 		if err := rows.Scan(&sequence, &messageID, &digestHex); err != nil {
-			return nil, databaseError("postgres.conversationTranscriptSourceRefs.scan", err)
+			return nil, nil, databaseError("postgres.conversationTranscriptBinding.scan", err)
 		}
-		parts = append(parts, fmt.Sprint(sequence), messageID, digestHex)
+		messages = append(messages, transcriptMessage{
+			SequenceNumber: sequence,
+			MessageID:      messageID,
+			ContentHash:    "sha256:" + digestHex,
+		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, databaseError("postgres.conversationTranscriptSourceRefs.rows", err)
+		return nil, nil, databaseError("postgres.conversationTranscriptBinding.rows", err)
 	}
-	digest := hex.EncodeToString(hashRequest(parts...))
+	transcript, err := json.Marshal(struct {
+		SchemaVersion       string              `json:"schema_version"`
+		ConversationID      string              `json:"conversation_id"`
+		ConversationVersion int                 `json:"conversation_version"`
+		Messages            []transcriptMessage `json:"messages"`
+	}{
+		SchemaVersion: contracts.KnowledgeSchemaVersion, ConversationID: conversationID,
+		ConversationVersion: conversationVersion, Messages: messages,
+	})
+	if err != nil {
+		return nil, nil, fault.Wrap(fault.CodeInternal, "postgres.conversationTranscriptBinding", "encode canonical transcript inventory", err)
+	}
+	digest := sha256.Sum256(transcript)
+	digestHex := hex.EncodeToString(digest[:])
 	return []string{
 		conversationID,
 		fmt.Sprintf("conversation_version:%d", conversationVersion),
-		"message_inventory:sha256:" + digest,
-	}, nil
+		"message_inventory:sha256:" + digestHex,
+	}, transcript, nil
 }
 
 func (s *Store) TombstoneConversation(

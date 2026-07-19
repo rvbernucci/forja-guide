@@ -31,7 +31,6 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	}
 
 	bodyArtifact := publishKnowledgeArtifact(t, store, "artifact_repository_body", "40000000-0000-4000-8000-000000000001", "Durable project decision", "test_report")
-	transcriptArtifact := publishKnowledgeArtifact(t, store, "artifact_repository_transcript", "40000000-0000-4000-8000-000000000002", "Canonical transcript", "conversation")
 	replacementArtifact := publishKnowledgeArtifact(t, store, "artifact_repository_replacement", "40000000-0000-4000-8000-000000000003", "Updated durable decision", "memory")
 
 	conversationID := "conversation_40000000-0000-4000-8000-000000000004"
@@ -97,7 +96,7 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	transcriptSourceRefs, err := conversationTranscriptSourceRefs(
+	transcriptSourceRefs, transcriptBody, err := conversationTranscriptBinding(
 		t.Context(), tx, DefaultTenantID, DefaultRepositoryID, conversationID, 1+messageCount,
 	)
 	if err != nil {
@@ -107,6 +106,11 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if err := tx.Commit(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	transcriptArtifact := publishKnowledgeArtifactWithMediaType(
+		t, store, "artifact_repository_transcript",
+		"40000000-0000-4000-8000-000000000002", string(transcriptBody),
+		"conversation", "application/json",
+	)
 	manifest, err := store.CreateArtifactBundleManifest(t.Context(), contracts.ArtifactBundleManifest{
 		ManifestID: "manifest_40000000-0000-4000-8000-000000000030",
 		Family:     "conversation_transcript",
@@ -436,14 +440,88 @@ func TestConversationCloseRejectsStaleTranscriptInventory(t *testing.T) {
 	}
 }
 
+func TestConversationCloseRejectsForgedTranscriptBody(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	body := publishKnowledgeArtifact(
+		t, store, "artifact_forged_transcript_body",
+		"40000000-0000-4000-8000-000000000120", "message body", "test_report",
+	)
+	conversationID := "conversation_40000000-0000-4000-8000-000000000121"
+	if _, err := store.CreateConversation(t.Context(), contracts.Conversation{
+		ConversationID: conversationID, RetentionClass: "project", CreatedBy: "co-architect",
+	}, knowledgeMetadata("forged-transcript-conversation", "agent", "co-architect")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AppendMessage(t.Context(), persistence.MessageDraft{
+		MessageID:      "message_40000000-0000-4000-8000-000000000122",
+		ConversationID: conversationID, Role: "human", AuthorID: "author",
+		ContentParts: []contracts.ContentPart{{
+			PartID: "part_40000000-0000-4000-8000-000000000123", Ordinal: 0, Kind: "text",
+			ArtifactID: body.ArtifactID, ContentHash: body.ContentHash,
+			MediaType: body.MediaType, SizeBytes: *body.SizeBytes,
+		}},
+	}, knowledgeMetadata("forged-transcript-message", "human", "author")); err != nil {
+		t.Fatal(err)
+	}
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, _, err := conversationTranscriptBinding(
+		t.Context(), tx, DefaultTenantID, DefaultRepositoryID, conversationID, 2,
+	)
+	if err != nil {
+		_ = tx.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	forged := publishKnowledgeArtifactWithMediaType(
+		t, store, "artifact_forged_transcript",
+		"40000000-0000-4000-8000-000000000124", `{"forged":true}`,
+		"conversation", "application/json",
+	)
+	manifest, err := store.CreateArtifactBundleManifest(t.Context(), contracts.ArtifactBundleManifest{
+		ManifestID: "manifest_40000000-0000-4000-8000-000000000125",
+		Family:     "conversation_transcript",
+		Entries: []contracts.ArtifactBundleEntry{{
+			LogicalPath: "conversation/transcript.json", ArtifactID: forged.ArtifactID,
+			ContentHash: forged.ContentHash, SizeBytes: *forged.SizeBytes, MediaType: forged.MediaType,
+		}},
+		TotalSizeBytes: *forged.SizeBytes, SourceRefs: refs, CreatedBy: "integration-suite",
+	}, testMetadata("forged-transcript-manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CloseConversation(t.Context(), persistence.CloseConversationCommand{
+		ConversationID: conversationID, ExpectedVersion: 2,
+		TranscriptArtifact: forged.ArtifactID, TranscriptManifest: manifest.ManifestID,
+	}, testMetadata("forged-transcript-close")); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("forged transcript close error=%v", err)
+	}
+}
+
 func publishKnowledgeArtifact(
 	t *testing.T,
 	store *Store,
 	artifactID, operationSuffix, body, kind string,
 ) contracts.Artifact {
+	return publishKnowledgeArtifactWithMediaType(
+		t, store, artifactID, operationSuffix, body, kind, "text/plain",
+	)
+}
+
+func publishKnowledgeArtifactWithMediaType(
+	t *testing.T,
+	store *Store,
+	artifactID, operationSuffix, body, kind, mediaType string,
+) contracts.Artifact {
 	t.Helper()
 	intent := artifactPublicationIntentFixture(artifactID, operationSuffix, body)
 	intent.Kind = kind
+	intent.MediaType = mediaType
 	metadata := testMetadata("knowledge-publish-" + artifactID)
 	if _, _, err := store.PrepareArtifactPublication(t.Context(), intent, metadata); err != nil {
 		t.Fatal(err)
