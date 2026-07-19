@@ -135,8 +135,9 @@ documentation evidence.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
 - [ ] Return alternatives for genuine ambiguity rather than inventing a link.
-- [ ] Degrade to canonical exact lookup or explicit gaps when Qdrant is stale or
-  unavailable.
+- [x] Degrade to explicit bounded gaps when either Qdrant rank path or the
+  canonical resolver is unavailable. Canonical exact-lookup fallback remains
+  a future optional availability optimization.
 
 ### 5. Runtime, observability, and operations
 
