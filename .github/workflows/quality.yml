@@ -43,8 +43,16 @@ jobs:
           go-version: "1.26.5"
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: "24.18.0"
+          cache: npm
+
       - name: Install pinned language adapter dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
+        run: |
+          test "$(node --version | cut -d. -f1)" = "v24"
+          npm ci --ignore-scripts --no-audit --no-fund
 
       - name: Match PostgreSQL client to server
         run: |
