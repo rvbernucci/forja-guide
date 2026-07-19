@@ -22,15 +22,17 @@ invent authority or retain an object after its database reference disappeared.
    `sha256/<first-two-hex>/<remaining-hex>`. Callers cannot provide endpoint,
    bucket, key, credentials, encryption key, or authority prefix.
 4. Publication requires an expected SHA-256, size, and media type. The adapter
-   uses a conditional create, sends SHA-256 checksum metadata where supported,
-   and performs a bounded full-body read after a first write. An existing key
-   is accepted only after exact metadata and body verification.
+   requires provider support for conditional create, sends SHA-256 checksum
+   metadata, and performs a bounded full-body read after a first write. An
+   existing key is accepted only after exact metadata and body verification.
 5. The final PostgreSQL transition binds the verified object key, version or
    ETag evidence, hash, size, and operation identity in one event/outbox
    transaction. Failure before that transition leaves no active artifact.
 6. Canonical deletion first records a tombstone and outbox event. Physical
-   purge occurs only after retention expires and PostgreSQL proves no live
-   artifact, citation, message, manifest, or memory reference remains.
+   purge occurs only after retention expires and PostgreSQL proves, under the
+   same digest lock, that no live artifact alias, citation, message, manifest,
+   transcript, or memory reference remains. The delete is qualified by the
+   exact provider ETag and `VersionID` recorded at activation.
 7. Object-store credentials come only from the process environment or a future
    credential broker. They are never accepted through an API, stored in
    PostgreSQL, logged, traced, or exposed to workers.
@@ -38,9 +40,10 @@ invent authority or retain an object after its database reference disappeared.
    remains the canonical byte identity.
 
 Amazon S3 documents conditional `If-None-Match: *` writes and full-object
-SHA-256 checksums for `PutObject`. The implementation uses those controls when
-the configured S3-compatible provider supports them and still performs its own
-full-body verification before canonical activation.
+SHA-256 checksums for `PutObject`. These are deployment capabilities, not
+optional optimizations: an incompatible provider fails publication. The
+implementation still performs its own full-body verification before canonical
+activation.
 
 ## Consequences
 
@@ -59,6 +62,8 @@ Negative:
   inventory and eventually purge;
 - full-body verification costs bandwidth but is required for the first
   publication of canonical evidence.
+- provider compatibility must be proven before deployment; an endpoint that
+  mishandles conditional creation is rejected rather than used unsafely.
 
 ## Guardrail
 

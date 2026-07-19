@@ -22,14 +22,19 @@ hierarchy and let prompt injection rewrite future context.
    from a `human` principal or a configured policy-owning `system` principal
    with dedicated `memory:promote` permission. Agents and workers cannot hold
    that permission.
-5. Promotion records the candidate, promoter, authority class, reason, source
+5. The promotion command carries the authenticated principal separately from
+   the proposed memory body. Actor, actor type, tenant, repository, and
+   permission must match command metadata. A policy promotion additionally
+   requires the exact operator-configured policy principal ID; an arbitrary
+   `system` actor is insufficient.
+6. Promotion records the candidate, promoter, authority class, reason, source
    hashes, expiry, and any superseded memory IDs atomically with an event and
    outbox row.
-6. Active memories may be superseded, expired, or tombstoned, never silently
+7. Active memories may be superseded, expired, or tombstoned, never silently
    rewritten. Reads exclude non-active and expired records by default.
-7. Embedding and semantic similarity may later discover memory candidates, but
+8. Embedding and semantic similarity may later discover memory candidates, but
    cannot promote, reactivate, or override a canonical lifecycle decision.
-8. Tombstones are canonical and precede object purge or derived-index deletion.
+9. Tombstones are canonical and precede object purge or derived-index deletion.
 
 ## Consequences
 

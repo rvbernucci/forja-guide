@@ -49,8 +49,9 @@ Purge is deliberately two-step:
 1. A human or system command archives and tombstones the artifact in
    PostgreSQL and emits its event/outbox record.
 2. The retention worker selects only tombstoned objects with no live artifact
-   alias or canonical reference, deletes by exact derived key and ETag, and
-   marks the object `purged` in a second transaction.
+   alias or canonical reference, rechecks every alias and reference while
+   holding the digest row lock, deletes by exact derived key, ETag, and provider
+   `VersionID`, and marks the object `purged` in a second transaction.
 
 Live conversations, message parts, citations, proposed candidates, active or
 superseded memories, transcript ownership, and non-transcript bundle
@@ -58,6 +59,10 @@ manifests block tombstoning. A provider `not found` result can complete purge
 only after PostgreSQL has already selected that exact tombstoned candidate.
 Derived-store deletion consumers must process the tombstone outbox event
 before removing Qdrant or Neo4j projections.
+
+A digest that reached `tombstoned` or `purged` cannot be republished. Recovery
+requires an explicit future governance operation; ordinary publication cannot
+silently resurrect retained content.
 
 ## Backup
 
@@ -97,6 +102,23 @@ Restore only into isolated authority:
 Missing or mismatched bodies fail the restore. Do not downgrade an active
 artifact, rewrite a hash, or delete a reference merely to make verification
 green.
+
+The repository includes a destructive-but-isolated rehearsal that creates two
+temporary databases, starts a temporary versioned MinIO endpoint, publishes a
+three-object bundle, snapshots both storage planes, restores them into new
+locations, verifies PostgreSQL continuity, and downloads and hashes every
+restored body:
+
+```bash
+export FORJA_TEST_DATABASE_URL='postgresql:///forja_test?host=/tmp'
+scripts/rehearse_artifact_restore.sh
+```
+
+Set `FORJA_MINIO_BIN` when the compatible MinIO server is not on `PATH`. The
+rehearsal begins with an exact conditional-write and checksum capability probe;
+it fails rather than weakening publication when a provider mishandles
+`If-None-Match: *`. `FORJA_KEEP_RESTORE_DRILL=1` retains the temporary workspace
+for operator inspection after a failure.
 
 The release rehearsal uses `scripts/rehearse_sprint07_rollback.sh`. It proves
 that the exact closed Sprint 06 binary starts against migration 006 after an

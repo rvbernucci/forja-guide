@@ -69,6 +69,12 @@ retention. Bodies are fully re-read and SHA-256 verified before canonical
 activation. A two-plane restore drill recovered a three-object evidence bundle
 into a new PostgreSQL database and a separate MinIO data directory, then
 revalidated the complete bodies, schema, events, outbox, and command receipts.
+The committed `scripts/rehearse_artifact_restore.sh` runner reproduces that
+two-plane drill with isolated temporary authority and a provider capability
+probe. Artifact references serialize against retention, physical purge binds
+the recorded ETag and provider version, transcripts bind the exact final
+message inventory, and policy memory promotion requires an explicitly
+configured principal with dedicated permission.
 Sprint 07 remains non-authoritative until its independent review and closure
 receipt are published.
 
