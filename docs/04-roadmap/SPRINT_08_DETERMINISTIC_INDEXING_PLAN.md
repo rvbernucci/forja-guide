@@ -1,8 +1,9 @@
 # Sprint 08 Deterministic Indexing Plan
 
-Status: Implementation complete and independently reviewed. The fail-closed
-closure candidate is public; immutable review and protocol-v2 attestation remain
-pending, so Sprint 09 is not yet authorized.
+Status: Implementation complete. The fail-closed closure candidate is public
+and has passed immutable review. Authoritative closure and successor
+authorization are defined only by the Sprint 08 evidence ledger and master
+roadmap, not by this execution snapshot.
 
 The indexing boundary is governed by
 [ADR-0005](../05-decisions/ADR-0005-DETERMINISTIC-CODE-LINEAGE.md).
@@ -154,7 +155,9 @@ canonical Sprint 08 publication.
 - [x] Run race, integration, security, reproducibility, and independent
   full-range reviews.
 - [x] Publish a fail-closed Sprint 08 candidate.
-- [ ] Close the candidate through protocol v2 before authorizing Sprint 09.
+
+Protocol-v2 closure and successor authorization are recorded only in the
+evidence ledger and master roadmap after attestation.
 
 ## Acceptance Evidence
 
