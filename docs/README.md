@@ -22,7 +22,8 @@ language.
 15. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
 16. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
 17. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
-18. [Sprint evidence](evidence/)
+18. [Qdrant recovery runbook](06-operations/QDRANT_RECOVERY_RUNBOOK.md)
+19. [Sprint evidence](evidence/)
 
 ## Documentation States
 

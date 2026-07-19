@@ -1,6 +1,7 @@
 # Local Development
 
-Status: Sprint 05 closed; Sprint 06 observability implementation in progress
+Status: Sprints 00-08 closed; Sprint 09 governed retrieval is in pre-closure
+validation.
 
 ## Current Repository
 
