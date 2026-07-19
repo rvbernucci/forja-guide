@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/relation-evidence.schema.json",
+  "title": "Forja Relation Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "relation_id", "schema_version", "snapshot_id", "source_entity_id",
+    "kind", "resolution", "evidence_class", "source_file_id", "locator",
+    "evidence_hash", "adapter"
+  ],
+  "properties": {
+    "relation_id": {"type": "string", "pattern": "^relation_[a-f0-9]{64}$"},
+    "schema_version": {"const": "1.0"},
+    "snapshot_id": {"type": "string", "pattern": "^snapshot_[a-f0-9]{64}$"},
+    "source_entity_id": {"type": "string", "pattern": "^(?:file|symbol)_[a-f0-9]{64}$"},
+    "kind": {"enum": ["contains", "imports", "exports", "declares", "references", "calls", "implements", "extends", "reads", "writes", "tests", "routes_to", "validates", "uses_schema"]},
+    "resolution": {"enum": ["resolved", "unresolved"]},
+    "target_entity_id": {"type": "string", "pattern": "^(?:file|symbol|external)_[a-f0-9]{64}$"},
+    "unresolved_name": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "evidence_class": {"enum": ["candidate_static", "confirmed_static", "confirmed_behavioral", "runtime_observed"]},
+    "source_file_id": {"type": "string", "pattern": "^file_[a-f0-9]{64}$"},
+    "locator": {"$ref": "https://forja.dev/schemas/symbol-card.schema.json#/$defs/source_range"},
+    "evidence_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "adapter": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "version", "configuration_hash", "capability_hash"],
+      "properties": {
+        "name": {"enum": ["go", "typescript", "python"]},
+        "version": {"type": "string", "minLength": 1, "maxLength": 80},
+        "configuration_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "capability_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"resolution": {"const": "resolved"}}},
+      "then": {"required": ["target_entity_id"], "not": {"required": ["unresolved_name"]}}
+    },
+    {
+      "if": {"properties": {"resolution": {"const": "unresolved"}}},
+      "then": {"required": ["unresolved_name"], "not": {"required": ["target_entity_id"]}}
+    }
+  ]
+}

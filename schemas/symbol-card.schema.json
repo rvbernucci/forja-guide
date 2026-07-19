@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/symbol-card.schema.json",
+  "title": "Forja Symbol Card",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "symbol_id", "schema_version", "snapshot_id", "file_id", "language",
+    "kind", "name", "qualified_name", "signature", "declaration",
+    "exported", "test", "route", "schema"
+  ],
+  "properties": {
+    "symbol_id": {"type": "string", "pattern": "^symbol_[a-f0-9]{64}$"},
+    "schema_version": {"const": "1.0"},
+    "snapshot_id": {"type": "string", "pattern": "^snapshot_[a-f0-9]{64}$"},
+    "file_id": {"type": "string", "pattern": "^file_[a-f0-9]{64}$"},
+    "language": {"enum": ["go", "typescript", "javascript", "python"]},
+    "kind": {"enum": ["package", "module", "namespace", "class", "interface", "type", "struct", "enum", "function", "method", "constructor", "variable", "constant", "field", "property", "parameter", "import", "export", "route", "schema", "test"]},
+    "name": {"type": "string", "minLength": 1, "maxLength": 512},
+    "qualified_name": {"type": "string", "minLength": 1, "maxLength": 2048},
+    "signature": {"type": "string", "maxLength": 8192},
+    "declaration": {"$ref": "#/$defs/source_range"},
+    "exported": {"type": "boolean"},
+    "test": {"type": "boolean"},
+    "route": {"type": "boolean"},
+    "schema": {"type": "boolean"},
+    "documentation_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  },
+  "$defs": {
+    "position": {
+      "type": "object", "additionalProperties": false,
+      "required": ["line", "column", "offset"],
+      "properties": {
+        "line": {"type": "integer", "minimum": 1},
+        "column": {"type": "integer", "minimum": 1},
+        "offset": {"type": "integer", "minimum": 0}
+      }
+    },
+    "source_range": {
+      "type": "object", "additionalProperties": false,
+      "required": ["start", "end"],
+      "properties": {
+        "start": {"$ref": "#/$defs/position"},
+        "end": {"$ref": "#/$defs/position"}
+      }
+    }
+  }
+}
