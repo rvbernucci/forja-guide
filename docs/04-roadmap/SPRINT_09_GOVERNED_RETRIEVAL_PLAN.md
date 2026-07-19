@@ -216,12 +216,14 @@ documentation evidence.
 This section is non-authoritative progress evidence, not a closure candidate.
 It cannot authorize Sprint 10.
 
-- On implementation commits `ecc0fcd`, `fb408b9`, and `cb2503d`, `make
-  validate` passed locally: Go module verification, `go vet`, the full Go unit
-  and race suites, reproducible `linux/amd64` and `linux/arm64` builds,
+- On implementation commits `ecc0fcd`, `fb408b9`, `cb2503d`, and `19cdfcf`,
+  `make validate` passed locally: Go module verification, `go vet`, the full
+  Go unit and race suites, reproducible `linux/amd64` and `linux/arm64` builds,
   kernel/MCP/worker smoke tests, 55 Python tests, and repository validation.
-  The later runs validate source-bound versus global-card scope handling and
-  reject global projections with an unexpected source commit.
+  The later runs validate source-bound versus global-card scope handling,
+  reject global projections with an unexpected source commit, and prove that
+  the lexical-only and dense-only baseline policies do not invoke their
+  disabled retrieval paths.
 - `go run ./cmd/forja-retrieval-eval` scores both a single frozen ranking
   capture and an immutable four-baseline comparison. The public synthetic
   comparison verifies that lexical-only and dense-only can retain distinct
