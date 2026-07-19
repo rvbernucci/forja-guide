@@ -38,7 +38,7 @@ into the telemetry plane or leaking task content.
 - [x] Provision dashboards and alert rules with bounded labels.
 - [x] Prove cancellation taxonomy, exporter outage, and secret-fixture behavior.
 - [x] Record the observability trust boundary in ADR-0012.
-- [ ] Rehearse the complete Compose stack on a clean Docker host.
+- [x] Rehearse the complete Compose stack on a clean Docker host.
 - [ ] Publish reviewed Sprint evidence through the two-phase closure protocol.
 
 ## Acceptance
