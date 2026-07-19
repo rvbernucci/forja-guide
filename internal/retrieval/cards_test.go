@@ -1,0 +1,125 @@
+package retrieval
+
+import (
+	"context"
+	"reflect"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/rvbernucci/forja-guide/internal/contracts"
+)
+
+const (
+	retrievalTenantID     = "tenant_00010203-0405-4607-8809-0a0b0c0d0e0f"
+	retrievalRepositoryID = "repo_11121314-1516-4718-891a-1b1c1d1e1f20"
+	retrievalCommit       = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+)
+
+func TestBuildCardTextIsStableAndSorted(t *testing.T) {
+	t.Parallel()
+	first := validCardSource()
+	first.ProofRefs = []string{"proof_b", "proof_a"}
+	first.GraphNodeIDs = []string{"graph_b", "graph_a"}
+	second := validCardSource()
+	second.ProofRefs = []string{"proof_a", "proof_b"}
+	second.GraphNodeIDs = []string{"graph_a", "graph_b"}
+	left, err := BuildCardText(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := BuildCardText(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if left != right || !strings.Contains(left, "proof_refs: proof_a,proof_b") || !strings.Contains(left, "content: line one line two") {
+		t.Fatalf("card text is not canonical: %q", left)
+	}
+}
+
+func TestBuildPointBindsEveryDerivedComponent(t *testing.T) {
+	t.Parallel()
+	embedder := fixtureEmbedder{}
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion)
+	point, err := BuildPoint(context.Background(), validCardSource(), generation, embedder, HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := contracts.ValidateRetrievalPoint(point); err != nil {
+		t.Fatal(err)
+	}
+	if point.PointID != contracts.RetrievalPointID(generation, point.EntityID, point.SourceHash) {
+		t.Fatal("point ID is not deterministic")
+	}
+	if point.Embedding.SparseEncoderVersion != SparseEncoderVersion || len(point.Sparse.Indices) == 0 {
+		t.Fatalf("point does not bind sparse encoding: %#v", point)
+	}
+
+	bad := fixtureEmbedder{descriptor: contracts.EmbeddingDescriptor{
+		Model: "fixture", Version: "v1", Dimensions: 3, SparseEncoderVersion: "wrong", EmbeddedAt: time.Date(2026, 7, 19, 15, 0, 0, 0, time.UTC),
+	}}
+	if _, err := BuildPoint(context.Background(), validCardSource(), generation, bad, HashingSparseEncoder{}); err == nil {
+		t.Fatal("sparse descriptor mismatch accepted")
+	}
+}
+
+func TestHashingSparseEncoderIsStableAndNormalized(t *testing.T) {
+	t.Parallel()
+	encoder := HashingSparseEncoder{}
+	left, err := encoder.Encode("forjaIndex handles retrieval-point and retrieval_point")
+	if err != nil {
+		t.Fatal(err)
+	}
+	right, err := encoder.Encode("forjaIndex handles retrieval-point and retrieval_point")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(left, right) {
+		t.Fatalf("sparse encoder is not deterministic: %#v / %#v", left, right)
+	}
+	var norm float64
+	for index, value := range left.Values {
+		norm += value * value
+		if index > 0 && left.Indices[index-1] >= left.Indices[index] {
+			t.Fatal("sparse indices are not strictly ascending")
+		}
+	}
+	if norm < 0.999999 || norm > 1.000001 {
+		t.Fatalf("sparse L2 norm = %f, want 1", norm)
+	}
+	if _, err := encoder.Encode("_"); err == nil {
+		t.Fatal("content-free sparse source accepted")
+	}
+}
+
+func validCardSource() CardSource {
+	commit := retrievalCommit
+	path := "internal/retrieval/cards.go"
+	language := "go"
+	kind := "function"
+	return CardSource{
+		TenantID: retrievalTenantID, RepositoryID: retrievalRepositoryID,
+		EntityID: "symbol_fixture", ArtifactFamily: "symbol", SourceCommit: &commit,
+		SourceHash: "sha256:" + strings.Repeat("a", 64), AuthorityClass: "canonical", Status: "active",
+		Language: &language, SymbolKind: &kind, RepositoryPath: &path,
+		Title: "Forja Index", Body: "line one\n line two", ProofRefs: []string{"proof_a"}, GraphNodeIDs: []string{},
+	}
+}
+
+type fixtureEmbedder struct {
+	descriptor contracts.EmbeddingDescriptor
+}
+
+func (f fixtureEmbedder) Descriptor() contracts.EmbeddingDescriptor {
+	if f.descriptor.Model == "" {
+		return contracts.EmbeddingDescriptor{
+			Model: "fixture", Version: "v1", Dimensions: 3, SparseEncoderVersion: SparseEncoderVersion,
+			EmbeddedAt: time.Date(2026, 7, 19, 15, 0, 0, 0, time.UTC),
+		}
+	}
+	return f.descriptor
+}
+
+func (fixtureEmbedder) Embed(_ context.Context, _ string) ([]float64, error) {
+	return []float64{0.1, 0.2, 0.3}, nil
+}

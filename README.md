@@ -10,9 +10,9 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the authoritatively closed **Sprint 07 artifacts and
-governed memory plane** and the in-progress **Sprint 08 deterministic indexing
-candidate** alongside the public
+This repository includes the authoritatively closed **Sprint 08 deterministic
+indexing plane** and the in-progress **Sprint 09 governed retrieval
+foundation** alongside the public
 architecture and roadmap. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
@@ -78,15 +78,19 @@ canonical final message inventory, and policy memory promotion requires an expli
 configured principal with dedicated permission.
 Its protocol-v2 close receipt is published under `docs/evidence/sprint-07`.
 
-The Sprint 08 candidate adds committed-Git extraction for Go, TypeScript,
+The closed Sprint 08 plane adds committed-Git extraction for Go, TypeScript,
 JavaScript, and Python; strict file, symbol, relation, and lineage contracts;
 deterministic incremental invalidation; immutable snapshot artifacts; and an
 atomic PostgreSQL event/outbox publication boundary. `forja-index` composes the
 complete Git-to-object-store-to-PostgreSQL path, loads its active baseline, and
 reuses an adapter only when its descriptor and every owned source file remain
 exact. A two-commit command drill proves selective adapter reuse and validates
-the resulting events, outbox records, and receipts. Qdrant and Neo4j remain
-outside this write path and are not yet implemented.
+the resulting events, outbox records, and receipts. Sprint 09 now adds strict
+retrieval contracts, deterministic symbol cards and sparse lexical vectors,
+independent fenced projection delivery, Qdrant protocol plans with mandatory
+pre-ranking filters, and a fail-closed canonical-resolution boundary. The live
+Qdrant projection worker, collection alias lifecycle, evaluation harness, and
+Neo4j remain pending.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 

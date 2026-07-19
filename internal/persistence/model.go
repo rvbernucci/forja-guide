@@ -345,6 +345,24 @@ type OutboxRepository interface {
 	) error
 }
 
+// ProjectionDelivery is one independently leased downstream view of a
+// canonical event. It intentionally has its own attempts and fencing token:
+// completing another projector must never advance this projector's cursor.
+type ProjectionDelivery struct {
+	OutboxMessage
+	ProjectorName string
+}
+
+// ProjectionDeliveryRepository gives derived stores independent, replayable
+// fan-out. Registering a consumer atomically backfills the existing outbox;
+// subsequent outbox inserts fan out through the database trigger.
+type ProjectionDeliveryRepository interface {
+	EnsureProjectionConsumer(context.Context, string, [32]byte) error
+	ClaimProjectionDeliveries(context.Context, string, string, int, time.Duration) ([]ProjectionDelivery, error)
+	CompleteProjectionDelivery(context.Context, string, int64, string, int64) error
+	FailProjectionDelivery(context.Context, string, int64, string, int64, error, time.Time, int) error
+}
+
 // ProjectionRepository rebuilds derived state from immutable canonical events.
 type ProjectionRepository interface {
 	RebuildRunProjection(context.Context, string) error

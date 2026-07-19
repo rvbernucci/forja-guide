@@ -138,20 +138,26 @@ boundaries and residual risk. Sprint 09 is authorized.
 preserving authority and access boundaries.
 
 **Status:** Authorized by the authoritative
-[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json).
+[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json). See the
+[Sprint 09 execution plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
 
 ### Scope
 
-- [ ] Define Qdrant collections, named vectors, payload indexes, and aliases.
+- [x] Define versioned Qdrant collection protocol plans, named vectors, and
+  mandatory payload indexes. Live aliases remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
-- [ ] Implement dense semantic and sparse lexical retrieval.
-- [ ] Apply tenant, repository, status, authority, stale, language, and kind
+  The deterministic symbol-card adapter and generic card contract are complete.
+- [x] Implement the dense/sparse request contracts and deterministic sparse
+  lexical encoder. Live embedding and Qdrant query execution remain pending.
+- [x] Apply tenant, repository, status, authority, stale, language, and kind
   filters before ranking.
-- [ ] Implement weighted reciprocal rank fusion.
-- [ ] Implement canonical entity resolution and ambiguity handling.
-- [ ] Record embedding model, version, dimensions, source hash, and generation
+- [x] Implement weighted reciprocal rank fusion.
+- [x] Implement and test canonical-resolution and ambiguity-handling policy.
+  The PostgreSQL resolver adapter remains pending.
+- [x] Record embedding model, version, dimensions, source hash, and generation
   timestamp.
-- [ ] Implement outbox-driven idempotent upsert and delete projections.
+- [x] Implement independent, fenced per-projector outbox delivery and backlog
+  replay. The Qdrant upsert/delete projector remains pending.
 - [ ] Add collection migration and blue-green re-embedding strategy.
 - [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
 
