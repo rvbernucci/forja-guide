@@ -97,10 +97,13 @@ indexes, then atomically switch a verified alias. Live blue-green cutover,
 guarded rollback, derived-store deletion/replay, and a schema-validated offline
 evaluation harness are implemented. The retrieval plane now also includes a
 Bedrock Titan v2 adapter using the AWS SDK for Go v2 and the standard AWS
-credential chain; production activation still requires a workload-role
-deployment, region/model-access evidence, private evaluation results, and the
-remaining canonical card families. Neo4j traversal remains pending for Sprint
-10.
+credential chain, plus bounded `forja-retrieval project-once` and
+`forja-retrieval query` commands. They require PostgreSQL readiness, an
+operator-supplied Qdrant endpoint, and standard AWS region/credential
+configuration; they never accept secrets as flags or write query text to
+receipts. Production activation still requires a workload-role deployment,
+region/model-access evidence, private evaluation results, and the remaining
+canonical card families. Neo4j traversal remains pending for Sprint 10.
 
 When a canonical snapshot is superseded, the projector first tombstones every
 affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the

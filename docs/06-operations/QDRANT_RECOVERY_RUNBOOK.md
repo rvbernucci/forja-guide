@@ -90,6 +90,44 @@ normal secret-management boundary; do not use this development command there.
    reactivate the recorded prior PostgreSQL generation, and record the result
    in the operator ticket.
 
+## Bounded Runtime Commands
+
+`forja-retrieval` is the runtime entry point for one delivery batch or one
+governed query. It never creates a collection, switches an alias, applies
+migrations, or takes credentials through arguments. The collection has already
+to be lifecycle-verified by the operator procedure above.
+
+Required environment configuration is `FORJA_DATABASE_URL`,
+`FORJA_TENANT_ID`, `FORJA_REPOSITORY_ID`, `FORJA_QDRANT_HOST`,
+`FORJA_RETRIEVAL_COLLECTION`, and `AWS_REGION`. Set
+`FORJA_QDRANT_GRPC_PORT` only when it differs from `6334`. A non-loopback
+Qdrant host also requires `FORJA_QDRANT_TLS=true` and
+`FORJA_QDRANT_API_KEY` from a secret boundary. AWS authentication uses the
+standard SDK chain, with a workload role as the production target.
+
+The query is a strict `retrieval-query.schema.json` document in a private
+file. The configured tenant, repository, and derived Titan generation must
+match it. Results and projection receipts are atomically written with mode
+`0600`; no command accepts `-` for input or output.
+
+```bash
+go run ./cmd/forja-retrieval project-once \
+  --worker-id retrieval-projector-a \
+  --batch-size 25 \
+  --timeout 20s \
+  --output /secure/forja/project-once-receipt.json
+
+go run ./cmd/forja-retrieval query \
+  --input /secure/forja/query.json \
+  --timeout 20s \
+  --output /secure/forja/query-result.json
+```
+
+Both operations are capped at 30 seconds. A projection leaves a failed or
+interrupted delivery for fenced retry; query failures return no authoritative
+context. Do not redirect output to a shared log or pass keys through shell
+arguments.
+
 ## Failure Handling
 
 - If Qdrant upsert or deletion fails after canonical state changed, do not

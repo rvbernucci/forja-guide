@@ -162,8 +162,11 @@ documentation evidence.
   verifies the selected model and a real 1024-dimension vector without printing
   card text or vector values. Production activation still requires a
   workload-role deployment and private evaluation evidence.
-- [ ] Add a bounded one-shot projection and query CLI without embedding secrets
-  in process arguments or output.
+- [x] Add bounded `forja-retrieval project-once` and `forja-retrieval query`
+  commands. Both require a bounded deadline and private output file; database,
+  Qdrant, AWS region, and secret configuration are read only from their
+  environment boundaries. The command never migrates PostgreSQL, creates a
+  Qdrant collection, accepts credentials as flags, or prints query text.
 - [x] Add low-cardinality metrics and traces for latency, checkpoint lag, and
   collection generation. Candidate, resolution, and delivery outcomes are
   instrumented already; generation metrics expose only bounded lifecycle
