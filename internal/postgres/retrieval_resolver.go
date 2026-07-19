@@ -30,6 +30,7 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		  ON snapshot.tenant_id=symbol.tenant_id AND snapshot.repository_id=symbol.repository_id
 		 AND snapshot.snapshot_id=symbol.snapshot_id
 		WHERE point.tenant_id=$1 AND point.repository_id=$2 AND point.point_id=$3
+		  AND point.status='active' AND point.stale=false
 		  AND snapshot.status='active' AND snapshot.source_commit=point.source_commit
 		  AND file.source_sha256=point.source_sha256
 		ORDER BY point.generation_id`, s.tenantID, s.repositoryID, pointID)

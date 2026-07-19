@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"time"
@@ -39,6 +40,7 @@ type ProjectionWorker struct {
 	Source     ActiveIndexSource
 	Recorder   persistence.RetrievalPointRepository
 	Writer     PointWriter
+	Deleter    PointDeleter
 	Embedder   Embedder
 	Sparse     SparseEncoder
 
@@ -95,7 +97,13 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (ProjectionRun, 
 func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
 	// Historical outbox replay is intentional. Only the currently active
 	// activation can project data; every other event is a safe no-op.
-	if delivery.EventType != "index_snapshot.activated" || delivery.AggregateType != "index_snapshot" {
+	if delivery.AggregateType != "index_snapshot" {
+		return true, nil
+	}
+	if delivery.EventType == "index_snapshot.superseded" {
+		return worker.tombstoneSupersededSnapshot(ctx, delivery)
+	}
+	if delivery.EventType != "index_snapshot.activated" {
 		return true, nil
 	}
 	bundle, found, err := worker.Source.GetActiveIndexBundle(ctx)
@@ -130,6 +138,32 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 		if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
 			return false, fmt.Errorf("record retrieval point provenance: %w", err)
 		}
+	}
+	return false, nil
+}
+
+func (worker ProjectionWorker) tombstoneSupersededSnapshot(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if worker.Deleter == nil {
+		return false, fmt.Errorf("retrieval projection deleter is required for snapshot tombstones")
+	}
+	var payload struct {
+		Snapshot contracts.RepositorySnapshot `json:"snapshot"`
+	}
+	if err := json.Unmarshal(delivery.Payload, &payload); err != nil {
+		return false, fmt.Errorf("decode superseded snapshot event: %w", err)
+	}
+	if err := contracts.ValidateRepositorySnapshot(payload.Snapshot); err != nil || payload.Snapshot.SnapshotID != delivery.AggregateID || payload.Snapshot.Status != "superseded" {
+		return false, fmt.Errorf("superseded snapshot event is invalid")
+	}
+	pointIDs, err := worker.Recorder.TombstoneRetrievalProjectionPoints(ctx, worker.Generation, payload.Snapshot.SourceCommit, delivery.OutboxID)
+	if err != nil {
+		return false, fmt.Errorf("tombstone canonical retrieval points: %w", err)
+	}
+	if len(pointIDs) == 0 {
+		return false, nil
+	}
+	if err := worker.Deleter.DeletePoints(ctx, pointIDs); err != nil {
+		return false, err
 	}
 	return false, nil
 }

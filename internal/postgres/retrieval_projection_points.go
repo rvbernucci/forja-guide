@@ -56,3 +56,47 @@ func (s *Store) RecordRetrievalProjectionPoint(ctx context.Context, point contra
 	}
 	return nil
 }
+
+// TombstoneRetrievalProjectionPoints durably removes retrieval authority for
+// one retired source commit before a derived-store delete is attempted. It
+// returns every matching stable ID, including prior tombstones, so a retry can
+// safely repair a Qdrant delete that failed after this canonical receipt.
+func (s *Store) TombstoneRetrievalProjectionPoints(ctx context.Context, generationID, sourceCommit string, sourceOutboxID int64) ([]string, error) {
+	if generationID == "" || sourceOutboxID < 1 || len(sourceCommit) < 40 || len(sourceCommit) > 64 {
+		return nil, fmt.Errorf("retrieval tombstone arguments are invalid")
+	}
+	rows, err := s.pool.Query(ctx, `
+		WITH affected AS (
+			UPDATE forja.retrieval_projection_points
+			SET status='tombstoned', stale=true, deleted_at=clock_timestamp(),
+				source_outbox_id=$4
+			WHERE tenant_id=$1 AND repository_id=$2 AND generation_id=$3
+			  AND source_commit=$5 AND status <> 'tombstoned'
+			RETURNING point_id
+		)
+		SELECT point_id FROM affected
+		UNION
+		SELECT point_id
+		FROM forja.retrieval_projection_points
+		WHERE tenant_id=$1 AND repository_id=$2 AND generation_id=$3
+		  AND source_commit=$5 AND status='tombstoned'
+		ORDER BY point_id`,
+		s.tenantID, s.repositoryID, generationID, sourceOutboxID, sourceCommit,
+	)
+	if err != nil {
+		return nil, databaseError("postgres.TombstoneRetrievalProjectionPoints", err)
+	}
+	defer rows.Close()
+	pointIDs := []string{}
+	for rows.Next() {
+		var pointID string
+		if err := rows.Scan(&pointID); err != nil {
+			return nil, databaseError("postgres.TombstoneRetrievalProjectionPoints.scan", err)
+		}
+		pointIDs = append(pointIDs, pointID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaseError("postgres.TombstoneRetrievalProjectionPoints.rows", err)
+	}
+	return pointIDs, nil
+}

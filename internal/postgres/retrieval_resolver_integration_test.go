@@ -133,6 +133,13 @@ func TestRecordRetrievalProjectionPointMakesOnlyCanonicalPointResolvable(t *test
 	if err != nil || len(resolved) != 1 || resolved[0].EntityID != point.EntityID {
 		t.Fatalf("resolved=%#v err=%v", resolved, err)
 	}
+	tombstoned, err := store.TombstoneRetrievalProjectionPoints(t.Context(), generation, snapshot.SourceCommit, outboxID)
+	if err != nil || len(tombstoned) != 1 || tombstoned[0] != point.PointID {
+		t.Fatalf("tombstoned=%#v err=%v", tombstoned, err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID); err != nil || len(resolved) != 0 {
+		t.Fatalf("tombstoned point resolved=%#v err=%v", resolved, err)
+	}
 }
 
 func TestFencedSymbolProjectionPublishesOnlyAfterCanonicalReceipt(t *testing.T) {

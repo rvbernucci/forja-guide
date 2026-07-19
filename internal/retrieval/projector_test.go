@@ -2,6 +2,7 @@ package retrieval
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -72,6 +73,39 @@ func TestProjectionWorkerSkipsSupersededActivationWithoutWriting(t *testing.T) {
 	}
 }
 
+func TestProjectionWorkerTombstonesCanonicallyBeforeDerivedDelete(t *testing.T) {
+	t.Parallel()
+	bundle := projectionFixture(t)
+	snapshot := bundle.Snapshot
+	artifactID := "artifact_projection_fixture"
+	artifactHash := testHash("artifact")
+	snapshot.Status = "superseded"
+	snapshot.ArtifactID = &artifactID
+	snapshot.ArtifactContentHash = &artifactHash
+	validatedAt := snapshot.CreatedAt
+	snapshot.ValidatedAt = &validatedAt
+	payload, err := json.Marshal(map[string]any{"snapshot": snapshot})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pointID := "retrieval_" + strings.Repeat("a", 64)
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 10, AggregateType: "index_snapshot", AggregateID: snapshot.SnapshotID,
+		EventType: "index_snapshot.superseded", Payload: payload, Attempts: 1, FencingToken: 1,
+	}}}}
+	recorder := &recordingPointRecorder{tombstoneIDs: []string{pointID}}
+	deleter := &recordingPointDeleter{}
+	worker := projectionWorker(store, staticIndexSource{}, recorder, &recordingPointWriter{})
+	worker.Deleter = deleter
+	run, err := worker.ProcessOnce(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run != (ProjectionRun{Claimed: 1, Published: 1}) || recorder.tombstoneCommit != snapshot.SourceCommit || len(deleter.pointIDs) != 1 || deleter.pointIDs[0] != pointID || len(store.completed) != 1 {
+		t.Fatalf("run=%#v recorder=%#v deleter=%#v completed=%v", run, recorder, deleter, store.completed)
+	}
+}
+
 func projectionWorker(deliveries persistence.ProjectionDeliveryRepository, source ActiveIndexSource, recorder persistence.RetrievalPointRepository, writer PointWriter) ProjectionWorker {
 	return ProjectionWorker{
 		Deliveries: deliveries, Source: source, Recorder: recorder, Writer: writer,
@@ -103,15 +137,32 @@ func (writer *recordingPointWriter) UpsertPoint(_ context.Context, point contrac
 }
 
 type recordingPointRecorder struct {
-	points    []contracts.RetrievalPoint
-	outboxIDs []int64
-	err       error
+	points          []contracts.RetrievalPoint
+	outboxIDs       []int64
+	tombstoneIDs    []string
+	tombstoneCommit string
+	err             error
+}
+
+type recordingPointDeleter struct {
+	pointIDs []string
+	err      error
+}
+
+func (deleter *recordingPointDeleter) DeletePoints(_ context.Context, pointIDs []string) error {
+	deleter.pointIDs = append([]string(nil), pointIDs...)
+	return deleter.err
 }
 
 func (recorder *recordingPointRecorder) RecordRetrievalProjectionPoint(_ context.Context, point contracts.RetrievalPoint, outboxID int64) error {
 	recorder.points = append(recorder.points, point)
 	recorder.outboxIDs = append(recorder.outboxIDs, outboxID)
 	return recorder.err
+}
+
+func (recorder *recordingPointRecorder) TombstoneRetrievalProjectionPoints(_ context.Context, _ string, sourceCommit string, _ int64) ([]string, error) {
+	recorder.tombstoneCommit = sourceCommit
+	return append([]string(nil), recorder.tombstoneIDs...), recorder.err
 }
 
 type recordingDeliveries struct {

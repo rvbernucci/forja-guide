@@ -163,7 +163,9 @@ preserving authority and access boundaries.
   timestamp.
 - [x] Implement independent, fenced per-projector outbox delivery and backlog
   replay. The symbol Qdrant upsert projector records PostgreSQL provenance
-  before acknowledging delivery; delete/tombstone projection remains pending.
+  before acknowledging delivery. Superseded snapshots tombstone canonical
+  point receipts before idempotent Qdrant deletion; failed deletes stay
+  fail-closed and retry through the delivery ledger.
 - [ ] Add collection migration and blue-green re-embedding strategy.
 - [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
 

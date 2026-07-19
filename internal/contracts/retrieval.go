@@ -183,6 +183,13 @@ func RetrievalPointID(generation, entityID, sourceHash string) string {
 	return StableRetrievalID("retrieval", generation, entityID, sourceHash)
 }
 
+// IsRetrievalPointID reports whether a stable retrieval point identifier has
+// the public structural form required for derived-store deletion requests.
+// It does not establish canonical authority; callers must still resolve it.
+func IsRetrievalPointID(value string) bool {
+	return retrievalPointIDPattern.MatchString(value)
+}
+
 // CardTextHash returns the required content hash for a deterministic retrieval card.
 func CardTextHash(text string) string {
 	digest := sha256.Sum256([]byte(text))

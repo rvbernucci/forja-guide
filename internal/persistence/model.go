@@ -369,6 +369,7 @@ type ProjectionDeliveryRepository interface {
 // unavailable to governed retrieval until the projector retries it.
 type RetrievalPointRepository interface {
 	RecordRetrievalProjectionPoint(context.Context, contracts.RetrievalPoint, int64) error
+	TombstoneRetrievalProjectionPoints(context.Context, string, string, int64) ([]string, error)
 }
 
 // ProjectionRepository rebuilds derived state from immutable canonical events.

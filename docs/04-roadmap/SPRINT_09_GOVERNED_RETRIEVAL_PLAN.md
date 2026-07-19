@@ -112,8 +112,9 @@ documentation evidence.
   environment or operator secret boundary.
 - [x] Upsert points idempotently from stable IDs and source hashes. The writer
   waits for Qdrant acknowledgement before its PostgreSQL delivery can advance.
-- [ ] Project delete/tombstone state and physically delete retired points only
-  after its canonical lifecycle receipt is durable.
+- [x] Project superseded snapshot tombstones and physically delete retired
+  points only after the canonical lifecycle receipt is durable. A failed
+  delete retries while the canonical resolver remains fail-closed.
 - [x] Verify physical collection generation, vector dimensions, strict filtering,
   and payload schema before an operator enables projection work.
 - [ ] Verify the serving alias target and its observation window before retiring

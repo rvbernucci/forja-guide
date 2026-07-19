@@ -12,8 +12,10 @@ import (
 )
 
 type recordingQdrantUpserter struct {
-	request *qdrant.UpsertPoints
-	err     error
+	request       *qdrant.UpsertPoints
+	deleteRequest *qdrant.DeletePoints
+	err           error
+	deleteErr     error
 }
 
 type recordingQdrantCollectionClient struct {
@@ -55,6 +57,11 @@ func (client *recordingQdrantAliasClient) UpdateAliases(_ context.Context, actio
 func (client *recordingQdrantUpserter) Upsert(_ context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
 	client.request = request
 	return &qdrant.UpdateResult{}, client.err
+}
+
+func (client *recordingQdrantUpserter) Delete(_ context.Context, request *qdrant.DeletePoints) (*qdrant.UpdateResult, error) {
+	client.deleteRequest = request
+	return &qdrant.UpdateResult{}, client.deleteErr
 }
 
 func TestQdrantCollectionPlanIsStrictAndIndexed(t *testing.T) {
@@ -167,6 +174,25 @@ func TestQdrantPointWriterWaitsForIdempotentAcknowledgement(t *testing.T) {
 	client.err = errors.New("unavailable")
 	if err := writer.UpsertPoint(context.Background(), point); err == nil {
 		t.Fatal("Qdrant error was accepted")
+	}
+}
+
+func TestQdrantPointWriterDeletesOnlyStablePointIDs(t *testing.T) {
+	client := &recordingQdrantUpserter{}
+	writer := QdrantPointWriter{Client: client, CollectionName: "forja_retrieval_v1"}
+	pointID := "retrieval_" + strings.Repeat("a", 64)
+	if err := writer.DeletePoints(context.Background(), []string{pointID}); err != nil {
+		t.Fatal(err)
+	}
+	if client.deleteRequest == nil || !client.deleteRequest.GetWait() || len(client.deleteRequest.GetPoints().GetPoints().GetIds()) != 1 || client.deleteRequest.GetPoints().GetPoints().GetIds()[0].GetUuid() != pointUUID(pointID) {
+		t.Fatalf("delete request=%#v", client.deleteRequest)
+	}
+	if err := writer.DeletePoints(context.Background(), []string{"invalid"}); err == nil {
+		t.Fatal("invalid stable point ID was accepted")
+	}
+	client.deleteErr = errors.New("unavailable")
+	if err := writer.DeletePoints(context.Background(), []string{pointID}); err == nil {
+		t.Fatal("delete failure was accepted")
 	}
 }
 

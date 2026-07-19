@@ -96,6 +96,11 @@ verify physical generation, vector dimensions, strict filtering and payload
 indexes, then atomically switch a verified alias; alias observation, rebuild,
 rollback, the evaluation harness, and Neo4j remain pending.
 
+When a canonical snapshot is superseded, the projector first tombstones every
+affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the
+corresponding stable point IDs. A failed derived delete remains fail-closed:
+the still-present vector cannot resolve through canonical authority.
+
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
 ## Architecture
