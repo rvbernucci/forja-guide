@@ -14,6 +14,8 @@
 | [0010](ADR-0010-BOUNDED-WORKER-SUPERVISION.md) | Supervise workers through bounded, authority-free process contracts | Accepted |
 | [0011](ADR-0011-FENCED-GIT-DELIVERY.md) | Deliver Git changes through fenced leases and reproducible validation | Accepted for Sprint 05 |
 | [0012](ADR-0012-FAIL-SOFT-CONTENT-FREE-OBSERVABILITY.md) | Keep observability fail-soft, content-free, and non-authoritative | Accepted for Sprint 06 |
+| [0013](ADR-0013-CONTENT-ADDRESSED-OBJECT-STORAGE.md) | Preserve large bodies through a recoverable PostgreSQL/S3 saga | Accepted for Sprint 07 |
+| [0014](ADR-0014-GOVERNED-MEMORY-PROMOTION.md) | Require explicit authority before chat becomes durable memory | Accepted for Sprint 07 |
 
 Use zero-padded sequential identifiers. Accepted ADRs are not edited to reverse
 their decision; a new ADR supersedes them.

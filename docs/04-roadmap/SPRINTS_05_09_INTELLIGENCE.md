@@ -73,6 +73,9 @@ and residual risk.
 **Outcome:** preserve durable work and learning without treating chat history as
 truth.
 
+**Status:** In progress. See the
+[Sprint 07 execution plan](SPRINT_07_ARTIFACTS_MEMORY_PLAN.md).
+
 ### Scope
 
 - [ ] Implement artifact metadata and provenance tables.

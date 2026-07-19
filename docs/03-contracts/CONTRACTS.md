@@ -41,6 +41,11 @@ contracts.
 | [`validation-report.schema.json`](../../schemas/validation-report.schema.json) | Bounded clean-checkout validation evidence |
 | [`evidence-manifest.schema.json`](../../schemas/evidence-manifest.schema.json) | Canonical scoped inventory of immutable delivery evidence |
 | [`delivery-receipt.schema.json`](../../schemas/delivery-receipt.schema.json) | Hash-bound publication receipt for a namespaced Git ref |
+| [`conversation.schema.json`](../../schemas/conversation.schema.json) | Conversation lifecycle and transcript binding |
+| [`message.schema.json`](../../schemas/message.schema.json) | Immutable message parts and source citations |
+| [`memory-candidate.schema.json`](../../schemas/memory-candidate.schema.json) | Untrusted proposed learning and resolution lifecycle |
+| [`memory-record.schema.json`](../../schemas/memory-record.schema.json) | Explicitly promoted durable memory |
+| [`artifact-bundle-manifest.schema.json`](../../schemas/artifact-bundle-manifest.schema.json) | Immutable content-addressed bundle inventory |
 
 The Go kernel embeds these schemas, compiles cross-schema references offline at
 startup, and validates run
@@ -51,6 +56,8 @@ The [worker execution contract](WORKER_EXECUTION.md) defines process authority,
 budgets, result coupling, and durable recovery.
 The [isolated delivery contract](ISOLATED_DELIVERY.md) defines fenced worktree
 ownership, independent validation, and controlled Git publication.
+The [artifacts and memory contract](ARTIFACTS_AND_MEMORY.md) defines the
+PostgreSQL/S3 saga, immutable conversation evidence, and governed promotion.
 
 The Sprint schema encodes the approval coupling directly: only
 `awaiting_approval` requires and permits `pending_decision_id`. Proposed,
@@ -74,6 +81,13 @@ artifact_
 event_
 entity_
 decision_
+conversation_
+message_
+part_
+citation_
+memory_candidate_
+memory_
+manifest_
 ```
 
 IDs must not encode credentials, local paths, customer names, or mutable
