@@ -82,7 +82,8 @@ func (s *Store) resolveIncidentRetrievalPoint(ctx context.Context, pointID strin
 	err := s.pool.QueryRow(ctx, `
 		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
 		FROM forja.retrieval_projection_points
-		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='incident'`,
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='incident'
+		  AND source_commit IS NULL`,
 		s.tenantID, s.repositoryID, pointID,
 	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -120,7 +121,8 @@ func (s *Store) resolveMemoryRetrievalPoint(ctx context.Context, pointID string)
 	err := s.pool.QueryRow(ctx, `
 		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
 		FROM forja.retrieval_projection_points
-		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='memory'`,
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='memory'
+		  AND source_commit IS NULL`,
 		s.tenantID, s.repositoryID, pointID,
 	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -157,7 +159,8 @@ func (s *Store) resolveDecisionRetrievalPoint(ctx context.Context, pointID strin
 	err := s.pool.QueryRow(ctx, `
 		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
 		FROM forja.retrieval_projection_points
-		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='decision'`,
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='decision'
+		  AND source_commit IS NULL`,
 		s.tenantID, s.repositoryID, pointID,
 	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
 	if errors.Is(err, pgx.ErrNoRows) {

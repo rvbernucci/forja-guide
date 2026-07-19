@@ -237,6 +237,16 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if resolved, err := store.ResolveRetrievalPoint(t.Context(), memoryPoint.PointID); err != nil || len(resolved) != 1 || resolved[0].EntityID != firstMemory.MemoryID {
 		t.Fatalf("memory point resolved=%#v err=%v", resolved, err)
 	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.retrieval_projection_points
+		SET source_commit=$4
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3`,
+		DefaultTenantID, DefaultRepositoryID, memoryPoint.PointID, strings.Repeat("f", 40)); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), memoryPoint.PointID); err != nil || len(resolved) != 0 {
+		t.Fatalf("memory point with unexpected source commit resolved=%#v err=%v", resolved, err)
+	}
 	replayedMemory, err := futureStore.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
 		Memory: firstMemory, ExpectedCandidateVersion: firstCandidate.Version,
 		Principal: promotionPrincipal(t, "human", "reviewer"),
