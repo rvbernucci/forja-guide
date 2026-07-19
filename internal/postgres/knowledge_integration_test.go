@@ -84,12 +84,13 @@ func TestGovernedKnowledgeDeferredIntegrityFailsClosed(t *testing.T) {
 	if _, err := tx.Exec(t.Context(), `
 		INSERT INTO forja.artifact_operations (
 			tenant_id, repository_id, operation_id, artifact_id, content_sha256,
-			expected_size_bytes, expected_media_type, state, version, created_by,
+			expected_size_bytes, expected_media_type, request_sha256, state, version, created_by,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, 'artifact_operation_20000000-0000-4000-8000-000000000004',
 			'artifact_inactive_fixture', decode(repeat('cd', 32), 'hex'),
-			4, 'text/plain', 'reserved', 1, 'integration-suite', $3, $3
+			4, 'text/plain', decode(repeat('11', 32), 'hex'),
+			'reserved', 1, 'integration-suite', $3, $3
 		)`, DefaultTenantID, DefaultRepositoryID, now); err != nil {
 		t.Fatal(err)
 	}
@@ -134,11 +135,12 @@ func seedKnowledgeFixture(t *testing.T, pool *pgxpool.Pool) {
 		)`,
 		`INSERT INTO forja.artifact_operations (
 			tenant_id, repository_id, operation_id, artifact_id, content_sha256,
-			expected_size_bytes, expected_media_type, state, version, created_by,
+			expected_size_bytes, expected_media_type, request_sha256, state, version, created_by,
 			created_at, updated_at
 		) VALUES (
 			$1, $2, '` + knowledgeOperationID + `', '` + knowledgeArtifactID + `',
-			decode(repeat('ab', 32), 'hex'), 12, 'text/plain', 'active', 1,
+			decode(repeat('ab', 32), 'hex'), 12, 'text/plain',
+			decode(repeat('11', 32), 'hex'), 'active', 1,
 			'integration-suite', $3, $3
 		)`,
 		`INSERT INTO forja.artifacts (

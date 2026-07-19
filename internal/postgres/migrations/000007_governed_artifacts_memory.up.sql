@@ -63,6 +63,7 @@ CREATE TABLE forja.artifact_operations (
     content_sha256 bytea NOT NULL CHECK (octet_length(content_sha256)=32),
     expected_size_bytes bigint NOT NULL CHECK (expected_size_bytes BETWEEN 0 AND 4294967296),
     expected_media_type text NOT NULL CHECK (char_length(expected_media_type) BETWEEN 3 AND 120),
+    request_sha256 bytea NOT NULL CHECK (octet_length(request_sha256)=32),
     state text NOT NULL CHECK (
         state IN ('reserved', 'uploading', 'verified', 'active', 'failed', 'reconciliation_required')
     ),
@@ -80,8 +81,8 @@ CREATE TABLE forja.artifact_operations (
         ON DELETE RESTRICT,
     CHECK (updated_at >= created_at),
     CHECK (
-        (state='failed' AND failure_class IS NOT NULL)
-        OR (state<>'failed' AND failure_class IS NULL)
+        (state IN ('failed', 'reconciliation_required') AND failure_class IS NOT NULL)
+        OR (state NOT IN ('failed', 'reconciliation_required') AND failure_class IS NULL)
     )
 );
 

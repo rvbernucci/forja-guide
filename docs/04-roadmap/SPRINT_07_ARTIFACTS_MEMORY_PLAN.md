@@ -85,17 +85,17 @@ gate.
 - [x] Enforce tenant and repository ownership through composite keys.
 - [x] Protect immutable messages, content parts, citations, and bundle entries
   from update or delete.
-- [ ] Commit aggregate state, append-only event, outbox row, and idempotency
+- [x] Commit aggregate state, append-only event, outbox row, and idempotency
   receipt atomically.
 - [x] Extend schema verification and rollback compatibility checks.
 
 ### 3. Content-addressed object storage
 
-- [ ] Add an S3 adapter behind a narrow object-store interface.
-- [ ] Derive keys only from the operator-bound prefix and canonical SHA-256.
-- [ ] Use conditional writes and provider-side SHA-256 where supported.
-- [ ] Re-read every first publication and verify exact bytes before activation.
-- [ ] Treat an existing key as idempotent only after size, metadata, and body
+- [x] Add an S3 adapter behind a narrow object-store interface.
+- [x] Derive keys only from the operator-bound authority and canonical SHA-256.
+- [x] Use conditional writes and provider-side SHA-256 where supported.
+- [x] Re-read every first publication and verify exact bytes before activation.
+- [x] Treat an existing key as idempotent only after size, metadata, and body
   verification.
 - [ ] Reconcile interrupted uploads, missing objects, mismatched objects, and
   canonical records left before finalization.
