@@ -23,6 +23,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/identity"
+	"github.com/rvbernucci/forja-guide/internal/retrieval"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -41,6 +42,7 @@ type Store struct {
 	tenantID                string
 	repositoryID            string
 	memoryPolicyPrincipalID string
+	memoryBodyReader        retrieval.MemoryBodyReader
 }
 
 // StoreOption configures a trust boundary that cannot be inferred from command input.
@@ -54,6 +56,18 @@ func WithMemoryPolicyPrincipal(actorID string) StoreOption {
 			return fault.New(fault.CodeInvalidArgument, "postgres.WithMemoryPolicyPrincipal", "memory policy principal ID is invalid")
 		}
 		store.memoryPolicyPrincipalID = actorID
+		return nil
+	}
+}
+
+// WithMemoryBodyReader provides the restricted, integrity-verified object
+// read capability required to project and resolve governed memory cards.
+func WithMemoryBodyReader(reader retrieval.MemoryBodyReader) StoreOption {
+	return func(store *Store) error {
+		if reader == nil {
+			return fault.New(fault.CodeInvalidArgument, "postgres.WithMemoryBodyReader", "memory body reader is required")
+		}
+		store.memoryBodyReader = reader
 		return nil
 	}
 }

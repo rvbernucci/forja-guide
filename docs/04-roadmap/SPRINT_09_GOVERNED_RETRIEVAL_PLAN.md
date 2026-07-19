@@ -86,14 +86,14 @@ documentation evidence.
 - [x] Publish strict retrieval point, query, and result JSON schemas.
 - [x] Add Go contract types and semantic validation for scopes, filters,
   vectors, ranks, finite scores, model descriptors, and bounded collections.
-- [x] Build the generic deterministic card boundary plus canonical symbol and
-  test-card adapters. A test card is emitted only for a symbol canonically
-  marked as a test and resolves only while that flag remains true. Decision,
-  memory, and incident adapters require their owning canonical models. The
-  resolved decision family now projects and resolves from PostgreSQL. Memory
-  retrieval is deliberately deferred to the authorized derived-body boundary
-  in [ADR-0017](../05-decisions/ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md);
-  incidents do not yet have a canonical model.
+- [x] Build the generic deterministic card boundary plus canonical symbol,
+  test, decision, and memory adapters. A test card is emitted only for a
+  symbol canonically marked as a test and resolves only while that flag remains
+  true. Decisions and memories are re-derived from PostgreSQL. A memory also
+  requires an active exact artifact/object binding, an integrity-verified
+  provider version, and the bounded redacted body contract in
+  [ADR-0017](../05-decisions/ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md).
+  Incidents do not yet have a canonical model.
 - [x] Generate stable point IDs and byte-stable card text from canonical input.
 - [x] Implement a versioned deterministic lexical encoder for sparse vectors.
 
@@ -145,10 +145,12 @@ documentation evidence.
   return a bounded degraded receipt when either path is unavailable.
 - [x] Define and test the fail-closed canonical resolver boundary for identity,
   source hash, source commit, lifecycle, scope, and duplicate checks.
-- [x] Resolve symbol and test candidates against canonical PostgreSQL identity,
-  source hash, source commit, lifecycle, and repository authority. Test cards
-  additionally require the canonical `is_test` flag. Other card families
-  remain absent until their canonical adapters exist.
+- [x] Resolve symbol, test, decision, and memory candidates against canonical
+  PostgreSQL identity, source hash, source commit where applicable, lifecycle,
+  and repository authority. Test cards additionally require the canonical
+  `is_test` flag; memory cards independently re-read their exact authorized
+  object version and rebuild the redacted card before acceptance. Incidents
+  remain absent until a canonical adapter exists.
 - [x] Reject stale, missing, cross-scope, hash-mismatched, or duplicate-identity
   candidates and expose bounded rejection reasons in a receipt.
 - [x] Return bounded, scope-authorized canonical entity-ID alternatives for a

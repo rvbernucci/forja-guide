@@ -86,6 +86,25 @@ func TestProjectionWorkerProjectsResolvedDecisionFromCanonicalLookup(t *testing.
 	}
 }
 
+func TestProjectionWorkerProjectsActiveMemoryFromCanonicalLookup(t *testing.T) {
+	t.Parallel()
+	body := []byte("Bounded durable memory")
+	record := validMemoryRetrievalRecord(body)
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 73, AggregateType: "memory", AggregateID: record.Memory.MemoryID, EventType: "memory.promoted", Attempts: 1, FencingToken: 3,
+	}}}}
+	writer := &recordingPointWriter{}
+	worker := projectionWorker(store, staticIndexSource{}, &recordingPointRecorder{}, writer)
+	worker.Memories = staticMemorySource{record: record, found: true}
+	worker.MemoryBodies = staticMemoryBodyReader{body: body}
+	if _, err := worker.ProcessOnce(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(writer.points) != 1 || writer.points[0].ArtifactFamily != "memory" || writer.points[0].EntityID != record.Memory.MemoryID {
+		t.Fatalf("points=%#v", writer.points)
+	}
+}
+
 func TestProjectionWorkerRetriesAndDoesNotCheckpointFailedWrite(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)
@@ -233,6 +252,16 @@ type staticDecisionSource struct {
 	decision contracts.Decision
 	found    bool
 	err      error
+}
+
+type staticMemorySource struct {
+	record MemoryRetrievalRecord
+	found  bool
+	err    error
+}
+
+func (source staticMemorySource) GetActiveMemory(context.Context, string) (MemoryRetrievalRecord, bool, error) {
+	return source.record, source.found, source.err
 }
 
 func (source staticDecisionSource) GetDecision(context.Context, string) (contracts.Decision, bool, error) {

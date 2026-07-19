@@ -99,7 +99,11 @@ to be lifecycle-verified by the operator procedure above.
 
 Required environment configuration is `FORJA_DATABASE_URL`,
 `FORJA_TENANT_ID`, `FORJA_REPOSITORY_ID`, `FORJA_QDRANT_HOST`,
-`FORJA_RETRIEVAL_COLLECTION`, and `AWS_REGION`. Set
+`FORJA_RETRIEVAL_COLLECTION`, `AWS_REGION`, `FORJA_S3_BUCKET`, and
+`FORJA_S3_REGION`. `FORJA_S3_ENDPOINT` and `FORJA_S3_PATH_STYLE` select a
+compatible private S3 endpoint when required. The object-store capability is
+used only for bounded, content-addressed, integrity-verified memory reads;
+object keys and bodies are never accepted as command arguments. Set
 `FORJA_QDRANT_GRPC_PORT` only when it differs from `6334`. A non-loopback
 Qdrant host also requires `FORJA_QDRANT_TLS=true` and
 `FORJA_QDRANT_API_KEY` from a secret boundary. AWS authentication uses the

@@ -43,14 +43,16 @@ type ProjectionRun struct {
 // PostgreSQL provenance receipt are both required before a fenced delivery can
 // advance the independent projector checkpoint.
 type ProjectionWorker struct {
-	Deliveries persistence.ProjectionDeliveryRepository
-	Source     ActiveIndexSource
-	Decisions  ActiveDecisionSource
-	Recorder   persistence.RetrievalPointRepository
-	Writer     PointWriter
-	Deleter    PointDeleter
-	Embedder   Embedder
-	Sparse     SparseEncoder
+	Deliveries   persistence.ProjectionDeliveryRepository
+	Source       ActiveIndexSource
+	Decisions    ActiveDecisionSource
+	Memories     ActiveMemorySource
+	MemoryBodies MemoryBodyReader
+	Recorder     persistence.RetrievalPointRepository
+	Writer       PointWriter
+	Deleter      PointDeleter
+	Embedder     Embedder
+	Sparse       SparseEncoder
 
 	ProjectorName        string
 	WorkerID             string
@@ -132,6 +134,9 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 	if delivery.AggregateType == "decision" {
 		return worker.projectDecision(ctx, delivery)
 	}
+	if delivery.AggregateType == "memory" {
+		return worker.projectMemory(ctx, delivery)
+	}
 	// Historical outbox replay is intentional. Only the currently active
 	// activation can project data; every other event is a safe no-op.
 	if delivery.AggregateType != "index_snapshot" {
@@ -195,6 +200,34 @@ func (worker ProjectionWorker) projectDecision(ctx context.Context, delivery per
 		return true, nil
 	}
 	source, err := BuildDecisionSource(worker.DecisionTenantID, worker.DecisionRepositoryID, decision)
+	if err != nil {
+		return false, err
+	}
+	point, err := BuildPoint(ctx, source, worker.Generation, worker.Embedder, worker.Sparse)
+	if err != nil {
+		return false, err
+	}
+	if err := worker.Writer.UpsertPoint(ctx, point); err != nil {
+		return false, err
+	}
+	if err := worker.Recorder.RecordRetrievalProjectionPoint(ctx, point, delivery.OutboxID); err != nil {
+		return false, fmt.Errorf("record retrieval point provenance: %w", err)
+	}
+	return false, nil
+}
+
+func (worker ProjectionWorker) projectMemory(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	if worker.Memories == nil || worker.MemoryBodies == nil {
+		return false, fmt.Errorf("canonical memory source and body reader are required")
+	}
+	record, found, err := worker.Memories.GetActiveMemory(ctx, delivery.AggregateID)
+	if err != nil {
+		return false, fmt.Errorf("load canonical memory: %w", err)
+	}
+	if !found {
+		return true, nil
+	}
+	source, err := BuildMemorySource(ctx, record, worker.MemoryBodies)
 	if err != nil {
 		return false, err
 	}

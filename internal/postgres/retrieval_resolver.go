@@ -17,6 +17,9 @@ import (
 // Unsupported families return no match rather than being trusted from derived
 // projection metadata.
 func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, error) {
+	if candidates, found, err := s.resolveMemoryRetrievalPoint(ctx, pointID); err != nil || found {
+		return candidates, err
+	}
 	if candidates, found, err := s.resolveDecisionRetrievalPoint(ctx, pointID); err != nil || found {
 		return candidates, err
 	}
@@ -68,6 +71,43 @@ func (s *Store) ResolveRetrievalPoint(ctx context.Context, pointID string) ([]re
 		return nil, databaseError("postgres.ResolveRetrievalPoint.rows", err)
 	}
 	return result, nil
+}
+
+func (s *Store) resolveMemoryRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, bool, error) {
+	var generation, entityID, storedHash, status, authorityClass string
+	var stale bool
+	err := s.pool.QueryRow(ctx, `
+		SELECT generation_id, entity_id, 'sha256:' || encode(source_sha256, 'hex'), status, authority_class, stale
+		FROM forja.retrieval_projection_points
+		WHERE tenant_id=$1 AND repository_id=$2 AND point_id=$3 AND artifact_family='memory'`,
+		s.tenantID, s.repositoryID, pointID,
+	).Scan(&generation, &entityID, &storedHash, &status, &authorityClass, &stale)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, true, databaseError("postgres.ResolveRetrievalPoint.memoryPoint", err)
+	}
+	if s.memoryBodyReader == nil {
+		return nil, true, fmt.Errorf("canonical memory body reader is unavailable")
+	}
+	record, found, err := s.GetActiveMemory(ctx, entityID)
+	if err != nil {
+		return nil, true, err
+	}
+	if !found || status != "active" || authorityClass != "canonical" || stale {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	source, err := retrieval.BuildMemorySource(ctx, record, s.memoryBodyReader)
+	if err != nil || storedHash != source.SourceHash || pointID != contracts.RetrievalPointID(generation, record.Memory.MemoryID, source.SourceHash) {
+		return []retrieval.CanonicalCandidate{}, true, nil
+	}
+	return []retrieval.CanonicalCandidate{{
+		PointID: pointID, CollectionGeneration: generation,
+		TenantID: "tenant_" + s.tenantID, RepositoryID: "repo_" + s.repositoryID,
+		EntityID: record.Memory.MemoryID, ArtifactFamily: "memory", SourceHash: source.SourceHash,
+		Status: "active", AuthorityClass: "canonical", ProofRefs: source.ProofRefs,
+	}}, true, nil
 }
 
 func (s *Store) resolveDecisionRetrievalPoint(ctx context.Context, pointID string) ([]retrieval.CanonicalCandidate, bool, error) {

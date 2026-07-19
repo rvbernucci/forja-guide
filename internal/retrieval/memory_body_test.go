@@ -1,9 +1,14 @@
 package retrieval
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestPrepareMemoryBodyBoundsAndNormalizes(t *testing.T) {
-	got, err := PrepareMemoryBody("text/plain", []byte("  approved\n memory  Authorization: Bearer unsafe-token-value\nAKIA1234567890ABCDEF hf_12345678901234567890 sk-12345678901234567890"))
+	body := "  approved\n memory  Authorization: Bearer unsafe-token-value\nAKIA1234567890ABCDEF " +
+		"hf_" + strings.Repeat("1", 20) + " sk-" + strings.Repeat("1", 20)
+	got, err := PrepareMemoryBody("text/plain", []byte(body))
 	if err != nil || got != "approved memory Authorization: Bearer [REDACTED] [REDACTED] [REDACTED] [REDACTED]" {
 		t.Fatalf("body=%q err=%v", got, err)
 	}

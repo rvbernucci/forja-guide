@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/objectstore"
 	"github.com/rvbernucci/forja-guide/internal/postgres"
 	"github.com/rvbernucci/forja-guide/internal/retrieval"
 )
@@ -72,7 +73,8 @@ func projectOnce(parent context.Context, arguments []string, _ io.Writer, stderr
 	defer cancel()
 	writer := retrieval.QdrantPointWriter{Client: runtime.qdrant, CollectionName: runtime.collection}
 	worker := retrieval.ProjectionWorker{
-		Deliveries: runtime.store, Source: runtime.store, Decisions: runtime.store, Recorder: runtime.store,
+		Deliveries: runtime.store, Source: runtime.store, Decisions: runtime.store, Memories: runtime.store,
+		MemoryBodies: runtime.memoryBodies, Recorder: runtime.store,
 		Writer: writer, Deleter: writer, Embedder: runtime.embedder, Sparse: retrieval.HashingSparseEncoder{},
 		WorkerID: *workerID, Generation: runtime.generation,
 		DecisionTenantID: runtime.tenantID, DecisionRepositoryID: runtime.repositoryID, BatchSize: *batchSize,
@@ -136,6 +138,7 @@ type runtime struct {
 	store        *postgres.Store
 	qdrant       qdrantClient
 	embedder     *retrieval.BedrockTitanEmbedder
+	memoryBodies *objectstore.Store
 	tenantID     string
 	repositoryID string
 	collection   string
@@ -163,7 +166,14 @@ func openRuntime(ctx context.Context, lookup func(string) (string, bool)) (runti
 		return runtime{}, func() {}, fmt.Errorf("open canonical PostgreSQL: %w", err)
 	}
 	closePool := func() { pool.Close() }
-	store, err := postgres.NewStore(pool, nil, config.tenantID, config.repositoryID)
+	memoryBodies, err := objectstore.New(openContext, objectstore.Config{
+		Bucket: config.s3Bucket, Region: config.s3Region, BaseEndpoint: config.s3Endpoint, UsePathStyle: config.s3PathStyle,
+	})
+	if err != nil {
+		closePool()
+		return runtime{}, func() {}, fmt.Errorf("configure governed memory object reader: %w", err)
+	}
+	store, err := postgres.NewStore(pool, nil, config.tenantID, config.repositoryID, postgres.WithMemoryBodyReader(memoryBodies))
 	if err != nil {
 		closePool()
 		return runtime{}, func() {}, err
@@ -191,7 +201,7 @@ func openRuntime(ctx context.Context, lookup func(string) (string, bool)) (runti
 	descriptor := embedder.Descriptor()
 	generation := contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion)
 	return runtime{
-			store: store, qdrant: client, embedder: embedder,
+			store: store, qdrant: client, embedder: embedder, memoryBodies: memoryBodies,
 			tenantID: config.tenantID, repositoryID: config.repositoryID, collection: config.collection, generation: generation,
 		}, func() {
 			_ = client.Close()
@@ -202,8 +212,9 @@ func openRuntime(ctx context.Context, lookup func(string) (string, bool)) (runti
 type runtimeConfig struct {
 	databaseURL, tenantID, repositoryID  string
 	qdrantHost, qdrantAPIKey, collection string
+	s3Bucket, s3Region, s3Endpoint       string
 	qdrantPort                           int
-	qdrantTLS                            bool
+	qdrantTLS, s3PathStyle               bool
 	region                               string
 }
 
@@ -216,6 +227,7 @@ func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, er
 		databaseURL: get("FORJA_DATABASE_URL"), tenantID: get("FORJA_TENANT_ID"), repositoryID: get("FORJA_REPOSITORY_ID"),
 		qdrantHost: get("FORJA_QDRANT_HOST"), qdrantAPIKey: get("FORJA_QDRANT_API_KEY"),
 		collection: get("FORJA_RETRIEVAL_COLLECTION"), region: get("AWS_REGION"), qdrantPort: 6334,
+		s3Bucket: get("FORJA_S3_BUCKET"), s3Region: get("FORJA_S3_REGION"), s3Endpoint: get("FORJA_S3_ENDPOINT"),
 	}
 	if value := get("FORJA_QDRANT_GRPC_PORT"); value != "" {
 		port, err := strconv.Atoi(value)
@@ -231,8 +243,15 @@ func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, er
 		}
 		config.qdrantTLS = enabled
 	}
-	if config.databaseURL == "" || config.tenantID == "" || config.repositoryID == "" || config.qdrantHost == "" || config.collection == "" || config.region == "" {
-		return runtimeConfig{}, errors.New("FORJA_DATABASE_URL, FORJA_TENANT_ID, FORJA_REPOSITORY_ID, FORJA_QDRANT_HOST, FORJA_RETRIEVAL_COLLECTION, and AWS_REGION are required")
+	if value := get("FORJA_S3_PATH_STYLE"); value != "" {
+		enabled, err := strconv.ParseBool(value)
+		if err != nil {
+			return runtimeConfig{}, fmt.Errorf("FORJA_S3_PATH_STYLE is invalid")
+		}
+		config.s3PathStyle = enabled
+	}
+	if config.databaseURL == "" || config.tenantID == "" || config.repositoryID == "" || config.qdrantHost == "" || config.collection == "" || config.region == "" || config.s3Bucket == "" || config.s3Region == "" {
+		return runtimeConfig{}, errors.New("FORJA_DATABASE_URL, FORJA_TENANT_ID, FORJA_REPOSITORY_ID, FORJA_QDRANT_HOST, FORJA_RETRIEVAL_COLLECTION, AWS_REGION, FORJA_S3_BUCKET, and FORJA_S3_REGION are required")
 	}
 	if _, err := (retrieval.QdrantEndpoint{Host: config.qdrantHost, Port: config.qdrantPort, APIKey: config.qdrantAPIKey, UseTLS: config.qdrantTLS}).ClientConfig(); err != nil {
 		return runtimeConfig{}, err

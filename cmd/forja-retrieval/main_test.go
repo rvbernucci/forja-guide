@@ -34,6 +34,8 @@ func TestRuntimeConfigRequiresEnvironmentBoundariesAndRejectsUnsafeRemoteQdrant(
 		"FORJA_QDRANT_TLS":           "true",
 		"FORJA_RETRIEVAL_COLLECTION": "forja_retrieval_v1",
 		"AWS_REGION":                 "us-east-1",
+		"FORJA_S3_BUCKET":            "forja-artifacts",
+		"FORJA_S3_REGION":            "us-east-1",
 	}
 	lookup := func(key string) (string, bool) { value, found := valid[key]; return value, found }
 	config, err := runtimeConfigFromEnv(lookup)

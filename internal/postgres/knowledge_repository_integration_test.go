@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"encoding/base64"
 	"fmt"
 	"sort"
@@ -13,7 +14,9 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
+	"github.com/rvbernucci/forja-guide/internal/objectstore"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
+	"github.com/rvbernucci/forja-guide/internal/retrieval"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -197,6 +200,43 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	retrievalMemory, found, err := store.GetActiveMemory(t.Context(), firstMemory.MemoryID)
+	if err != nil || !found || retrievalMemory.Memory.MemoryID != firstMemory.MemoryID ||
+		retrievalMemory.Descriptor.SizeBytes != *bodyArtifact.SizeBytes || retrievalMemory.Descriptor.MediaType != bodyArtifact.MediaType {
+		t.Fatalf("active retrieval memory=%#v found=%v err=%v", retrievalMemory, found, err)
+	}
+	store.memoryBodyReader = integrationMemoryBodyReader{body: []byte("Durable project decision"), evidence: retrievalMemory.Evidence}
+	generation := contracts.RetrievalGenerationID("fixture", "memory-v1", 3, retrieval.SparseEncoderVersion)
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES ($1,$2,$3,'retrieval','retrieval_memory_fixture','fixture','memory-v1',3,$4,'active')`,
+		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
+		t.Fatal(err)
+	}
+	var memoryOutboxID int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT outbox.outbox_id FROM forja.outbox AS outbox
+		JOIN forja.events AS event ON event.event_id=outbox.event_id
+		WHERE event.aggregate_type='memory' AND event.aggregate_id=$1 AND event.event_type='memory.promoted'`,
+		firstMemory.MemoryID).Scan(&memoryOutboxID); err != nil {
+		t.Fatal(err)
+	}
+	memorySource, err := retrieval.BuildMemorySource(t.Context(), retrievalMemory, store.memoryBodyReader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memoryPoint, err := retrieval.BuildPoint(t.Context(), memorySource, generation, postgresFixtureEmbedder{}, retrieval.HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRetrievalProjectionPoint(t.Context(), memoryPoint, memoryOutboxID); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), memoryPoint.PointID); err != nil || len(resolved) != 1 || resolved[0].EntityID != firstMemory.MemoryID {
+		t.Fatalf("memory point resolved=%#v err=%v", resolved, err)
+	}
 	replayedMemory, err := futureStore.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
 		Memory: firstMemory, ExpectedCandidateVersion: firstCandidate.Version,
 		Principal: promotionPrincipal(t, "human", "reviewer"),
@@ -301,6 +341,15 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if tombstoneEvents != 2 || outboxEvents != 2 || receipts < 10 {
 		t.Fatalf("tombstone evidence events=%d outbox=%d receipts=%d", tombstoneEvents, outboxEvents, receipts)
 	}
+}
+
+type integrationMemoryBodyReader struct {
+	body     []byte
+	evidence objectstore.Evidence
+}
+
+func (reader integrationMemoryBodyReader) ReadVerified(_ context.Context, _ objectstore.Authority, _ objectstore.Descriptor, _ int64) ([]byte, objectstore.Evidence, error) {
+	return reader.body, reader.evidence, nil
 }
 
 func TestKnowledgeRepositoryMissingConversationIsNotFound(t *testing.T) {
