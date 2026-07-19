@@ -17,6 +17,10 @@ type OperationalSnapshot struct {
 	InflightOutbox            int64
 	DeadOutbox                int64
 	ProjectionLag             int64
+	RetrievalGenerationsBuild int64
+	RetrievalGenerationsLive  int64
+	RetrievalGenerationsDrain int64
+	RetrievalGenerationsFail  int64
 	PendingApprovals          int64
 	WorkerCrashLoops          int64
 	ArtifactReconciliation    int64
@@ -155,8 +159,16 @@ func (reader *PostgresOperationalReader) OperationalSnapshot(
 				(SELECT min(last_outbox_id)
 				 FROM forja.projection_checkpoints
 				 WHERE tenant_id=$1 AND repository_id=$2),
-				0
+				 0
 			 )),
+			(SELECT count(*) FROM forja.retrieval_generations
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='building'),
+			(SELECT count(*) FROM forja.retrieval_generations
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='active'),
+			(SELECT count(*) FROM forja.retrieval_generations
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='draining'),
+			(SELECT count(*) FROM forja.retrieval_generations
+			 WHERE tenant_id=$1 AND repository_id=$2 AND status='failed'),
 			(SELECT count(*) FROM forja.decisions
 			 WHERE tenant_id=$1 AND repository_id=$2 AND status='pending'),
 			(SELECT count(*) FROM crash_loops),
@@ -186,6 +198,10 @@ func (reader *PostgresOperationalReader) OperationalSnapshot(
 		&snapshot.InflightOutbox,
 		&snapshot.DeadOutbox,
 		&snapshot.ProjectionLag,
+		&snapshot.RetrievalGenerationsBuild,
+		&snapshot.RetrievalGenerationsLive,
+		&snapshot.RetrievalGenerationsDrain,
+		&snapshot.RetrievalGenerationsFail,
 		&snapshot.PendingApprovals,
 		&snapshot.WorkerCrashLoops,
 		&snapshot.ArtifactReconciliation,
@@ -270,6 +286,10 @@ func (collector *OperationalCollector) Collect(channel chan<- prometheus.Metric)
 		{"inflight_outbox", snapshot.InflightOutbox},
 		{"dead_outbox", snapshot.DeadOutbox},
 		{"projection_lag", snapshot.ProjectionLag},
+		{"retrieval_generations_building", snapshot.RetrievalGenerationsBuild},
+		{"retrieval_generations_active", snapshot.RetrievalGenerationsLive},
+		{"retrieval_generations_draining", snapshot.RetrievalGenerationsDrain},
+		{"retrieval_generations_failed", snapshot.RetrievalGenerationsFail},
 		{"pending_approvals", snapshot.PendingApprovals},
 		{"worker_crash_loops", snapshot.WorkerCrashLoops},
 		{"artifact_reconciliation", snapshot.ArtifactReconciliation},

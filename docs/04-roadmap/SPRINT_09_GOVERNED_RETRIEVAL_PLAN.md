@@ -149,9 +149,10 @@ documentation evidence.
 
 - [ ] Add a bounded one-shot projection and query CLI without embedding secrets
   in process arguments or output.
-- [ ] Add low-cardinality metrics and traces for latency, checkpoint lag, and
+- [x] Add low-cardinality metrics and traces for latency, checkpoint lag, and
   collection generation. Candidate, resolution, and delivery outcomes are
-  instrumented already.
+  instrumented already; generation metrics expose only bounded lifecycle
+  counts, never generation IDs or collection names.
 - [x] Keep query text, vectors, entity names, paths, and payload bodies out of
   retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
