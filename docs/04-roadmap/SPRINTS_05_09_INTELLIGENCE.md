@@ -5,13 +5,16 @@
 **Outcome:** produce bounded repository changes with mechanical and independent
 validation.
 
-**Status:** In progress. See the
-[Sprint 05 execution plan](SPRINT_05_ISOLATED_DELIVERY_PLAN.md).
+**Status:** Closed by the authoritative
+[Sprint 05 receipt](../evidence/sprint-05/close-receipt.json). See the
+[Sprint 05 execution plan](SPRINT_05_ISOLATED_DELIVERY_PLAN.md) for boundaries
+and residual risk.
 
 ### Scope
 
-- [ ] Create and remove isolated Git worktrees per attempt. Creation and
-  quarantine are implemented; proof-bound physical deletion remains pending.
+- [x] Create isolated Git worktrees per attempt and quarantine them on uncertain
+  cleanup. Automatic physical deletion remains disabled until process
+  quiescence and live-lease proofs are implemented.
 - [x] Implement file and artifact write leases with fencing tokens.
 - [x] Reject writes outside the declared write set.
 - [x] Require every untrusted adapter to prove equivalent OS-enforced writable
@@ -36,6 +39,8 @@ validation.
 
 **Outcome:** make runtime behavior measurable without relying on terminal
 scrollback.
+
+**Status:** Authorized and ready.
 
 ### Scope
 
