@@ -172,6 +172,9 @@ func (s *Store) Delete(
 		Key:     aws.String(key),
 		IfMatch: aws.String(expectedETag),
 	}); err != nil {
+		if isNotFound(err) {
+			return ErrNotFound
+		}
 		return fmt.Errorf("%w: purge content-addressed object", ErrUnavailable)
 	}
 	return nil

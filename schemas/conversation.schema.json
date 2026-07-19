@@ -40,6 +40,10 @@
       "type": "string",
       "pattern": "^artifact_[A-Za-z0-9_-]+$"
     },
+    "transcript_manifest_id": {
+      "type": "string",
+      "pattern": "^manifest_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
     "created_at": {"type": "string", "format": "date-time"},
     "updated_at": {"type": "string", "format": "date-time"},
     "closed_at": {"type": "string", "format": "date-time"},
@@ -52,6 +56,7 @@
         "not": {
           "anyOf": [
             {"required": ["transcript_artifact_id"]},
+            {"required": ["transcript_manifest_id"]},
             {"required": ["closed_at"]},
             {"required": ["tombstoned_at"]}
           ]
@@ -61,13 +66,29 @@
     {
       "if": {"properties": {"status": {"const": "closed"}}},
       "then": {
-        "required": ["transcript_artifact_id", "closed_at"],
+        "required": ["transcript_artifact_id", "transcript_manifest_id", "closed_at"],
         "not": {"required": ["tombstoned_at"]}
       }
     },
     {
       "if": {"properties": {"status": {"const": "tombstoned"}}},
-      "then": {"required": ["tombstoned_at"]}
+      "then": {
+        "required": ["tombstoned_at"],
+        "oneOf": [
+          {
+            "required": ["transcript_artifact_id", "transcript_manifest_id", "closed_at"]
+          },
+          {
+            "not": {
+              "anyOf": [
+                {"required": ["transcript_artifact_id"]},
+                {"required": ["transcript_manifest_id"]},
+                {"required": ["closed_at"]}
+              ]
+            }
+          }
+        ]
+      }
     }
   ]
 }

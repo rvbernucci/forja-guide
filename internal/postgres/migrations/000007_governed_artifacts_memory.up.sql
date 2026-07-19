@@ -64,6 +64,7 @@ CREATE TABLE forja.artifact_operations (
     expected_size_bytes bigint NOT NULL CHECK (expected_size_bytes BETWEEN 0 AND 4294967296),
     expected_media_type text NOT NULL CHECK (char_length(expected_media_type) BETWEEN 3 AND 120),
     request_sha256 bytea NOT NULL CHECK (octet_length(request_sha256)=32),
+    intent jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(intent)='object'),
     state text NOT NULL CHECK (
         state IN ('reserved', 'uploading', 'verified', 'active', 'failed', 'reconciliation_required')
     ),
@@ -203,6 +204,7 @@ CREATE TABLE forja.conversations (
     ),
     created_by text NOT NULL CHECK (char_length(created_by) BETWEEN 1 AND 160),
     transcript_artifact_id text,
+    transcript_manifest_id text,
     created_at timestamptz NOT NULL,
     updated_at timestamptz NOT NULL,
     closed_at timestamptz,
@@ -212,15 +214,20 @@ CREATE TABLE forja.conversations (
         REFERENCES forja.repositories(tenant_id, repository_id) ON DELETE RESTRICT,
     FOREIGN KEY (tenant_id, repository_id, transcript_artifact_id)
         REFERENCES forja.artifacts(tenant_id, repository_id, artifact_id) ON DELETE RESTRICT,
+    FOREIGN KEY (tenant_id, repository_id, transcript_manifest_id)
+        REFERENCES forja.artifact_bundle_manifests(tenant_id, repository_id, manifest_id)
+        ON DELETE RESTRICT,
     CHECK (updated_at >= created_at),
     CHECK (closed_at IS NULL OR closed_at >= created_at),
     CHECK (tombstoned_at IS NULL OR tombstoned_at >= COALESCE(closed_at, created_at)),
     CHECK (
-        (status='active' AND transcript_artifact_id IS NULL AND closed_at IS NULL AND tombstoned_at IS NULL)
-        OR (status='closed' AND transcript_artifact_id IS NOT NULL AND closed_at IS NOT NULL AND tombstoned_at IS NULL)
+        (status='active' AND transcript_artifact_id IS NULL AND transcript_manifest_id IS NULL
+            AND closed_at IS NULL AND tombstoned_at IS NULL)
+        OR (status='closed' AND transcript_artifact_id IS NOT NULL AND transcript_manifest_id IS NOT NULL
+            AND closed_at IS NOT NULL AND tombstoned_at IS NULL)
         OR (status='tombstoned' AND tombstoned_at IS NOT NULL
-            AND ((transcript_artifact_id IS NULL AND closed_at IS NULL)
-                OR (transcript_artifact_id IS NOT NULL AND closed_at IS NOT NULL)))
+            AND ((transcript_artifact_id IS NULL AND transcript_manifest_id IS NULL AND closed_at IS NULL)
+                OR (transcript_artifact_id IS NOT NULL AND transcript_manifest_id IS NOT NULL AND closed_at IS NOT NULL)))
     )
 );
 
@@ -436,6 +443,9 @@ AS $$
 DECLARE
     exact_authority boolean;
 BEGIN
+    IF NEW.status NOT IN ('active', 'validated') THEN
+        RETURN NEW;
+    END IF;
     SELECT EXISTS (
         SELECT 1
         FROM forja.artifact_operations AS operation

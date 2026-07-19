@@ -254,6 +254,35 @@ type ArtifactEvidence struct {
 	ProviderChecksumSHA256 string
 }
 
+// ArtifactReconciliationCandidate is a stale canonical publication whose
+// provider body must be re-verified before PostgreSQL may finalize it.
+type ArtifactReconciliationCandidate struct {
+	Publication  ArtifactPublication
+	ExpectedETag string
+}
+
+// ArtifactReconciliationRepository exposes recovery commands separately from
+// the original publisher's idempotency and actor identity.
+type ArtifactReconciliationRepository interface {
+	ListArtifactReconciliationCandidates(
+		context.Context,
+		time.Time,
+		int,
+	) ([]ArtifactReconciliationCandidate, error)
+	CompleteArtifactReconciliation(
+		context.Context,
+		string,
+		ArtifactEvidence,
+		runstate.CommandMetadata,
+	) (contracts.Artifact, error)
+	FailArtifactReconciliation(
+		context.Context,
+		string,
+		string,
+		runstate.CommandMetadata,
+	) (ArtifactPublication, error)
+}
+
 // ArtifactPublicationRepository atomically journals and finalizes the
 // PostgreSQL half of content-addressed object publication.
 type ArtifactPublicationRepository interface {

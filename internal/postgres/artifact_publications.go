@@ -75,6 +75,10 @@ func (s *Store) PrepareArtifactPublication(
 	}
 	now := postgresTimestamp(s.clock.Now())
 	objectKey := artifactObjectKey(s.tenantID, s.repositoryID, digest)
+	intentJSON, err := json.Marshal(intent)
+	if err != nil {
+		return persistence.ArtifactPublication{}, nil, fault.Wrap(fault.CodeInvalidArgument, "postgres.PrepareArtifactPublication", "encode artifact intent", err)
+	}
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO forja.artifact_objects (
 			tenant_id, repository_id, content_sha256, object_key, size_bytes,
@@ -103,11 +107,11 @@ func (s *Store) PrepareArtifactPublication(
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO forja.artifact_operations (
 			tenant_id, repository_id, operation_id, artifact_id, content_sha256,
-			expected_size_bytes, expected_media_type, request_sha256, state,
+			expected_size_bytes, expected_media_type, request_sha256, intent, state,
 			version, created_by, created_at, updated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'reserved', 1, $9, $10, $10)`,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'reserved', 1, $10, $11, $11)`,
 		s.tenantID, s.repositoryID, intent.OperationID, intent.ArtifactID, digest,
-		intent.SizeBytes, intent.MediaType, requestHash, intent.CreatedBy, now,
+		intent.SizeBytes, intent.MediaType, requestHash, intentJSON, intent.CreatedBy, now,
 	); err != nil {
 		return persistence.ArtifactPublication{}, nil, databaseError("postgres.PrepareArtifactPublication.insert", err)
 	}
@@ -398,7 +402,7 @@ func loadArtifactPublicationByArtifact(
 	query := `
 		SELECT operation_id, artifact_id, encode(content_sha256, 'hex'),
 		       expected_size_bytes, expected_media_type, created_by,
-		       state, version, created_at, updated_at, request_sha256
+		       state, version, created_at, updated_at, request_sha256, intent
 		FROM forja.artifact_operations
 		WHERE tenant_id=$1 AND repository_id=$2 AND artifact_id=$3`
 	if forUpdate {
@@ -407,11 +411,12 @@ func loadArtifactPublicationByArtifact(
 	var publication persistence.ArtifactPublication
 	var digestHex string
 	var requestHash []byte
+	var intentJSON []byte
 	err := tx.QueryRow(ctx, query, tenantID, repositoryID, artifactID).Scan(
 		&publication.Intent.OperationID, &publication.Intent.ArtifactID, &digestHex,
 		&publication.Intent.SizeBytes, &publication.Intent.MediaType, &publication.Intent.CreatedBy,
 		&publication.State, &publication.Version, &publication.CreatedAt, &publication.UpdatedAt,
-		&requestHash,
+		&requestHash, &intentJSON,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return persistence.ArtifactPublication{}, nil, false, nil
@@ -419,7 +424,22 @@ func loadArtifactPublicationByArtifact(
 	if err != nil {
 		return persistence.ArtifactPublication{}, nil, false, databaseError("postgres.loadArtifactPublication", err)
 	}
+	storedOperationID := publication.Intent.OperationID
+	storedArtifactID := publication.Intent.ArtifactID
+	storedSize := publication.Intent.SizeBytes
+	storedMediaType := publication.Intent.MediaType
+	storedCreatedBy := publication.Intent.CreatedBy
+	if len(intentJSON) > 2 {
+		if err := json.Unmarshal(intentJSON, &publication.Intent); err != nil {
+			return persistence.ArtifactPublication{}, nil, false, databaseError("postgres.loadArtifactPublication.intent", err)
+		}
+	}
+	publication.Intent.OperationID = storedOperationID
+	publication.Intent.ArtifactID = storedArtifactID
 	publication.Intent.ContentHash = "sha256:" + digestHex
+	publication.Intent.SizeBytes = storedSize
+	publication.Intent.MediaType = storedMediaType
+	publication.Intent.CreatedBy = storedCreatedBy
 	publication.CreatedAt = publication.CreatedAt.UTC()
 	publication.UpdatedAt = publication.UpdatedAt.UTC()
 	return publication, requestHash, true, nil
@@ -494,6 +514,7 @@ func validateArtifactIntent(
 	if err != nil {
 		return nil, nil, fault.Wrap(fault.CodeInvalidArgument, "postgres.validateArtifactIntent", "encode artifact intent", err)
 	}
+	metadata.AuditToolName = ""
 	return hashCommand(metadata, "artifact_publication", string(encoded)), digest, nil
 }
 

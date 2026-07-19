@@ -49,6 +49,7 @@ type Conversation struct {
 	RetentionClass       string     `json:"retention_class"`
 	CreatedBy            string     `json:"created_by"`
 	TranscriptArtifactID *string    `json:"transcript_artifact_id,omitempty"`
+	TranscriptManifestID *string    `json:"transcript_manifest_id,omitempty"`
 	CreatedAt            time.Time  `json:"created_at"`
 	UpdatedAt            time.Time  `json:"updated_at"`
 	ClosedAt             *time.Time `json:"closed_at,omitempty"`
@@ -194,11 +195,13 @@ func ValidateConversation(value Conversation) error {
 	}
 	switch value.Status {
 	case "active":
-		if value.TranscriptArtifactID != nil || value.ClosedAt != nil || value.TombstonedAt != nil {
+		if value.TranscriptArtifactID != nil || value.TranscriptManifestID != nil ||
+			value.ClosedAt != nil || value.TombstonedAt != nil {
 			return fmt.Errorf("active conversation carries terminal fields")
 		}
 	case "closed":
 		if value.TranscriptArtifactID == nil || !artifactIDPattern.MatchString(*value.TranscriptArtifactID) ||
+			value.TranscriptManifestID == nil || !manifestIDPattern.MatchString(*value.TranscriptManifestID) ||
 			value.ClosedAt == nil || value.TombstonedAt != nil {
 			return fmt.Errorf("closed conversation lacks an exact transcript binding")
 		}
@@ -207,7 +210,9 @@ func ValidateConversation(value Conversation) error {
 			return fmt.Errorf("tombstoned conversation lacks its timestamp")
 		}
 		if (value.ClosedAt == nil) != (value.TranscriptArtifactID == nil) ||
+			(value.TranscriptArtifactID == nil) != (value.TranscriptManifestID == nil) ||
 			value.TranscriptArtifactID != nil && !artifactIDPattern.MatchString(*value.TranscriptArtifactID) ||
+			value.TranscriptManifestID != nil && !manifestIDPattern.MatchString(*value.TranscriptManifestID) ||
 			value.ClosedAt != nil && value.TombstonedAt.Before(*value.ClosedAt) {
 			return fmt.Errorf("tombstoned conversation carries an invalid prior closure")
 		}

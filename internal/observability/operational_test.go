@@ -29,6 +29,9 @@ func TestOperationalCollectorExportsOnlyClosedConditions(t *testing.T) {
 			StuckRuns: 2, ExpiredLeases: 3, PendingOutbox: 5,
 			InflightOutbox: 7, DeadOutbox: 11, ProjectionLag: 13,
 			PendingApprovals: 17, WorkerCrashLoops: 19,
+			ArtifactReconciliation: 23, ArtifactIntegrityFailures: 29,
+			TombstonedArtifactObjects: 31, ProposedMemoryCandidates: 37,
+			ActiveMemories: 41,
 		},
 	}, DefaultOperationalThresholds())
 	if err != nil {
@@ -45,12 +48,17 @@ forja_operational_collection_success 1
 # HELP forja_operational_condition_items Current content-free item count for each bounded operational condition.
 # TYPE forja_operational_condition_items gauge
 forja_operational_condition_items{condition="dead_outbox"} 11
+forja_operational_condition_items{condition="active_memories"} 41
+forja_operational_condition_items{condition="artifact_integrity_failures"} 29
+forja_operational_condition_items{condition="artifact_reconciliation"} 23
 forja_operational_condition_items{condition="expired_leases"} 3
 forja_operational_condition_items{condition="inflight_outbox"} 7
 forja_operational_condition_items{condition="pending_approvals"} 17
 forja_operational_condition_items{condition="pending_outbox"} 5
 forja_operational_condition_items{condition="projection_lag"} 13
+forja_operational_condition_items{condition="proposed_memory_candidates"} 37
 forja_operational_condition_items{condition="stuck_runs"} 2
+forja_operational_condition_items{condition="tombstoned_artifact_objects"} 31
 forja_operational_condition_items{condition="worker_crash_loops"} 19
 `
 	if err := testutil.GatherAndCompare(
