@@ -373,6 +373,14 @@ type RetrievalPointRepository interface {
 	TombstoneRetrievalProjectionPoints(context.Context, string, string, int64) ([]string, error)
 }
 
+// RetrievalRebuildRepository is the explicit operator path for rebuilding a
+// deleted or replaced Qdrant generation from canonical outbox history. It
+// clears canonical point authority before reopening the independent delivery
+// ledger, so stale vectors cannot remain resolvable during replay.
+type RetrievalRebuildRepository interface {
+	ResetRetrievalProjection(context.Context, string, [32]byte, string) error
+}
+
 // RetrievalGenerationConfig is the immutable vector contract for one physical
 // Qdrant collection generation. Registering it does not make it serve traffic:
 // the operator must first verify and observe the Qdrant alias cutover.

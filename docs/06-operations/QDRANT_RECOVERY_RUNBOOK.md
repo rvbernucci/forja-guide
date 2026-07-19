@@ -40,21 +40,26 @@ and SDK compatibility before changing it.
    exact registered generation plan; it creates the physical collection,
    applies mandatory indexes, and verifies generation metadata, dimensions,
    strict filtering, and payload schema.
-5. Re-register or resume the `qdrant.retrieval` projector with the same
-   configuration hash. Its independent delivery ledger replays canonical
-   history. Stable point IDs make duplicate upserts idempotent.
-6. Compare the durable checkpoint with the maximum published outbox prefix and
+5. Call `ResetRetrievalProjection` with the registered `qdrant.retrieval`
+   configuration hash and matching generation. It refuses inflight work,
+   clears canonical point provenance so leftover vectors fail closed, preserves
+   dead-letter evidence, reopens every delivery with a new fencing token, and
+   resets the independent checkpoint to zero.
+6. Resume the `qdrant.retrieval` projector with the same configuration hash and
+   generation. Its independent delivery ledger now replays canonical history.
+   Stable point IDs make duplicate upserts idempotent.
+7. Compare the durable checkpoint with the maximum published outbox prefix and
    verify sampled point IDs against active PostgreSQL symbol/source hashes.
-7. Only after verification, use `CutoverQdrantCollection` to direct the
+8. Only after verification, use `CutoverQdrantCollection` to direct the
    serving alias to the rebuilt physical collection. It verifies the green
    physical contract, records the prior alias observation, performs one atomic
    Qdrant alias update, and reads the alias back. Preserve the previous
    collection during the observation window.
-8. Only after the alias read-back succeeds, call
+9. Only after the alias read-back succeeds, call
    `ActivateRetrievalGeneration` for the matching registered PostgreSQL
    generation. It drains the prior active generation transactionally. Do not
    retire the prior generation while it remains the guarded rollback target.
-9. If the observed serving behavior requires rollback, call
+10. If the observed serving behavior requires rollback, call
    `RollbackQdrantCollection` with the recorded prior target. It first proves
    the alias still points to the expected green collection; it refuses to
    overwrite a newer operator cutover. Read the alias back after rollback,

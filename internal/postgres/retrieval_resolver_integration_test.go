@@ -201,6 +201,97 @@ func TestFencedSymbolProjectionPublishesOnlyAfterCanonicalReceipt(t *testing.T) 
 	}
 }
 
+func TestResetRetrievalProjectionFailsClosedThenReplaysCanonicalHistory(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	configurationHash := sha256.Sum256([]byte("retrieval-rebuild-fixture"))
+	if err := store.EnsureProjectionConsumer(t.Context(), retrieval.DefaultQdrantProjectorName, configurationHash); err != nil {
+		t.Fatal(err)
+	}
+	publication := indexPublicationFixture(t, pool, "rebuild-retrieval", strings.Repeat("a", 40))
+	snapshot, err := store.PublishIndexSnapshot(t.Context(), publication, testMetadata("retrieval-rebuild-index"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, retrieval.SparseEncoderVersion)
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES ($1,$2,$3,'retrieval','retrieval_fixture','fixture','v1',3,$4,'active')`,
+		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
+		t.Fatal(err)
+	}
+	writer := &postgresRecordingPointWriter{}
+	worker := retrieval.ProjectionWorker{
+		Deliveries: store, Source: store, Recorder: store, Writer: writer,
+		Embedder: postgresFixtureEmbedder{}, Sparse: retrieval.HashingSparseEncoder{},
+		WorkerID: "postgres-rebuild-worker", Generation: generation, BatchSize: 10,
+		ClaimTTL: time.Minute, MaxAttempts: 3, RetryDelay: time.Second,
+	}
+	if run, err := worker.ProcessOnce(t.Context()); err != nil || run.Published != 1 || len(writer.points) != 1 {
+		t.Fatalf("first projection run=%#v points=%d err=%v", run, len(writer.points), err)
+	}
+	pointID := writer.points[0].PointID
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), pointID); err != nil || len(resolved) != 1 {
+		t.Fatalf("initial point resolved=%#v err=%v", resolved, err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.projection_deliveries
+		SET state='inflight', locked_by='rebuild-test-worker',
+			locked_until=clock_timestamp() + interval '1 minute', published_at=NULL
+		WHERE tenant_id=$1 AND repository_id=$2 AND projector_name=$3`,
+		DefaultTenantID, DefaultRepositoryID, retrieval.DefaultQdrantProjectorName); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ResetRetrievalProjection(t.Context(), retrieval.DefaultQdrantProjectorName, configurationHash, generation); err == nil {
+		t.Fatal("reset accepted inflight retrieval delivery")
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), pointID); err != nil || len(resolved) != 1 {
+		t.Fatalf("inflight reset removed point authority resolved=%#v err=%v", resolved, err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.projection_deliveries
+		SET state='published', locked_by=NULL, locked_until=NULL, published_at=clock_timestamp()
+		WHERE tenant_id=$1 AND repository_id=$2 AND projector_name=$3`,
+		DefaultTenantID, DefaultRepositoryID, retrieval.DefaultQdrantProjectorName); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.ResetRetrievalProjection(t.Context(), retrieval.DefaultQdrantProjectorName, configurationHash, generation); err != nil {
+		t.Fatal(err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), pointID); err != nil || len(resolved) != 0 {
+		t.Fatalf("reset point resolved=%#v err=%v", resolved, err)
+	}
+	var state string
+	var attempts int
+	var fencingToken int64
+	var checkpoint int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT delivery.state, delivery.attempts, delivery.fencing_token, checkpoint.last_outbox_id
+		FROM forja.projection_deliveries AS delivery
+		JOIN forja.projection_checkpoints AS checkpoint
+		  ON checkpoint.tenant_id=delivery.tenant_id AND checkpoint.repository_id=delivery.repository_id
+		 AND checkpoint.projector_name=delivery.projector_name
+		WHERE delivery.tenant_id=$1 AND delivery.repository_id=$2 AND delivery.projector_name=$3`,
+		DefaultTenantID, DefaultRepositoryID, retrieval.DefaultQdrantProjectorName).Scan(&state, &attempts, &fencingToken, &checkpoint); err != nil {
+		t.Fatal(err)
+	}
+	if state != "pending" || attempts != 0 || fencingToken < 2 || checkpoint != 0 {
+		t.Fatalf("reset delivery state=%q attempts=%d fence=%d checkpoint=%d", state, attempts, fencingToken, checkpoint)
+	}
+	if run, err := worker.ProcessOnce(t.Context()); err != nil || run.Published != 1 || len(writer.points) != 2 {
+		t.Fatalf("rebuild projection run=%#v points=%d err=%v", run, len(writer.points), err)
+	}
+	if resolved, err := store.ResolveRetrievalPoint(t.Context(), pointID); err != nil || len(resolved) != 1 || snapshot.SnapshotID == "" {
+		t.Fatalf("rebuilt point resolved=%#v snapshot=%q err=%v", resolved, snapshot.SnapshotID, err)
+	}
+}
+
 type postgresFixtureEmbedder struct{}
 
 func (postgresFixtureEmbedder) Descriptor() contracts.EmbeddingDescriptor {

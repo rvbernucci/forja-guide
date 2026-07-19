@@ -157,8 +157,9 @@ documentation evidence.
   retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
 - [ ] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
-  deleting the derived collection. Fenced retry and dead-letter repair are
-  covered by PostgreSQL 18 integration tests.
+  deleting the derived collection. Fenced retry, dead-letter repair, and the
+  canonical fail-closed delivery-ledger reset/replay are covered by PostgreSQL
+  18 integration tests; a live Qdrant deletion/rebuild remains pending.
 
 ### 6. Evaluation and closure
 
