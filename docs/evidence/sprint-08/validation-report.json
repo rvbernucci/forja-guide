@@ -1,0 +1,80 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "validators": [
+    {
+      "name": "protected exact-main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29689354760",
+      "head_sha": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "public CodeRabbit full-range implementation review",
+      "type": "independent",
+      "result": "findings_resolved",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/46",
+      "reviewed_commit": "88fe7c502e65062ebe8a12f781710882a4433724",
+      "reviewed_range_base": "e763f85bef2de14d92d924300839d88b00ff00d0",
+      "reviewed_tree": "d9c24401cf5d35022dc9bd4159c3b4d78ca2784e",
+      "basis_tree": "d9c24401cf5d35022dc9bd4159c3b4d78ca2784e",
+      "artifact_path": "docs/evidence/sprint-08/reviews/merged-implementation-review.md",
+      "artifact_sha256": "cbe2fbdce75f43f94db38cbe2a2270e918840a150a01c1c7262d1da778c2cf15",
+      "summary": "Iterative isolated reviews and the public review resolved sixteen distinct actionable findings; the final reviewed tree is byte-identical to the public implementation tree, every public review thread is resolved, and CodeRabbit returned a passing status."
+    },
+    {
+      "name": "independent security review chain",
+      "type": "independent",
+      "result": "passed",
+      "summary": "No critical or high-severity vulnerability was found; authority, committed-source, adapter-output, tenant-isolation, telemetry, and dependency boundaries were mechanically corroborated."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit after this non-authoritative package is published to main."
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 16,
+    "themes": [
+      "stable replay and authority preflight",
+      "truthful semantic deltas and conservative rename inference",
+      "overload, relation ownership, and supersession preservation",
+      "configuration-aware adapter reuse and canonical array ordering",
+      "entity-kind-constrained previous IDs",
+      "TypeScript variable export ownership and fingerprints",
+      "public CI runtime parity"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "only exact committed Git objects and bounded supported files enter indexing",
+      "result": "proven"
+    },
+    {
+      "criterion": "Go, TypeScript and JavaScript, and Python adapters produce validated deterministic evidence",
+      "result": "proven"
+    },
+    {
+      "criterion": "unchanged inputs replay to byte-identical artifacts, IDs, and receipts",
+      "result": "proven"
+    },
+    {
+      "criterion": "incremental reuse and invalidation follow exact source, configuration, and proven dependency evidence",
+      "result": "proven"
+    },
+    {
+      "criterion": "PostgreSQL recomputes canonical semantic deltas and preserves tenant and repository authority",
+      "result": "proven"
+    },
+    {
+      "criterion": "rollback refuses canonical-history destruction and succeeds for an empty Sprint 08 schema",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-19T13:52:01Z"
+}

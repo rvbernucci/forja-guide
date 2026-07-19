@@ -1,0 +1,28 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "name": "Deterministic Repository Indexing",
+  "status": "completed",
+  "objective": "Produce byte-stable repository, file, symbol, and relation evidence from exact committed Git objects through pinned Go, TypeScript, and Python adapters, then publish canonical identity, provenance, lifecycle, deltas, and invalidations through PostgreSQL and governed artifacts.",
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "scope": [
+    "strict repository snapshot, file card, symbol card, and relation evidence contracts",
+    "bounded committed-Git ingestion with deterministic path, blob, rename, and change-set semantics",
+    "source-pinned Go, TypeScript and JavaScript, and Python extraction adapters",
+    "canonical byte-stable bundles, identities, diagnostics, and evidence closure",
+    "Migration 008 PostgreSQL authority for snapshots, entities, adapter runs, deltas, and invalidations",
+    "incremental dependency invalidation, exact configuration-aware reuse, and semantic delta recomputation",
+    "governed artifact publication, replay-safe receipts, bounded telemetry, and rollback rehearsal",
+    "iterative independent review, public CodeRabbit review, vulnerability scanning, and two-phase closure evidence"
+  ],
+  "out_of_scope": [
+    "embeddings, semantic ranking, and Qdrant retrieval",
+    "Neo4j projection and graph traversal",
+    "context-pack assembly and token budgeting",
+    "hostile third-party adapter execution",
+    "inference of unresolved dynamic-language relations"
+  ],
+  "author": "codex",
+  "independent_validator": "isolated whole-range audits, CodeRabbit public review, protected GitHub Actions on PostgreSQL 18.3, and a separate immutable candidate review",
+  "completed_at": "2026-07-19T13:52:01Z"
+}

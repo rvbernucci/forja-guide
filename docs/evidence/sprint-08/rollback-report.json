@@ -1,0 +1,33 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "status": "passed",
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "strategy": "Stop new indexing commands; allow bounded adapter processes to finish or terminate; preserve every snapshot, card, relation, artifact, event, outbox row, invalidation, and receipt. Migration 008 may downgrade only while every Sprint 08 canonical relation and related audit record is empty. After canonical Sprint 08 history exists, rollback is a forward-repair deployment on the Sprint 08 schema, never destructive evidence deletion to force an older binary to start.",
+  "rollback_target": "e763f85bef2de14d92d924300839d88b00ff00d0",
+  "tests": [
+    {
+      "name": "authoritative Sprint 07 target rehearsal",
+      "result": "passed",
+      "summary": "The exact Sprint 07 implementation built and ran against the safely downgraded empty schema."
+    },
+    {
+      "name": "non-empty canonical-state refusal",
+      "result": "passed",
+      "summary": "Migration 008 down refuses to drop snapshots, entities, deltas, invalidations, artifacts, events, or receipts while Sprint 08 canonical history remains."
+    },
+    {
+      "name": "artifact and authority preservation",
+      "result": "passed",
+      "summary": "Live snapshots protect exact artifacts from archive or tombstone, and rollback does not delete immutable snapshot evidence."
+    },
+    {
+      "name": "delivery and restart compatibility",
+      "result": "passed",
+      "summary": "Real Git delivery, crash recovery, and process restart retained canonical state and idempotent command authority."
+    }
+  ],
+  "data_migration_required": true,
+  "runtime_state_impact": "An empty pre-adoption deployment may return to Sprint 07 through Migration 008 down. A deployment with Sprint 08 history retains the schema and immutable indexing evidence and rolls back behavior through a Sprint 08-compatible forward repair.",
+  "recorded_at": "2026-07-19T13:52:01Z"
+}

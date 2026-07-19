@@ -1,0 +1,44 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "name": "Deterministic Repository Indexing",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "strict_contracts_and_stable_ids_verified": true,
+    "committed_git_boundary_verified": true,
+    "go_typescript_python_adapters_verified": true,
+    "byte_stable_replay_verified": true,
+    "incremental_invalidation_and_reuse_verified": true,
+    "canonical_publication_and_semantic_deltas_verified": true,
+    "tenant_isolation_and_receipts_verified": true,
+    "observability_and_rollback_verified": true
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "security/govulncheck-v1.6.0.txt",
+    "operations/index-command-drill.txt"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-19T13:52:01Z"
+}
