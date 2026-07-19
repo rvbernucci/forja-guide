@@ -165,6 +165,7 @@ func NormalizeResults(
 			SymbolIDs: []string{}, Diagnostics: []contracts.DiagnosticSummary{},
 		}
 		file.FileID = contracts.ComputeFileID(file)
+		file.LineageID = contracts.ComputeFileLineageID(file)
 		files = append(files, file)
 		fileByPath[file.Path] = &files[len(files)-1]
 	}
@@ -210,12 +211,14 @@ func NormalizeResults(
 			}
 			card := contracts.SymbolCard{
 				SchemaVersion: contracts.IndexSchemaVersion, SnapshotID: snapshot.SnapshotID,
-				FileID: file.FileID, Language: raw.Language, Kind: raw.Kind,
+				FileID: file.FileID, FileLineageID: file.LineageID,
+				Language: raw.Language, Kind: raw.Kind,
 				Name: raw.Name, QualifiedName: raw.QualifiedName, Signature: raw.Signature,
 				Declaration: raw.Declaration, Exported: raw.Exported, Test: raw.Test,
 				Route: raw.Route, Schema: raw.Schema, DocumentationHash: raw.DocumentationHash,
 			}
 			card.SymbolID = contracts.ComputeSymbolID(card)
+			card.LineageID = contracts.ComputeSymbolLineageID(card)
 			if err := contracts.ValidateSymbolCard(card); err != nil {
 				return IndexBundle{}, fmt.Errorf("adapter %s symbol: %w", descriptor.Name, err)
 			}
@@ -386,6 +389,11 @@ func bindRelation(
 
 func adapterKey(value contracts.AdapterDescriptor) string {
 	return value.Name + "\x00" + value.Version + "\x00" + value.ConfigurationHash + "\x00" + value.CapabilityHash
+}
+
+// ConfigurationHash exposes the canonical SHA-256 form used by index plans.
+func ConfigurationHash(parts ...string) string {
+	return hashText(strings.Join(parts, "\x00"))
 }
 
 func rangeWithin(value contracts.SourceRange, size int) bool {

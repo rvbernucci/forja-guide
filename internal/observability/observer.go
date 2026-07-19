@@ -22,6 +22,33 @@ type Observer struct {
 	now     func() time.Time
 }
 
+type IndexStats struct {
+	Files         int
+	Symbols       int
+	Relations     int
+	Diagnostics   int
+	Reused        int
+	Invalidations map[string]int
+}
+
+// RecordIndexStats adds only bounded counts and reason classes to telemetry.
+func (o *Observer) RecordIndexStats(ctx context.Context, stats IndexStats) {
+	if o == nil {
+		return
+	}
+	o.metrics.indexed(stats)
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.Int("forja.index.files", stats.Files),
+			attribute.Int("forja.index.symbols", stats.Symbols),
+			attribute.Int("forja.index.relations", stats.Relations),
+			attribute.Int("forja.index.diagnostics", stats.Diagnostics),
+			attribute.Int("forja.index.reused", stats.Reused),
+		)
+	}
+}
+
 // NewObserver creates an observer over explicit providers.
 func NewObserver(provider trace.TracerProvider, metrics *Metrics) *Observer {
 	if provider == nil {

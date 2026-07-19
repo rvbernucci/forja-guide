@@ -144,8 +144,10 @@ func validIndexContracts(t *testing.T) (RepositorySnapshot, FileCard, SymbolCard
 		SourceHash: testDigest, SizeBytes: 128, Language: "go", SymbolIDs: []string{}, Diagnostics: []DiagnosticSummary{},
 	}
 	file.FileID = ComputeFileID(file)
+	file.LineageID = ComputeFileLineageID(file)
 	symbol := SymbolCard{
-		SchemaVersion: IndexSchemaVersion, SnapshotID: snapshot.SnapshotID, FileID: file.FileID,
+		SchemaVersion: IndexSchemaVersion, SnapshotID: snapshot.SnapshotID,
+		FileID: file.FileID, FileLineageID: file.LineageID,
 		Language: "go", Kind: "function", Name: "Balance", QualifiedName: "accounting.Balance",
 		Signature: "func Balance(entries []Entry) Amount", Declaration: SourceRange{
 			Start: SourcePosition{Line: 10, Column: 1, Offset: 100},
@@ -153,6 +155,7 @@ func validIndexContracts(t *testing.T) (RepositorySnapshot, FileCard, SymbolCard
 		}, Exported: true,
 	}
 	symbol.SymbolID = ComputeSymbolID(symbol)
+	symbol.LineageID = ComputeSymbolLineageID(symbol)
 	file.SymbolIDs = []string{symbol.SymbolID}
 	target := StableIndexID("external", "fmt.Stringer")
 	relation := RelationEvidence{

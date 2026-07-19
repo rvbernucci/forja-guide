@@ -19,6 +19,7 @@ const (
 	BoundaryValidation  Boundary = "validation"
 	BoundaryPersistence Boundary = "persistence"
 	BoundaryDelivery    Boundary = "delivery"
+	BoundaryIndexing    Boundary = "indexing"
 	BoundaryTelemetry   Boundary = "telemetry"
 	BoundaryOther       Boundary = "other"
 )
@@ -47,6 +48,7 @@ const (
 	OperationRunWorker       Operation = "run_worker"
 	OperationValidateChange  Operation = "validate_change"
 	OperationPublishChange   Operation = "publish_change"
+	OperationPublishIndex    Operation = "publish_index"
 	OperationQuery           Operation = "query"
 	OperationOther           Operation = "other"
 )
@@ -54,7 +56,7 @@ const (
 var validBoundaries = map[Boundary]struct{}{
 	BoundaryMCP: {}, BoundaryHTTP: {}, BoundaryScheduler: {}, BoundaryWorker: {},
 	BoundaryValidation: {}, BoundaryPersistence: {}, BoundaryDelivery: {},
-	BoundaryTelemetry: {}, BoundaryOther: {},
+	BoundaryIndexing: {}, BoundaryTelemetry: {}, BoundaryOther: {},
 }
 
 var validOperations = map[Operation]struct{}{
@@ -66,6 +68,7 @@ var validOperations = map[Operation]struct{}{
 	OperationRecoverDelivery: {}, OperationDispatchWorker: {}, OperationRunWorker: {},
 	OperationValidateChange: {},
 	OperationPublishChange:  {}, OperationQuery: {}, OperationOther: {},
+	OperationPublishIndex: {},
 }
 
 // FailureClass is the stable failure taxonomy shared by traces and metrics.

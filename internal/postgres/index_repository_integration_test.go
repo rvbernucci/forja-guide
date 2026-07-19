@@ -4,6 +4,8 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -156,6 +158,91 @@ func TestIndexPublicationRollsBackAllRowsOnInvalidArtifact(t *testing.T) {
 	}
 }
 
+func TestIndexRelationClosureAndArtifactActivationAreSerialized(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	publication := indexPublicationFixture(t, pool, "race", strings.Repeat("7", 40))
+	snapshot := publication.Bundle.Snapshot
+	configurationHash, _ := decodeContentHash(snapshot.ConfigurationHash)
+	adapterSetHash, _ := decodeContentHash(snapshot.AdapterSetHash)
+	artifactHash, _ := decodeContentHash(*snapshot.ArtifactContentHash)
+	adapters, _ := json.Marshal(snapshot.Adapters)
+	requestHash := sha256.Sum256([]byte("race-request"))
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer tx.Rollback(t.Context())
+	if _, err := tx.Exec(t.Context(), `
+		INSERT INTO forja.index_snapshots (
+			tenant_id, repository_id, snapshot_id, source_commit, source_tree,
+			configuration_sha256, adapter_set_sha256, adapters, request_sha256,
+			status, version, file_count, symbol_count, relation_count,
+			diagnostic_count, artifact_id, artifact_content_sha256, created_by,
+			created_at, validated_at, updated_at
+		) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'active',1,0,0,0,0,$10,$11,$12,$13,$13,$13)`,
+		DefaultTenantID, DefaultRepositoryID, snapshot.SnapshotID, snapshot.SourceCommit,
+		snapshot.SourceTree, configurationHash, adapterSetHash, adapters, requestHash[:],
+		*snapshot.ArtifactID, artifactHash, snapshot.CreatedBy, snapshot.CreatedAt,
+	); err != nil {
+		t.Fatal(err)
+	}
+	blockedContext, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+	blocked := make(chan error, 1)
+	go func() {
+		_, updateErr := pool.Exec(blockedContext, `
+			UPDATE forja.artifacts SET status='archived', tombstoned_at=clock_timestamp(), updated_at=clock_timestamp()
+			WHERE artifact_id=$1`, *snapshot.ArtifactID)
+		blocked <- updateErr
+	}()
+	if updateErr := <-blocked; updateErr == nil || !errors.Is(updateErr, context.DeadlineExceeded) {
+		t.Fatalf("concurrent artifact mutation error=%v", updateErr)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := pool.Exec(t.Context(), `
+		UPDATE forja.artifacts SET status='archived', tombstoned_at=clock_timestamp(), updated_at=clock_timestamp()
+		WHERE artifact_id=$1`, *snapshot.ArtifactID); err == nil {
+		t.Fatal("committed snapshot did not protect its artifact")
+	}
+
+	store := newIntegrationStore(t, pool)
+	second := indexPublicationFixture(t, pool, "closure", strings.Repeat("6", 40))
+	if _, err := store.PublishIndexSnapshot(t.Context(), second, testMetadata("index-closure")); err != nil {
+		t.Fatal(err)
+	}
+	closureTx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	file := second.Bundle.Files[0]
+	relationID := "relation_" + strings.Repeat("1", 64)
+	fakeSource := "symbol_" + strings.Repeat("2", 64)
+	target := "external_" + strings.Repeat("3", 64)
+	evidence := sha256.Sum256([]byte("forged-relation"))
+	adapter, _ := json.Marshal(second.AdapterRuns[0].Adapter)
+	if _, err := closureTx.Exec(t.Context(), `
+		INSERT INTO forja.index_relations (
+			tenant_id, repository_id, snapshot_id, relation_id, source_entity_id,
+			kind, resolution, target_entity_id, evidence_class, source_file_id,
+			start_line, start_column, start_offset, end_line, end_column, end_offset,
+			evidence_sha256, adapter
+		) VALUES ($1,$2,$3,$4,$5,'calls','resolved',$6,'confirmed_static',$7,1,1,0,1,1,0,$8,$9)`,
+		DefaultTenantID, DefaultRepositoryID, second.Bundle.Snapshot.SnapshotID,
+		relationID, fakeSource, target, file.FileID, evidence[:], adapter,
+	); err != nil {
+		t.Fatal(err)
+	}
+	if err := closureTx.Commit(t.Context()); err == nil {
+		t.Fatal("deferred relation closure accepted an unknown source entity")
+	}
+}
+
 func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit string) persistence.IndexPublication {
 	t.Helper()
 	artifactHash := indexHash("artifact-" + suffix)
@@ -240,6 +327,7 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 		SymbolIDs: []string{}, Diagnostics: []contracts.DiagnosticSummary{},
 	}
 	file.FileID = contracts.ComputeFileID(file)
+	file.LineageID = contracts.ComputeFileLineageID(file)
 	return persistence.IndexPublication{
 		Bundle: indexing.IndexBundle{
 			Snapshot: snapshot, Files: []contracts.FileCard{file},

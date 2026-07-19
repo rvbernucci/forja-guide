@@ -12,10 +12,12 @@ const maxMetricsRequestsInFlight = 1
 
 // Metrics owns Forja's bounded-cardinality Prometheus instruments.
 type Metrics struct {
-	operations        *prometheus.CounterVec
-	duration          *prometheus.HistogramVec
-	inFlight          *prometheus.GaugeVec
-	telemetryFailures *prometheus.CounterVec
+	operations         *prometheus.CounterVec
+	duration           *prometheus.HistogramVec
+	inFlight           *prometheus.GaugeVec
+	telemetryFailures  *prometheus.CounterVec
+	indexEntities      *prometheus.CounterVec
+	indexInvalidations *prometheus.CounterVec
 }
 
 // NewMetrics registers a fresh metric set with an explicit registry.
@@ -42,18 +44,49 @@ func NewMetrics(registerer prometheus.Registerer) (*Metrics, error) {
 			Name:      "telemetry_failures_total",
 			Help:      "Failures isolated inside the non-authoritative telemetry plane.",
 		}, []string{"signal"}),
+		indexEntities: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forja", Name: "index_entities_total",
+			Help: "Canonical index entities published by bounded entity kind.",
+		}, []string{"entity_kind"}),
+		indexInvalidations: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forja", Name: "index_invalidations_total",
+			Help: "Deterministic index invalidations by bounded reason.",
+		}, []string{"reason"}),
 	}
 	for _, collector := range []prometheus.Collector{
 		metrics.operations,
 		metrics.duration,
 		metrics.inFlight,
 		metrics.telemetryFailures,
+		metrics.indexEntities,
+		metrics.indexInvalidations,
 	} {
 		if err := registerer.Register(collector); err != nil {
 			return nil, err
 		}
 	}
 	return metrics, nil
+}
+
+func (m *Metrics) indexed(stats IndexStats) {
+	if m == nil {
+		return
+	}
+	for kind, count := range map[string]int{"file": stats.Files, "symbol": stats.Symbols, "relation": stats.Relations, "diagnostic": stats.Diagnostics, "reused": stats.Reused} {
+		if count > 0 {
+			m.indexEntities.WithLabelValues(kind).Add(float64(count))
+		}
+	}
+	for reason, count := range stats.Invalidations {
+		switch reason {
+		case "source_changed", "dependency_changed", "adapter_changed", "configuration_changed", "deleted":
+		default:
+			reason = "other"
+		}
+		if count > 0 {
+			m.indexInvalidations.WithLabelValues(reason).Add(float64(count))
+		}
+	}
 }
 
 func (m *Metrics) started(boundary Boundary, operation Operation) {

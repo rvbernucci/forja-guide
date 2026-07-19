@@ -5,12 +5,13 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "file_id", "schema_version", "snapshot_id", "repository_id",
+    "file_id", "lineage_id", "schema_version", "snapshot_id", "repository_id",
     "source_commit", "path", "git_blob_id", "source_hash", "size_bytes",
     "language", "generated", "symbol_ids", "diagnostics"
   ],
   "properties": {
     "file_id": {"type": "string", "pattern": "^file_[a-f0-9]{64}$"},
+    "lineage_id": {"type": "string", "pattern": "^file_lineage_[a-f0-9]{64}$"},
     "schema_version": {"const": "1.0"},
     "snapshot_id": {"type": "string", "pattern": "^snapshot_[a-f0-9]{64}$"},
     "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},

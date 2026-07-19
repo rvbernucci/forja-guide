@@ -26,12 +26,14 @@ const (
 )
 
 var (
-	snapshotIDPattern = regexp.MustCompile(`^snapshot_[a-f0-9]{64}$`)
-	fileIDPattern     = regexp.MustCompile(`^file_[a-f0-9]{64}$`)
-	symbolIDPattern   = regexp.MustCompile(`^symbol_[a-f0-9]{64}$`)
-	relationIDPattern = regexp.MustCompile(`^relation_[a-f0-9]{64}$`)
-	entityIDPattern   = regexp.MustCompile(`^(?:file|symbol|external)_[a-f0-9]{64}$`)
-	gitObjectPattern  = regexp.MustCompile(`^[a-f0-9]{40,64}$`)
+	snapshotIDPattern    = regexp.MustCompile(`^snapshot_[a-f0-9]{64}$`)
+	fileIDPattern        = regexp.MustCompile(`^file_[a-f0-9]{64}$`)
+	symbolIDPattern      = regexp.MustCompile(`^symbol_[a-f0-9]{64}$`)
+	fileLineagePattern   = regexp.MustCompile(`^file_lineage_[a-f0-9]{64}$`)
+	symbolLineagePattern = regexp.MustCompile(`^symbol_lineage_[a-f0-9]{64}$`)
+	relationIDPattern    = regexp.MustCompile(`^relation_[a-f0-9]{64}$`)
+	entityIDPattern      = regexp.MustCompile(`^(?:file|symbol|external)_[a-f0-9]{64}$`)
+	gitObjectPattern     = regexp.MustCompile(`^[a-f0-9]{40,64}$`)
 )
 
 type AdapterDescriptor struct {
@@ -76,6 +78,7 @@ type DiagnosticSummary struct {
 
 type FileCard struct {
 	FileID        string              `json:"file_id"`
+	LineageID     string              `json:"lineage_id"`
 	SchemaVersion string              `json:"schema_version"`
 	SnapshotID    string              `json:"snapshot_id"`
 	RepositoryID  string              `json:"repository_id"`
@@ -103,6 +106,8 @@ type SourceRange struct {
 
 type SymbolCard struct {
 	SymbolID          string      `json:"symbol_id"`
+	LineageID         string      `json:"lineage_id"`
+	FileLineageID     string      `json:"file_lineage_id"`
 	SchemaVersion     string      `json:"schema_version"`
 	SnapshotID        string      `json:"snapshot_id"`
 	FileID            string      `json:"file_id"`
@@ -174,10 +179,21 @@ func ComputeFileID(value FileCard) string {
 	)
 }
 
+func ComputeFileLineageID(value FileCard) string {
+	return StableIndexID("file_lineage", value.RepositoryID, value.Path)
+}
+
 func ComputeSymbolID(value SymbolCard) string {
 	return StableIndexID(
 		"symbol", value.FileID, value.Language, value.Kind, value.QualifiedName,
 		value.Signature, sourceRangeKey(value.Declaration),
+	)
+}
+
+func ComputeSymbolLineageID(value SymbolCard) string {
+	return StableIndexID(
+		"symbol_lineage", value.FileLineageID, value.Language, value.Kind,
+		value.QualifiedName,
 	)
 }
 
@@ -272,7 +288,8 @@ func ValidateFileCard(value FileCard) error {
 	if !slices.Contains([]string{"go", "typescript", "javascript", "python", "json", "yaml", "markdown", "other"}, value.Language) {
 		return fmt.Errorf("file card language is invalid")
 	}
-	if !fileIDPattern.MatchString(value.FileID) || value.FileID != ComputeFileID(value) {
+	if !fileIDPattern.MatchString(value.FileID) || value.FileID != ComputeFileID(value) ||
+		!fileLineagePattern.MatchString(value.LineageID) || value.LineageID != ComputeFileLineageID(value) {
 		return fmt.Errorf("file card ID does not match its identity projection")
 	}
 	if value.SymbolIDs == nil || len(value.SymbolIDs) > MaximumFileSymbols || !sortedUniqueIndexValues(value.SymbolIDs) {
@@ -302,6 +319,7 @@ func ValidateFileCard(value FileCard) error {
 func ValidateSymbolCard(value SymbolCard) error {
 	if value.SchemaVersion != IndexSchemaVersion || !snapshotIDPattern.MatchString(value.SnapshotID) ||
 		!fileIDPattern.MatchString(value.FileID) ||
+		!fileLineagePattern.MatchString(value.FileLineageID) ||
 		!slices.Contains([]string{"go", "typescript", "javascript", "python"}, value.Language) ||
 		!slices.Contains([]string{"package", "module", "namespace", "class", "interface", "type", "struct", "enum", "function", "method", "constructor", "variable", "constant", "field", "property", "parameter", "import", "export", "route", "schema", "test"}, value.Kind) ||
 		strings.TrimSpace(value.Name) == "" || len(value.Name) > 512 ||
@@ -312,7 +330,8 @@ func ValidateSymbolCard(value SymbolCard) error {
 	if value.DocumentationHash != nil && !contentHashPattern.MatchString(*value.DocumentationHash) {
 		return fmt.Errorf("symbol documentation hash is invalid")
 	}
-	if !symbolIDPattern.MatchString(value.SymbolID) || value.SymbolID != ComputeSymbolID(value) {
+	if !symbolIDPattern.MatchString(value.SymbolID) || value.SymbolID != ComputeSymbolID(value) ||
+		!symbolLineagePattern.MatchString(value.LineageID) || value.LineageID != ComputeSymbolLineageID(value) {
 		return fmt.Errorf("symbol card ID does not match its identity projection")
 	}
 	return nil

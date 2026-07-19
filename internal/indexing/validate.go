@@ -59,6 +59,9 @@ func ValidateBundle(bundle IndexBundle) error {
 		if _, exists := files[symbol.FileID]; !exists {
 			return fmt.Errorf("symbol %q references an unknown file", symbol.SymbolID)
 		}
+		if files[symbol.FileID].LineageID != symbol.FileLineageID {
+			return fmt.Errorf("symbol %q carries the wrong file lineage", symbol.SymbolID)
+		}
 		if _, exists := symbols[symbol.SymbolID]; exists {
 			return fmt.Errorf("duplicate symbol %q", symbol.SymbolID)
 		}

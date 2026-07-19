@@ -260,9 +260,9 @@ func copyIndexFiles(ctx context.Context, tx pgx.Tx, tenantID, repositoryID strin
 	for _, file := range value.Bundle.Files {
 		hash, _ := decodeContentHash(file.SourceHash)
 		diagnostics, _ := json.Marshal(file.Diagnostics)
-		rows = append(rows, []any{tenantID, repositoryID, value.Bundle.Snapshot.SnapshotID, file.FileID, file.Path, file.GitBlobID, hash, file.SizeBytes, file.Language, file.Generated, diagnostics})
+		rows = append(rows, []any{tenantID, repositoryID, value.Bundle.Snapshot.SnapshotID, file.FileID, file.LineageID, file.Path, file.GitBlobID, hash, file.SizeBytes, file.Language, file.Generated, diagnostics})
 	}
-	return copyIndexRows(ctx, tx, "index_files", []string{"tenant_id", "repository_id", "snapshot_id", "file_id", "path", "git_blob_id", "source_sha256", "size_bytes", "language", "generated", "diagnostics"}, rows)
+	return copyIndexRows(ctx, tx, "index_files", []string{"tenant_id", "repository_id", "snapshot_id", "file_id", "lineage_id", "path", "git_blob_id", "source_sha256", "size_bytes", "language", "generated", "diagnostics"}, rows)
 }
 
 func copyIndexSymbols(ctx context.Context, tx pgx.Tx, tenantID, repositoryID string, value persistence.IndexPublication) error {
@@ -272,9 +272,9 @@ func copyIndexSymbols(ctx context.Context, tx pgx.Tx, tenantID, repositoryID str
 		if symbol.DocumentationHash != nil {
 			documentationHash, _ = decodeContentHash(*symbol.DocumentationHash)
 		}
-		rows = append(rows, []any{tenantID, repositoryID, value.Bundle.Snapshot.SnapshotID, symbol.SymbolID, symbol.FileID, symbol.Language, symbol.Kind, symbol.Name, symbol.QualifiedName, symbol.Signature, symbol.Declaration.Start.Line, symbol.Declaration.Start.Column, symbol.Declaration.Start.Offset, symbol.Declaration.End.Line, symbol.Declaration.End.Column, symbol.Declaration.End.Offset, symbol.Exported, symbol.Test, symbol.Route, symbol.Schema, documentationHash})
+		rows = append(rows, []any{tenantID, repositoryID, value.Bundle.Snapshot.SnapshotID, symbol.SymbolID, symbol.LineageID, symbol.FileID, symbol.Language, symbol.Kind, symbol.Name, symbol.QualifiedName, symbol.Signature, symbol.Declaration.Start.Line, symbol.Declaration.Start.Column, symbol.Declaration.Start.Offset, symbol.Declaration.End.Line, symbol.Declaration.End.Column, symbol.Declaration.End.Offset, symbol.Exported, symbol.Test, symbol.Route, symbol.Schema, documentationHash})
 	}
-	return copyIndexRows(ctx, tx, "index_symbols", []string{"tenant_id", "repository_id", "snapshot_id", "symbol_id", "file_id", "language", "kind", "name", "qualified_name", "signature", "start_line", "start_column", "start_offset", "end_line", "end_column", "end_offset", "exported", "is_test", "is_route", "is_schema", "documentation_sha256"}, rows)
+	return copyIndexRows(ctx, tx, "index_symbols", []string{"tenant_id", "repository_id", "snapshot_id", "symbol_id", "lineage_id", "file_id", "language", "kind", "name", "qualified_name", "signature", "start_line", "start_column", "start_offset", "end_line", "end_column", "end_offset", "exported", "is_test", "is_route", "is_schema", "documentation_sha256"}, rows)
 }
 
 func copyIndexRelations(ctx context.Context, tx pgx.Tx, tenantID, repositoryID string, value persistence.IndexPublication) error {

@@ -5,12 +5,14 @@
   "type": "object",
   "additionalProperties": false,
   "required": [
-    "symbol_id", "schema_version", "snapshot_id", "file_id", "language",
+    "symbol_id", "lineage_id", "file_lineage_id", "schema_version", "snapshot_id", "file_id", "language",
     "kind", "name", "qualified_name", "signature", "declaration",
     "exported", "test", "route", "schema"
   ],
   "properties": {
     "symbol_id": {"type": "string", "pattern": "^symbol_[a-f0-9]{64}$"},
+    "lineage_id": {"type": "string", "pattern": "^symbol_lineage_[a-f0-9]{64}$"},
+    "file_lineage_id": {"type": "string", "pattern": "^file_lineage_[a-f0-9]{64}$"},
     "schema_version": {"const": "1.0"},
     "snapshot_id": {"type": "string", "pattern": "^snapshot_[a-f0-9]{64}$"},
     "file_id": {"type": "string", "pattern": "^file_[a-f0-9]{64}$"},

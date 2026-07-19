@@ -175,6 +175,7 @@ CREATE TABLE forja.index_files (
     repository_id uuid NOT NULL,
     snapshot_id text NOT NULL,
     file_id text NOT NULL CHECK (file_id ~ '^file_[a-f0-9]{64}$'),
+    lineage_id text NOT NULL CHECK (lineage_id ~ '^file_lineage_[a-f0-9]{64}$'),
     path text NOT NULL CHECK (
         char_length(path) BETWEEN 1 AND 4096
         AND path <> '.'
@@ -188,6 +189,7 @@ CREATE TABLE forja.index_files (
     diagnostics jsonb NOT NULL CHECK (jsonb_typeof(diagnostics)='array' AND jsonb_array_length(diagnostics) <= 4096),
     PRIMARY KEY (tenant_id, repository_id, snapshot_id, file_id),
     UNIQUE (tenant_id, repository_id, snapshot_id, path),
+    UNIQUE (tenant_id, repository_id, snapshot_id, lineage_id),
     FOREIGN KEY (tenant_id, repository_id, snapshot_id)
         REFERENCES forja.index_snapshots(tenant_id, repository_id, snapshot_id) ON DELETE RESTRICT
 );
@@ -200,6 +202,7 @@ CREATE TABLE forja.index_symbols (
     repository_id uuid NOT NULL,
     snapshot_id text NOT NULL,
     symbol_id text NOT NULL CHECK (symbol_id ~ '^symbol_[a-f0-9]{64}$'),
+    lineage_id text NOT NULL CHECK (lineage_id ~ '^symbol_lineage_[a-f0-9]{64}$'),
     file_id text NOT NULL,
     language text NOT NULL CHECK (language IN ('go', 'typescript', 'javascript', 'python')),
     kind text NOT NULL CHECK (kind IN (
@@ -223,6 +226,7 @@ CREATE TABLE forja.index_symbols (
     is_schema boolean NOT NULL,
     documentation_sha256 bytea CHECK (documentation_sha256 IS NULL OR octet_length(documentation_sha256)=32),
     PRIMARY KEY (tenant_id, repository_id, snapshot_id, symbol_id),
+    UNIQUE (tenant_id, repository_id, snapshot_id, lineage_id),
     FOREIGN KEY (tenant_id, repository_id, snapshot_id, file_id)
         REFERENCES forja.index_files(tenant_id, repository_id, snapshot_id, file_id) ON DELETE RESTRICT
 );
