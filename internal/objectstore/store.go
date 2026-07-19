@@ -178,7 +178,14 @@ func (s *Store) ReadVerified(ctx context.Context, authority Authority, descripto
 	}
 	defer output.Body.Close()
 	digestHex := hex.EncodeToString(descriptor.SHA256[:])
-	if output.ContentLength == nil || *output.ContentLength != descriptor.SizeBytes || output.ContentType == nil || *output.ContentType != descriptor.MediaType || output.Metadata["forja-sha256"] != digestHex || output.Metadata["forja-size"] != strconv.FormatInt(descriptor.SizeBytes, 10) || output.Metadata["forja-media-type"] != descriptor.MediaType {
+	digestBase64 := base64.StdEncoding.EncodeToString(descriptor.SHA256[:])
+	if output.ContentLength == nil || *output.ContentLength != descriptor.SizeBytes ||
+		output.ContentType == nil || *output.ContentType != descriptor.MediaType ||
+		strings.TrimSpace(aws.ToString(output.ETag)) == "" ||
+		output.Metadata["forja-sha256"] != digestHex ||
+		output.Metadata["forja-size"] != strconv.FormatInt(descriptor.SizeBytes, 10) ||
+		output.Metadata["forja-media-type"] != descriptor.MediaType ||
+		output.ChecksumSHA256 != nil && *output.ChecksumSHA256 != digestBase64 {
 		return nil, Evidence{}, fmt.Errorf("%w: provider metadata mismatch", ErrIntegrity)
 	}
 	body, err := io.ReadAll(io.LimitReader(output.Body, maximumBytes+1))

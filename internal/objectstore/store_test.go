@@ -119,6 +119,11 @@ func TestReadVerifiedReturnsOnlyBoundedIntegrityCheckedBytes(t *testing.T) {
 	if _, _, err := store.ReadVerified(t.Context(), testAuthority, descriptor, int64(len(body))); err == nil {
 		t.Fatal("metadata mismatch succeeded")
 	}
+	fake.descriptor = descriptor
+	fake.etag = ""
+	if _, _, err := store.ReadVerified(t.Context(), testAuthority, descriptor, int64(len(body))); !errors.Is(err, ErrIntegrity) {
+		t.Fatalf("missing ETag error=%v", err)
+	}
 }
 
 type fakeS3 struct {
