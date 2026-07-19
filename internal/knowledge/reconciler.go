@@ -72,18 +72,26 @@ func (r *Reconciler) Reconcile(
 	}
 	for _, candidate := range candidates {
 		result := ReconciliationResult{OperationID: candidate.Publication.Intent.OperationID}
+		itemMetadata := reconciliationMetadata(metadata, result.OperationID)
 		descriptor, descriptorErr := objectDescriptor(candidate.Publication.Intent)
 		if descriptorErr != nil {
-			result.Outcome = "terminal"
-			result.Failure = "canonical_conflict"
-			report.Terminal++
+			if _, failErr := r.repository.FailArtifactReconciliation(
+				ctx, result.OperationID, "canonical_conflict", itemMetadata,
+			); failErr != nil {
+				result.Outcome = "retryable"
+				result.Failure = "canonical_persistence"
+				report.Retryable++
+			} else {
+				result.Outcome = "terminal"
+				result.Failure = "canonical_conflict"
+				report.Terminal++
+			}
 			report.Results = append(report.Results, result)
 			continue
 		}
 		evidence, verifyErr := r.bodies.Verify(ctx, objectstore.Authority{
 			TenantID: authority.TenantID, RepositoryID: authority.RepositoryID,
 		}, descriptor)
-		itemMetadata := reconciliationMetadata(metadata, result.OperationID)
 		if verifyErr == nil && candidate.ExpectedETag != "" && candidate.ExpectedETag != evidence.ETag {
 			verifyErr = objectstore.ErrIntegrity
 		}

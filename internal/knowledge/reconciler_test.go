@@ -48,6 +48,32 @@ func TestReconcilerClassifiesProviderEvidence(t *testing.T) {
 	}
 }
 
+func TestReconcilerPersistsInvalidDescriptorAsCanonicalConflict(t *testing.T) {
+	candidate := reconciliationCandidate(
+		"artifact_operation_60000000-0000-4000-8000-000000000004",
+		"invalid-descriptor",
+	)
+	candidate.Publication.Intent.ContentHash = "sha256:not-a-digest"
+	repository := &fakeReconciliationRepository{
+		candidates: []persistence.ArtifactReconciliationCandidate{candidate},
+	}
+	reconciler, err := NewReconciler(repository, &fakeBodyVerifier{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	report, err := reconciler.Reconcile(t.Context(), time.Now(), 10, runstate.CommandMetadata{
+		IdempotencyKey: "reconcile-invalid-descriptor", ActorType: "system",
+		ActorID: "reconciler", CorrelationID: "reconcile-invalid-descriptor",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Examined != 1 || report.Terminal != 1 || report.Retryable != 0 ||
+		repository.failed["canonical_conflict"] != 1 {
+		t.Fatalf("report=%#v failed=%v", report, repository.failed)
+	}
+}
+
 type fakeReconciliationRepository struct {
 	candidates []persistence.ArtifactReconciliationCandidate
 	completed  []string

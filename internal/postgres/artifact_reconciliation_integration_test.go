@@ -69,6 +69,24 @@ func TestArtifactReconciliationFinalizesStoredIntentAndFailsIntegrity(t *testing
 	if err != nil || failed.State != "failed" {
 		t.Fatalf("integrity reconciliation=%#v err=%v", failed, err)
 	}
+	conflictingIntent := artifactPublicationIntentFixture(
+		"artifact_reconciliation_conflict",
+		"50000000-0000-4000-8000-000000000003",
+		"conflicting-body",
+	)
+	if _, _, err := store.PrepareArtifactPublication(
+		t.Context(), conflictingIntent,
+		testMetadata("artifact-reconciliation-conflict-original"),
+	); err != nil {
+		t.Fatal(err)
+	}
+	failed, err = store.FailArtifactReconciliation(
+		t.Context(), conflictingIntent.OperationID, "canonical_conflict",
+		knowledgeMetadata("artifact-reconciliation-conflict", "system", "artifact-reconciler"),
+	)
+	if err != nil || failed.State != "failed" {
+		t.Fatalf("canonical-conflict reconciliation=%#v err=%v", failed, err)
+	}
 
 	var reconciledEvents, failedEvents, receipts int
 	if err := pool.QueryRow(t.Context(), `
@@ -80,7 +98,7 @@ func TestArtifactReconciliationFinalizesStoredIntentAndFailsIntegrity(t *testing
 	).Scan(&reconciledEvents, &failedEvents, &receipts); err != nil {
 		t.Fatal(err)
 	}
-	if reconciledEvents != 1 || failedEvents != 1 || receipts != 2 {
+	if reconciledEvents != 1 || failedEvents != 2 || receipts != 3 {
 		t.Fatalf("reconciliation evidence complete=%d failed=%d receipts=%d", reconciledEvents, failedEvents, receipts)
 	}
 }

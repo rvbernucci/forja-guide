@@ -200,7 +200,8 @@ func (s *Store) FailArtifactReconciliation(
 	if err := validateReconciliationCommand(operationID, metadata); err != nil {
 		return persistence.ArtifactPublication{}, err
 	}
-	if failureClass != "retryable_provider" && failureClass != "integrity" && failureClass != "interrupted" {
+	if failureClass != "retryable_provider" && failureClass != "integrity" &&
+		failureClass != "canonical_conflict" && failureClass != "interrupted" {
 		return persistence.ArtifactPublication{}, fault.New(fault.CodeInvalidArgument, "postgres.FailArtifactReconciliation", "failure class is invalid")
 	}
 	scope := "artifact_reconcile_fail:" + s.repositoryID + ":" + operationID + ":" + failureClass
@@ -233,7 +234,7 @@ func (s *Store) FailArtifactReconciliation(
 	}
 	digest, _ := decodeContentHash(publication.Intent.ContentHash)
 	nextState := "reconciliation_required"
-	if failureClass == "integrity" {
+	if failureClass == "integrity" || failureClass == "canonical_conflict" {
 		nextState = "failed"
 	}
 	now := postgresTimestamp(s.clock.Now())
