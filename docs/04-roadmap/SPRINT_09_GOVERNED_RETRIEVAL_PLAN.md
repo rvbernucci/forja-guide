@@ -216,14 +216,15 @@ documentation evidence.
 This section is non-authoritative progress evidence, not a closure candidate.
 It cannot authorize Sprint 10.
 
-- On implementation commits `ecc0fcd`, `fb408b9`, `cb2503d`, and `19cdfcf`,
-  `make validate` passed locally: Go module verification, `go vet`, the full
-  Go unit and race suites, reproducible `linux/amd64` and `linux/arm64` builds,
-  kernel/MCP/worker smoke tests, 55 Python tests, and repository validation.
-  The later runs validate source-bound versus global-card scope handling,
-  reject global projections with an unexpected source commit, and prove that
-  the lexical-only and dense-only baseline policies do not invoke their
-  disabled retrieval paths.
+- On implementation commits `ecc0fcd`, `fb408b9`, `cb2503d`, `19cdfcf`, and
+  `93c899a`, `make validate` passed locally: Go module verification, `go vet`,
+  the full Go unit and race suites, reproducible `linux/amd64` and
+  `linux/arm64` builds, kernel/MCP/worker smoke tests, 55 Python tests, and
+  repository validation. The later runs validate source-bound versus
+  global-card scope handling, reject global projections with an unexpected
+  source commit, prove that the lexical-only and dense-only baseline policies
+  do not invoke their disabled retrieval paths, and align the canonical
+  PostgreSQL integration fixtures with immutable index evidence.
 - `go run ./cmd/forja-retrieval-eval` scores both a single frozen ranking
   capture and an immutable four-baseline comparison. The public synthetic
   comparison verifies that lexical-only and dense-only can retain distinct
@@ -239,9 +240,14 @@ It cannot authorize Sprint 10.
   compatibility test passed in `us-east-1` against Titan Text Embeddings v2
   with a synthetic test string and verified the 1024-dimension response;
   neither card text nor vector output was recorded.
-- The remaining live evidence must exercise PostgreSQL and Qdrant through a
-  deployment workload role and the access-controlled evaluation boundary, not
-  copied runtime credentials.
+- A local, user-owned PostgreSQL 14 database and an ephemeral loopback Qdrant
+  `v1.18.2` instance completed the opt-in blue-green, alias rollback, delete,
+  canonical reset, and replay drills. The complete PostgreSQL integration
+  suite also passed with `-race`; its destructive schema resets occurred only
+  in the disposable database. Qdrant telemetry was disabled for the drill.
+- The remaining live evidence must use a deployment workload role and the
+  access-controlled private evaluation boundary, not copied runtime
+  credentials. Those results are still required before closure.
 
 ## Acceptance Evidence
 
