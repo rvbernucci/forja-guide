@@ -52,6 +52,7 @@ contracts.
 | [`retrieval-evaluation-comparison.schema.json`](../../schemas/retrieval-evaluation-comparison.schema.json) | Four mandatory, policy-hash-bound baseline outcome sets |
 | [`retrieval-evaluation-report.schema.json`](../../schemas/retrieval-evaluation-report.schema.json) | One policy's bounded offline ranking evidence |
 | [`retrieval-evaluation-comparison-report.schema.json`](../../schemas/retrieval-evaluation-comparison-report.schema.json) | Stable four-baseline comparison evidence |
+| [`retrieval-preflight-receipt.schema.json`](../../schemas/retrieval-preflight-receipt.schema.json) | Redacted bounded readiness proof for PostgreSQL, Qdrant, and Bedrock |
 | [`artifact-bundle-manifest.schema.json`](../../schemas/artifact-bundle-manifest.schema.json) | Immutable content-addressed bundle inventory |
 
 The Go kernel embeds these schemas, compiles cross-schema references offline at

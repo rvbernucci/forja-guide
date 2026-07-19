@@ -252,6 +252,14 @@ It cannot authorize Sprint 10.
   writes atomically. Its companion private corpus remains a separate operator
   capability. No private capture has yet been run, so this is implementation
   readiness rather than quality evidence.
+- `forja-retrieval preflight` now provides the required bounded readiness
+  check before a re-embedding job or private capture. It verifies PostgreSQL
+  readiness, resolves an optional serving alias to its physical Qdrant target,
+  verifies the exact collection generation contract, and requests one
+  synthetic 1024-dimension Titan embedding. Its schema-validated private
+  receipt excludes credentials, AWS identity, hosts, collection names, text,
+  vectors, and provider responses. No workload-role preflight receipt has yet
+  been captured.
 - `govulncheck@v1.6.0 ./...` found no reachable Go vulnerabilities in the
   local implementation tree.
 - The public fixture remains a contract smoke test only. No tuning, holdout,

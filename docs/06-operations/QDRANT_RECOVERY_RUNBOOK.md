@@ -132,12 +132,23 @@ go run ./cmd/forja-retrieval query \
   --input /secure/forja/query.json \
   --timeout 20s \
   --output /secure/forja/query-result.json
+
+go run ./cmd/forja-retrieval preflight \
+  --timeout 20s \
+  --output /secure/forja/retrieval-preflight.json
 ```
 
 Both operations are capped at 30 seconds. A projection leaves a failed or
 interrupted delivery for fenced retry; query failures return no authoritative
 context. Do not redirect output to a shared log or pass keys through shell
 arguments.
+
+`preflight` is the required operator check before a re-embedding job or a
+private baseline capture. It proves only that PostgreSQL reached readiness, the
+configured Qdrant collection matches the pinned generation contract, and one
+synthetic Bedrock input returned the required 1024 dimensions. Its private
+receipt deliberately excludes AWS identity, credentials, hostnames, collection
+names, input text, vector values, and provider responses.
 
 Before Qdrant is queried, `forja-retrieval query` reads the aggregate backlog
 for the dedicated `qdrant.retrieval` projector from canonical PostgreSQL. The

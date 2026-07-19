@@ -78,6 +78,10 @@ plan as a mode-`0600` regular file, enforces a 30-second limit per query and a
 bounded whole-run deadline, and atomically writes the complete comparison:
 
 ```bash
+go run ./cmd/forja-retrieval preflight \
+  --timeout 20s \
+  --output /secure/forja/retrieval-preflight.json
+
 go run ./cmd/forja-retrieval capture \
   --plan private-evaluations/tuning/capture-plan.json \
   --output private-evaluations/tuning/comparison.json \

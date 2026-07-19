@@ -42,7 +42,7 @@ func main() {
 
 func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, lookup func(string) (string, bool)) error {
 	if len(arguments) == 0 {
-		return fmt.Errorf("expected project-once, query, or capture subcommand")
+		return fmt.Errorf("expected project-once, query, capture, or preflight subcommand")
 	}
 	switch arguments[0] {
 	case "project-once":
@@ -51,9 +51,90 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, look
 		return queryOnce(ctx, arguments[1:], stdout, stderr, lookup)
 	case "capture":
 		return captureRequiredRankings(ctx, arguments[1:], stdout, stderr, lookup)
+	case "preflight":
+		return preflightRuntime(ctx, arguments[1:], stdout, stderr, lookup)
 	default:
 		return fmt.Errorf("unsupported subcommand %q", arguments[0])
 	}
+}
+
+// preflightRuntime verifies the bounded dependency contract required before an
+// operator starts projection or private evaluation. It makes one synthetic
+// Bedrock embedding call but never prints credentials, identity, text, vectors,
+// hosts, collection names, or provider responses.
+func preflightRuntime(parent context.Context, arguments []string, _ io.Writer, stderr io.Writer, lookup func(string) (string, bool)) error {
+	flags := flag.NewFlagSet("forja-retrieval preflight", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	output := flags.String("output", "", "private redacted preflight receipt JSON path")
+	timeout := flags.Duration("timeout", defaultOperationTime, "whole-operation deadline (maximum 30s)")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 || !safeOutputPath(*output) || !validOperationTimeout(*timeout) {
+		return fmt.Errorf("private output and bounded timeout are required")
+	}
+	ctx, cancel := context.WithTimeout(parent, *timeout)
+	defer cancel()
+	runtime, closeRuntime, err := openRuntime(ctx, lookup)
+	if err != nil {
+		return err
+	}
+	defer closeRuntime()
+	collectionClient, ok := runtime.qdrant.(retrieval.QdrantCollectionClient)
+	if !ok {
+		return errors.New("Qdrant runtime cannot inspect the configured collection")
+	}
+	physicalCollection, err := preflightCollectionTarget(ctx, runtime)
+	if err != nil {
+		return err
+	}
+	plan, err := retrieval.BuildQdrantCollectionPlan(physicalCollection, retrieval.BedrockTitanTextEmbeddingV2Dimensions, runtime.generation)
+	if err != nil {
+		return fmt.Errorf("build configured Qdrant collection contract: %w", err)
+	}
+	info, err := collectionClient.GetCollectionInfo(ctx, physicalCollection)
+	if err != nil {
+		return fmt.Errorf("inspect configured Qdrant collection: %w", err)
+	}
+	if err := retrieval.VerifyQdrantCollection(info, plan); err != nil {
+		return fmt.Errorf("verify configured Qdrant collection: %w", err)
+	}
+	vector, err := runtime.embedder.Embed(ctx, "forja retrieval preflight")
+	if err != nil {
+		return fmt.Errorf("verify Bedrock embedding capability: %w", err)
+	}
+	if len(vector) != retrieval.BedrockTitanTextEmbeddingV2Dimensions {
+		return errors.New("Bedrock preflight vector dimensions are invalid")
+	}
+	return writePreflightReceipt(*output, retrievalPreflightReceipt{
+		SchemaVersion: contracts.RetrievalSchemaVersion,
+		Generation:    runtime.generation,
+		PostgresReady: true, QdrantVerified: true,
+		BedrockDimensions: len(vector),
+	})
+}
+
+// preflightCollectionTarget resolves an optional serving alias to the physical
+// collection whose immutable contract is inspected. An absent alias is valid
+// when runtime configuration names a physical collection directly; an alias
+// inspection failure is never interpreted as absence.
+func preflightCollectionTarget(ctx context.Context, runtime runtime) (string, error) {
+	inspector, ok := runtime.qdrant.(retrieval.QdrantAliasInspector)
+	if !ok {
+		return "", errors.New("Qdrant runtime cannot inspect collection aliases")
+	}
+	return preflightCollectionName(ctx, inspector, runtime.collection)
+}
+
+func preflightCollectionName(ctx context.Context, inspector retrieval.QdrantAliasInspector, configuredCollection string) (string, error) {
+	observation, err := retrieval.ObserveQdrantAlias(ctx, inspector, configuredCollection)
+	if err != nil {
+		return "", fmt.Errorf("observe configured Qdrant alias: %w", err)
+	}
+	if observation.Exists {
+		return observation.CollectionName, nil
+	}
+	return configuredCollection, nil
 }
 
 // captureRequiredRankings runs the fixed four baseline policies against a
@@ -343,6 +424,14 @@ type evaluationComparisonCapture struct {
 	Variants      []retrieval.EvaluationVariant `json:"variants"`
 }
 
+type retrievalPreflightReceipt struct {
+	SchemaVersion     string `json:"schema_version"`
+	Generation        string `json:"generation"`
+	PostgresReady     bool   `json:"postgres_ready"`
+	QdrantVerified    bool   `json:"qdrant_verified"`
+	BedrockDimensions int    `json:"bedrock_dimensions"`
+}
+
 func readQuery(path string) (contracts.RetrievalQuery, error) {
 	data, err := readPrivateJSONFile(path, maximumQueryFileBytes, "retrieval query")
 	if err != nil {
@@ -447,6 +536,21 @@ func writeEvaluationComparison(path string, comparison evaluationComparisonCaptu
 		return fmt.Errorf("validate retrieval evaluation comparison: %w", err)
 	}
 	return writePrivateJSON(path, comparison)
+}
+
+func writePreflightReceipt(path string, receipt retrievalPreflightReceipt) error {
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		return fmt.Errorf("encode retrieval preflight receipt: %w", err)
+	}
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		return fmt.Errorf("initialize contracts: %w", err)
+	}
+	if err := registry.ValidateJSON("retrieval-preflight-receipt.schema.json", encoded); err != nil {
+		return fmt.Errorf("validate retrieval preflight receipt: %w", err)
+	}
+	return writePrivateJSON(path, receipt)
 }
 
 func writePrivateJSON(path string, value any) error {

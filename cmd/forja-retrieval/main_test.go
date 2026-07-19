@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	qdrant "github.com/qdrant/go-client/qdrant"
+
 	"github.com/rvbernucci/forja-guide/internal/retrieval"
 )
 
@@ -19,6 +21,7 @@ func TestRunRejectsUnsafeOperationShapesBeforeOpeningDependencies(t *testing.T) 
 		{"query", "--input", "-", "--output", "result.json"},
 		{"capture", "--plan", "-", "--output", "comparison.json"},
 		{"capture", "--plan", "plan.json", "--output", "comparison.json", "--query-timeout", "31s"},
+		{"preflight", "--output", "receipt.json", "--timeout", "31s"},
 		{"project-once", "--worker-id", "worker", "--output", "receipt.json", "--timeout", "31s"},
 	} {
 		var stdout, stderr bytes.Buffer
@@ -26,6 +29,55 @@ func TestRunRejectsUnsafeOperationShapesBeforeOpeningDependencies(t *testing.T) 
 			t.Fatalf("arguments %v unexpectedly succeeded", arguments)
 		}
 	}
+}
+
+func TestPreflightReceiptIsRedactedPrivateAndSchemaValid(t *testing.T) {
+	directory := t.TempDir()
+	output := filepath.Join(directory, "preflight.json")
+	if err := writePreflightReceipt(output, retrievalPreflightReceipt{
+		SchemaVersion: "1.0", Generation: "retrieval_generation_" + strings.Repeat("a", 64),
+		PostgresReady: true, QdrantVerified: true, BedrockDimensions: 1024,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := os.ReadFile(output)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"credential", "identity", "collection", "host", "vector"} {
+		if strings.Contains(strings.ToLower(string(encoded)), forbidden) {
+			t.Fatalf("preflight receipt leaked %q: %s", forbidden, encoded)
+		}
+	}
+	info, err := os.Stat(output)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("preflight permissions=%v err=%v", info.Mode().Perm(), err)
+	}
+}
+
+func TestPreflightCollectionNameResolvesAliasWithoutTreatingErrorsAsAbsent(t *testing.T) {
+	t.Parallel()
+	client := testAliasInspector{aliases: []*qdrant.AliasDescription{{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_green"}}}
+	target, err := preflightCollectionName(t.Context(), client, "forja_retrieval")
+	if err != nil || target != "forja_retrieval_green" {
+		t.Fatalf("target=%q err=%v", target, err)
+	}
+	target, err = preflightCollectionName(t.Context(), testAliasInspector{}, "forja_retrieval_green")
+	if err != nil || target != "forja_retrieval_green" {
+		t.Fatalf("physical target=%q err=%v", target, err)
+	}
+	if _, err := preflightCollectionName(t.Context(), testAliasInspector{err: os.ErrPermission}, "forja_retrieval"); err == nil {
+		t.Fatal("alias inspection failure was treated as an absent alias")
+	}
+}
+
+type testAliasInspector struct {
+	aliases []*qdrant.AliasDescription
+	err     error
+}
+
+func (c testAliasInspector) ListAliases(context.Context) ([]*qdrant.AliasDescription, error) {
+	return c.aliases, c.err
 }
 
 func TestEvaluationCapturePlanAndComparisonStayPrivateAndSchemaValid(t *testing.T) {
