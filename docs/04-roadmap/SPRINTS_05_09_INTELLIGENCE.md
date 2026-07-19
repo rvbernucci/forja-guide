@@ -104,6 +104,9 @@ and residual risk.
 **Outcome:** create canonical repository, symbol, type, schema, and behavior
 metadata before semantic indexing.
 
+**Status:** In progress. See the
+[Sprint 08 execution plan](SPRINT_08_DETERMINISTIC_INDEXING_PLAN.md).
+
 ### Scope
 
 - [ ] Define `RepositorySnapshot`, `FileCard`, `SymbolCard`, and
