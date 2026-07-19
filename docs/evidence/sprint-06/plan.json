@@ -1,0 +1,28 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "06",
+  "name": "Fail-Soft Observability",
+  "status": "completed",
+  "objective": "Make one governed task observable from external command through scheduling, worker execution, validation, persistence, and publication without moving authority into telemetry or exporting task content.",
+  "basis_commit": "eee01db11ad42aade8b7c32e25148738a57b9aca",
+  "scope": [
+    "fail-soft OpenTelemetry runtime initialization and bounded W3C traceparent propagation",
+    "closed-label Prometheus operation, duration, in-flight, failure, and operational-state metrics",
+    "content-free HTTP, MCP, scheduler, worker, validation, delivery, and PostgreSQL instrumentation",
+    "trace-correlated redacted JSON logs without raw task, output, credential, SQL, or error content",
+    "read-only operational snapshots for stuck work, leases, outbox, projection lag, approvals, and crash loops",
+    "version-pinned Prometheus, Loki, Alloy, Tempo, and Grafana development profiles",
+    "bounded dashboards, alert rules, persistent Alloy positions, and isolated clean-host rehearsal",
+    "iterative independent review, vulnerability scanning, rollback rehearsal, and two-phase closure evidence"
+  ],
+  "out_of_scope": [
+    "authoritative decisions derived from telemetry",
+    "durable large-artifact storage, retention, and deletion",
+    "production authentication and remote exposure of the local observability stack",
+    "a public scheduler or MCP command for the full delivery pipeline",
+    "semantic retrieval, graph projection, and context brokering"
+  ],
+  "author": "codex",
+  "independent_validator": "Protected GitHub Actions, CodeRabbit status, and isolated Codex CLI review of the public implementation and exact closure candidate",
+  "completed_at": "2026-07-19T04:00:12Z"
+}
