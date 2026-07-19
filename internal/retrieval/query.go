@@ -9,6 +9,7 @@ import (
 	qdrant "github.com/qdrant/go-client/qdrant"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 )
 
 // QdrantQueryClient is the official client surface used for governed candidate
@@ -26,9 +27,15 @@ type QueryService struct {
 	Embedder       Embedder
 	Sparse         SparseEncoder
 	Resolver       CanonicalResolver
+	Observer       *observability.Observer
 }
 
-func (service QueryService) Search(ctx context.Context, query contracts.RetrievalQuery) (contracts.RetrievalResult, error) {
+func (service QueryService) Search(ctx context.Context, query contracts.RetrievalQuery) (result contracts.RetrievalResult, err error) {
+	if service.Observer != nil {
+		observedCtx, operation := service.Observer.Start(ctx, observability.BoundaryRetrieval, observability.OperationQuery)
+		ctx = observedCtx
+		defer func() { operation.End(err) }()
+	}
 	if err := contracts.ValidateRetrievalQuery(query); err != nil {
 		return contracts.RetrievalResult{}, err
 	}
@@ -60,21 +67,27 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	}
 	densePoints, err := service.Client.Query(ctx, denseRequest)
 	if err != nil {
-		return degradedResult(query, "qdrant_dense_unavailable"), nil
+		result = degradedResult(query, "qdrant_dense_unavailable")
+		service.recordQueryStats(ctx, result)
+		return result, nil
 	}
 	sparsePoints, err := service.Client.Query(ctx, sparseRequest)
 	if err != nil {
-		return degradedResult(query, "qdrant_sparse_unavailable"), nil
+		result = degradedResult(query, "qdrant_sparse_unavailable")
+		service.recordQueryStats(ctx, result)
+		return result, nil
 	}
 	denseCandidates := qdrantCandidates(densePoints, query.Policy.DenseLimit)
 	sparseCandidates := qdrantCandidates(sparsePoints, query.Policy.SparseLimit)
 	fused, malformed := fuseCandidateRanks(denseCandidates, sparseCandidates, query.Policy)
 	accepted, rejected, err := ResolveRankedCandidates(ctx, query, fused, service.Resolver)
 	if err != nil {
-		return degradedResult(query, "canonical_resolver_unavailable"), nil
+		result = degradedResult(query, "canonical_resolver_unavailable")
+		service.recordQueryStats(ctx, result)
+		return result, nil
 	}
 	rejected = append(rejected, malformed...)
-	result := contracts.RetrievalResult{
+	result = contracts.RetrievalResult{
 		RequestID: query.RequestID, SchemaVersion: contracts.RetrievalSchemaVersion,
 		Status: "complete", ProjectionFreshness: "fresh", CollectionGeneration: query.ExpectedGeneration,
 		Accepted: accepted, Rejections: rejected,
@@ -83,6 +96,7 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	if err := contracts.ValidateRetrievalResult(query, result); err != nil {
 		return contracts.RetrievalResult{}, fmt.Errorf("validate governed retrieval result: %w", err)
 	}
+	service.recordQueryStats(ctx, result)
 	return result, nil
 }
 
@@ -93,6 +107,17 @@ func degradedResult(query contracts.RetrievalQuery, gap string) contracts.Retrie
 		Accepted: []contracts.RetrievalCandidate{}, Rejections: []contracts.RetrievalRejection{}, Gaps: []string{gap},
 		Receipt: receipt(query, 0, 0, 0, 0, 0),
 	}
+}
+
+func (service QueryService) recordQueryStats(ctx context.Context, result contracts.RetrievalResult) {
+	if service.Observer == nil {
+		return
+	}
+	service.Observer.RecordRetrievalStats(ctx, observability.RetrievalStats{
+		DenseCandidates: result.Receipt.DenseCandidates, SparseCandidates: result.Receipt.SparseCandidates,
+		FusedCandidates: result.Receipt.FusedCandidates, Accepted: result.Receipt.ResolvedCandidates,
+		Rejected: result.Receipt.RejectedCandidates, Degraded: result.Status == "degraded",
+	})
 }
 
 func receipt(query contracts.RetrievalQuery, dense, sparse, fused, resolved, rejected int) contracts.RetrievalReceipt {

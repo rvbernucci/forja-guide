@@ -9,6 +9,7 @@ import (
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/indexing"
+	"github.com/rvbernucci/forja-guide/internal/observability"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 )
 
@@ -52,9 +53,21 @@ type ProjectionWorker struct {
 	MaxAttempts   int
 	RetryDelay    time.Duration
 	Now           func() time.Time
+	Observer      *observability.Observer
 }
 
-func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (ProjectionRun, error) {
+func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionRun, err error) {
+	if worker.Observer != nil {
+		observedCtx, operation := worker.Observer.Start(ctx, observability.BoundaryRetrieval, observability.OperationProjectRetrieval)
+		ctx = observedCtx
+		defer func() {
+			worker.Observer.RecordRetrievalStats(ctx, observability.RetrievalStats{
+				ProjectionClaimed: run.Claimed, ProjectionPublished: run.Published,
+				ProjectionSkipped: run.Skipped, ProjectionRetried: run.Retried, ProjectionDead: run.Dead,
+			})
+			operation.End(err)
+		}()
+	}
 	if err := worker.validate(); err != nil {
 		return ProjectionRun{}, err
 	}
@@ -64,7 +77,7 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (ProjectionRun, 
 	if err != nil {
 		return ProjectionRun{}, fmt.Errorf("claim retrieval projection deliveries: %w", err)
 	}
-	run := ProjectionRun{Claimed: len(deliveries)}
+	run = ProjectionRun{Claimed: len(deliveries)}
 	for _, delivery := range deliveries {
 		skipped, projectErr := worker.projectDelivery(ctx, delivery)
 		if projectErr == nil {

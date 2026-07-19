@@ -110,6 +110,41 @@ forja_operations_total{boundary="http",failure_class="conflict",operation="trans
 	}
 }
 
+func TestRetrievalStatsExposeOnlyBoundedCounts(t *testing.T) {
+	t.Parallel()
+	registry := prometheus.NewPedanticRegistry()
+	metrics, err := NewMetrics(registry)
+	if err != nil {
+		t.Fatal(err)
+	}
+	NewObserver(nil, metrics).RecordRetrievalStats(context.Background(), RetrievalStats{
+		DenseCandidates: 3, SparseCandidates: 2, FusedCandidates: 4,
+		Accepted: 2, Rejected: 2, Degraded: true,
+		ProjectionClaimed: 5, ProjectionPublished: 3, ProjectionRetried: 1, ProjectionDead: 1,
+	})
+	want := `
+# HELP forja_retrieval_candidates_total Governed retrieval candidates by bounded ranking stage.
+# TYPE forja_retrieval_candidates_total counter
+forja_retrieval_candidates_total{stage="dense"} 3
+forja_retrieval_candidates_total{stage="fused"} 4
+forja_retrieval_candidates_total{stage="sparse"} 2
+# HELP forja_retrieval_resolutions_total Governed retrieval resolution outcomes.
+# TYPE forja_retrieval_resolutions_total counter
+forja_retrieval_resolutions_total{outcome="accepted"} 2
+forja_retrieval_resolutions_total{outcome="degraded"} 1
+forja_retrieval_resolutions_total{outcome="rejected"} 2
+# HELP forja_retrieval_projection_deliveries_total Governed retrieval projection delivery outcomes.
+# TYPE forja_retrieval_projection_deliveries_total counter
+forja_retrieval_projection_deliveries_total{outcome="claimed"} 5
+forja_retrieval_projection_deliveries_total{outcome="dead"} 1
+forja_retrieval_projection_deliveries_total{outcome="published"} 3
+forja_retrieval_projection_deliveries_total{outcome="retried"} 1
+`
+	if err := testutil.GatherAndCompare(registry, strings.NewReader(want), "forja_retrieval_candidates_total", "forja_retrieval_resolutions_total", "forja_retrieval_projection_deliveries_total"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestHTTPHandlerAcceptsOnlyBoundedTraceParent(t *testing.T) {
 	previousPropagator := otel.GetTextMapPropagator()
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
