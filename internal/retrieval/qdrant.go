@@ -60,6 +60,7 @@ type QdrantCollectionClient interface {
 	CollectionExists(context.Context, string) (bool, error)
 	CreateCollection(context.Context, *qdrant.CreateCollection) error
 	CreateFieldIndex(context.Context, *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error)
+	GetCollectionInfo(context.Context, string) (*qdrant.CollectionInfo, error)
 }
 
 // QdrantAliasClient applies Qdrant's atomic alias operation set. A caller must
@@ -91,6 +92,46 @@ func EnsureQdrantCollection(ctx context.Context, client QdrantCollectionClient, 
 		}
 		if _, err := client.CreateFieldIndex(ctx, index); err != nil {
 			return fmt.Errorf("create Qdrant payload index %s: %w", index.FieldName, err)
+		}
+	}
+	info, err := client.GetCollectionInfo(ctx, plan.Create.CollectionName)
+	if err != nil {
+		return fmt.Errorf("inspect Qdrant collection: %w", err)
+	}
+	return VerifyQdrantCollection(info, plan)
+}
+
+// VerifyQdrantCollection checks the live physical store against the immutable
+// generation contract before a projector may acknowledge data into it. It does
+// not trust an alias name, collection name, or operator intent as evidence of
+// vector compatibility.
+func VerifyQdrantCollection(info *qdrant.CollectionInfo, plan QdrantCollectionPlan) error {
+	if info == nil || plan.Create == nil || !qdrantCollectionNamePattern.MatchString(plan.Create.CollectionName) {
+		return fmt.Errorf("Qdrant collection verification input is invalid")
+	}
+	config := info.GetConfig()
+	if config == nil || config.GetStrictModeConfig() == nil || !config.GetStrictModeConfig().GetEnabled() || config.GetStrictModeConfig().GetUnindexedFilteringRetrieve() || config.GetStrictModeConfig().GetUnindexedFilteringUpdate() {
+		return fmt.Errorf("Qdrant strict filtering contract is not satisfied")
+	}
+	params := config.GetParams()
+	if params == nil || params.GetVectorsConfig() == nil || params.GetVectorsConfig().GetParamsMap() == nil || params.GetSparseVectorsConfig() == nil || plan.Create.GetVectorsConfig() == nil || plan.Create.GetVectorsConfig().GetParamsMap() == nil {
+		return fmt.Errorf("Qdrant vector configuration is incomplete")
+	}
+	expectedDense := plan.Create.GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName]
+	actualDense := params.GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName]
+	if expectedDense == nil || actualDense == nil || actualDense.GetSize() != expectedDense.GetSize() || actualDense.GetDistance() != expectedDense.GetDistance() {
+		return fmt.Errorf("Qdrant dense vector contract is not satisfied")
+	}
+	if params.GetSparseVectorsConfig().GetMap()[SparseVectorName] == nil {
+		return fmt.Errorf("Qdrant sparse vector contract is not satisfied")
+	}
+	metadata := config.GetMetadata()
+	if metadata["forja_schema_version"].GetStringValue() != contracts.RetrievalSchemaVersion || metadata["collection_generation"].GetStringValue() != plan.Create.GetMetadata()["collection_generation"].GetStringValue() {
+		return fmt.Errorf("Qdrant collection generation metadata is not satisfied")
+	}
+	for _, index := range plan.PayloadIndex {
+		if _, found := info.GetPayloadSchema()[index.FieldName]; !found {
+			return fmt.Errorf("Qdrant payload index %s is missing", index.FieldName)
 		}
 	}
 	return nil

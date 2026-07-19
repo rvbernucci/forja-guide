@@ -114,8 +114,10 @@ documentation evidence.
   waits for Qdrant acknowledgement before its PostgreSQL delivery can advance.
 - [ ] Project delete/tombstone state and physically delete retired points only
   after its canonical lifecycle receipt is durable.
-- [ ] Verify collection generation, alias target, vector dimensions, and
-  payload schema before accepting projection work.
+- [x] Verify physical collection generation, vector dimensions, strict filtering,
+  and payload schema before an operator enables projection work.
+- [ ] Verify the serving alias target and its observation window before retiring
+  a prior generation.
 - [ ] Implement build, verify, atomic alias switch, observation, and rollback
   for blue-green re-embedding.
 

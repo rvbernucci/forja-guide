@@ -20,9 +20,11 @@ type recordingQdrantCollectionClient struct {
 	exists         bool
 	created        []*qdrant.CreateCollection
 	indexes        []*qdrant.CreateFieldIndexCollection
+	info           *qdrant.CollectionInfo
 	existsErr      error
 	createErr      error
 	createIndexErr error
+	infoErr        error
 }
 
 func (client *recordingQdrantCollectionClient) CollectionExists(context.Context, string) (bool, error) {
@@ -35,6 +37,9 @@ func (client *recordingQdrantCollectionClient) CreateCollection(_ context.Contex
 func (client *recordingQdrantCollectionClient) CreateFieldIndex(_ context.Context, index *qdrant.CreateFieldIndexCollection) (*qdrant.UpdateResult, error) {
 	client.indexes = append(client.indexes, index)
 	return &qdrant.UpdateResult{}, client.createIndexErr
+}
+func (client *recordingQdrantCollectionClient) GetCollectionInfo(context.Context, string) (*qdrant.CollectionInfo, error) {
+	return client.info, client.infoErr
 }
 
 type recordingQdrantAliasClient struct {
@@ -170,7 +175,7 @@ func TestEnsureQdrantCollectionCreatesPhysicalStoreAndAllMandatoryIndexes(t *tes
 	if err != nil {
 		t.Fatal(err)
 	}
-	client := &recordingQdrantCollectionClient{}
+	client := &recordingQdrantCollectionClient{info: collectionInfo(plan)}
 	if err := EnsureQdrantCollection(context.Background(), client, plan); err != nil {
 		t.Fatal(err)
 	}
@@ -189,6 +194,47 @@ func TestEnsureQdrantCollectionCreatesPhysicalStoreAndAllMandatoryIndexes(t *tes
 	if err := EnsureQdrantCollection(context.Background(), client, plan); err == nil {
 		t.Fatal("payload index failure was accepted")
 	}
+}
+
+func TestVerifyQdrantCollectionRejectsGenerationOrVectorDrift(t *testing.T) {
+	plan, err := BuildQdrantCollectionPlan("forja_retrieval_v1", 3, contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := collectionInfo(plan)
+	if err := VerifyQdrantCollection(info, plan); err != nil {
+		t.Fatal(err)
+	}
+	info.GetConfig().GetMetadata()["collection_generation"] = qdrant.NewValueString("retrieval_generation_" + strings.Repeat("f", 64))
+	if err := VerifyQdrantCollection(info, plan); err == nil {
+		t.Fatal("generation drift was accepted")
+	}
+	info = collectionInfo(plan)
+	info.GetConfig().GetParams().GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName].Size = 4
+	if err := VerifyQdrantCollection(info, plan); err == nil {
+		t.Fatal("dimension drift was accepted")
+	}
+	info = collectionInfo(plan)
+	delete(info.PayloadSchema, "tenant_id")
+	if err := VerifyQdrantCollection(info, plan); err == nil {
+		t.Fatal("missing payload index was accepted")
+	}
+}
+
+func collectionInfo(plan QdrantCollectionPlan) *qdrant.CollectionInfo {
+	payload := make(map[string]*qdrant.PayloadSchemaInfo, len(plan.PayloadIndex))
+	for _, index := range plan.PayloadIndex {
+		payload[index.FieldName] = &qdrant.PayloadSchemaInfo{}
+	}
+	dense := *plan.Create.GetVectorsConfig().GetParamsMap().GetMap()[DenseVectorName]
+	metadata := map[string]*qdrant.Value{
+		"forja_schema_version":  qdrant.NewValueString(plan.Create.GetMetadata()["forja_schema_version"].GetStringValue()),
+		"collection_generation": qdrant.NewValueString(plan.Create.GetMetadata()["collection_generation"].GetStringValue()),
+	}
+	return &qdrant.CollectionInfo{Config: &qdrant.CollectionConfig{Params: &qdrant.CollectionParams{
+		VectorsConfig:       qdrant.NewVectorsConfigMap(map[string]*qdrant.VectorParams{DenseVectorName: &dense}),
+		SparseVectorsConfig: plan.Create.GetSparseVectorsConfig(),
+	}, StrictModeConfig: plan.Create.GetStrictModeConfig(), Metadata: metadata}, PayloadSchema: payload}
 }
 
 func TestSwitchQdrantAliasUsesOneAtomicReplacementAction(t *testing.T) {

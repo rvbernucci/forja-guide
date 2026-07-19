@@ -92,7 +92,8 @@ pre-ranking filters, a live hybrid candidate query path, and a fail-closed canon
 symbol projector writes Qdrant first, records canonical point provenance in
 PostgreSQL, and only then acknowledges its fenced delivery. The operator
 adapter can create physical collections, apply required payload indexes, and
-atomically switch a verified alias; full collection verification, rebuild,
+verify physical generation, vector dimensions, strict filtering and payload
+indexes, then atomically switch a verified alias; alias observation, rebuild,
 rollback, the evaluation harness, and Neo4j remain pending.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
