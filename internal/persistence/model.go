@@ -361,6 +361,7 @@ type ProjectionDeliveryRepository interface {
 	ClaimProjectionDeliveries(context.Context, string, string, int, time.Duration) ([]ProjectionDelivery, error)
 	CompleteProjectionDelivery(context.Context, string, int64, string, int64) error
 	FailProjectionDelivery(context.Context, string, int64, string, int64, error, time.Time, int) error
+	RequeueProjectionDelivery(context.Context, string, int64) error
 }
 
 // RetrievalPointRepository records the canonical provenance of a successfully

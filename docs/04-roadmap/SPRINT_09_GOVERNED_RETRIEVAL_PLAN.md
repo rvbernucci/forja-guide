@@ -152,8 +152,9 @@ documentation evidence.
 - [ ] Keep query text, vectors, entity names, paths, and payload bodies out of
   logs, metrics, and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
-- [ ] Prove safe shutdown, bounded deadlines, retry, dead-letter repair, and
-  full rebuild after deleting the derived collection.
+- [ ] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
+  deleting the derived collection. Fenced retry and dead-letter repair are
+  covered by PostgreSQL 18 integration tests.
 
 ### 6. Evaluation and closure
 

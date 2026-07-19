@@ -230,6 +230,30 @@ func (s *Store) FailProjectionDelivery(ctx context.Context, projectorName string
 	return nil
 }
 
+// RequeueProjectionDelivery is the explicit operator repair path for a dead
+// derived-store delivery. It preserves the immutable dead-letter record and
+// checkpoint barrier while giving a repaired dependency a new fenced attempt.
+func (s *Store) RequeueProjectionDelivery(ctx context.Context, projectorName string, outboxID int64) error {
+	if !validProjectorName(projectorName) || outboxID < 1 {
+		return fault.New(fault.CodeInvalidArgument, "postgres.RequeueProjectionDelivery", "projector name or outbox ID is invalid")
+	}
+	tag, err := s.pool.Exec(ctx, `
+		UPDATE forja.projection_deliveries
+		SET state='pending', available_at=clock_timestamp(), locked_by=NULL,
+			locked_until=NULL, attempts=0, last_error=NULL
+		WHERE tenant_id=$1 AND repository_id=$2 AND projector_name=$3
+		  AND outbox_id=$4 AND state='dead'`,
+		s.tenantID, s.repositoryID, projectorName, outboxID,
+	)
+	if err != nil {
+		return databaseError("postgres.RequeueProjectionDelivery", err)
+	}
+	if tag.RowsAffected() != 1 {
+		return fault.New(fault.CodeConflict, "postgres.RequeueProjectionDelivery", "projection delivery is not dead")
+	}
+	return nil
+}
+
 func advanceProjectionCheckpoint(ctx context.Context, tx pgx.Tx, tenantID, repositoryID, projectorName string) error {
 	tag, err := tx.Exec(ctx, `
 		WITH checkpoint AS (

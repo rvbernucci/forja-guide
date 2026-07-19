@@ -60,7 +60,9 @@ and SDK compatibility before changing it.
 - If the physical collection verification fails, do not run a projector or
   switch an alias. Build a new generation and investigate the mismatch.
 - If a delivery reaches the configured retry ceiling, repair the dependency,
-  retain the dead-letter evidence, and replay with a new fenced claim. Never
+  retain the dead-letter evidence, call `RequeueProjectionDelivery`, and replay
+  with a new fenced claim. Requeue accepts only `dead` deliveries and resets
+  their attempt budget without deleting the original dead-letter record. Never
   advance a checkpoint manually.
 
 ## Evidence Required to Close Recovery

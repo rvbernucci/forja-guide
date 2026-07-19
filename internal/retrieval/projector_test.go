@@ -187,6 +187,9 @@ func (store *recordingDeliveries) FailProjectionDelivery(_ context.Context, _ st
 	store.cause = cause
 	return nil
 }
+func (store *recordingDeliveries) RequeueProjectionDelivery(context.Context, string, int64) error {
+	return nil
+}
 
 func projectionFixture(t *testing.T) indexing.IndexBundle {
 	t.Helper()
