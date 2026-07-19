@@ -22,6 +22,8 @@ const (
 	MaximumMessageParts                   = 64
 	MaximumMessageCitations               = 128
 	MaximumBundleEntries                  = 4096
+	MaximumBundleSourceRefs               = 1024
+	MaximumMemorySupersessions            = 128
 	MaximumArtifactObjectBytes      int64 = 4 << 30
 	MaximumBundleBytes              int64 = 16 << 30
 )
@@ -229,7 +231,7 @@ func ValidateMessage(value Message) error {
 		!validAuthority(value.TenantID, "tenant_") ||
 		!validAuthority(value.RepositoryID, "repo_") ||
 		value.SequenceNumber < 1 || value.CreatedAt.IsZero() ||
-		strings.TrimSpace(value.AuthorID) == "" {
+		strings.TrimSpace(value.AuthorID) == "" || len(value.AuthorID) > 160 {
 		return fmt.Errorf("message identity or lifecycle metadata is invalid")
 	}
 	if value.SupersedesMessageID != nil &&
@@ -241,7 +243,7 @@ func ValidateMessage(value Message) error {
 	default:
 		return fmt.Errorf("message role is invalid")
 	}
-	if len(value.ContentParts) < 1 || len(value.ContentParts) > MaximumMessageParts ||
+	if value.Citations == nil || len(value.ContentParts) < 1 || len(value.ContentParts) > MaximumMessageParts ||
 		len(value.Citations) > MaximumMessageCitations {
 		return fmt.Errorf("message part or citation count is invalid")
 	}
@@ -252,7 +254,7 @@ func ValidateMessage(value Message) error {
 			!artifactIDPattern.MatchString(part.ArtifactID) ||
 			!contentHashPattern.MatchString(part.ContentHash) ||
 			part.SizeBytes < 0 || part.SizeBytes > MaximumArtifactObjectBytes ||
-			strings.TrimSpace(part.MediaType) == "" {
+			len(part.MediaType) < 3 || len(part.MediaType) > 120 || strings.TrimSpace(part.MediaType) != part.MediaType {
 			return fmt.Errorf("message content part %d is invalid", index)
 		}
 		if _, exists := partIDs[part.PartID]; exists {
@@ -266,7 +268,7 @@ func ValidateMessage(value Message) error {
 			!artifactIDPattern.MatchString(citation.SourceArtifactID) ||
 			!contentHashPattern.MatchString(citation.SourceContentHash) ||
 			!validCitationLocatorKind(citation.Locator.Kind) ||
-			strings.TrimSpace(citation.Locator.Value) == "" {
+			strings.TrimSpace(citation.Locator.Value) == "" || len(citation.Locator.Value) > 500 {
 			return fmt.Errorf("message citation %d is invalid", index)
 		}
 		if _, exists := citationIDs[citation.CitationID]; exists {
@@ -286,7 +288,7 @@ func ValidateMemoryCandidate(value MemoryCandidate) error {
 		!conversationIDPattern.MatchString(value.ConversationID) || !validAuthority(value.TenantID, "tenant_") ||
 		!validAuthority(value.RepositoryID, "repo_") || !artifactIDPattern.MatchString(value.ProposedArtifactID) ||
 		!contentHashPattern.MatchString(value.ProposedContentHash) || value.Version < 1 ||
-		value.ProposedAt.IsZero() || strings.TrimSpace(value.ProposedBy) == "" {
+		value.ProposedAt.IsZero() || strings.TrimSpace(value.ProposedBy) == "" || len(value.ProposedBy) > 160 {
 		return fmt.Errorf("memory candidate identity or metadata is invalid")
 	}
 	if len(value.SourceMessageIDs) < 1 || len(value.SourceMessageIDs) > MaximumMessageCitations ||
@@ -327,7 +329,8 @@ func ValidateMemoryRecord(value MemoryRecord) error {
 		!candidateIDPattern.MatchString(value.SourceCandidateID) || !validAuthority(value.TenantID, "tenant_") ||
 		!validAuthority(value.RepositoryID, "repo_") || !artifactIDPattern.MatchString(value.ContentArtifactID) ||
 		!contentHashPattern.MatchString(value.ContentHash) || value.Version < 1 || value.PromotedAt.IsZero() ||
-		strings.TrimSpace(value.PromotedBy) == "" || strings.TrimSpace(value.PromotionReason) == "" {
+		strings.TrimSpace(value.PromotedBy) == "" || len(value.PromotedBy) > 160 ||
+		strings.TrimSpace(value.PromotionReason) == "" || len(value.PromotionReason) > 2000 {
 		return fmt.Errorf("memory record identity or promotion metadata is invalid")
 	}
 	if value.AuthorityClass != "human_approved" && value.AuthorityClass != "policy_approved" {
@@ -344,7 +347,8 @@ func ValidateMemoryRecord(value MemoryRecord) error {
 		value.TombstonedAt != nil && value.TombstonedAt.Before(value.PromotedAt) {
 		return fmt.Errorf("memory lifecycle timestamps are invalid")
 	}
-	if !uniqueMatching(value.Supersedes, memoryIDPattern) || slices.Contains(value.Supersedes, value.MemoryID) {
+	if value.Supersedes == nil || len(value.Supersedes) > MaximumMemorySupersessions ||
+		!uniqueMatching(value.Supersedes, memoryIDPattern) || slices.Contains(value.Supersedes, value.MemoryID) {
 		return fmt.Errorf("memory supersession references are invalid")
 	}
 	switch value.Status {
@@ -374,9 +378,10 @@ func ValidateMemoryRecord(value MemoryRecord) error {
 func ValidateArtifactBundleManifest(value ArtifactBundleManifest) error {
 	if value.SchemaVersion != KnowledgeSchemaVersion || !manifestIDPattern.MatchString(value.ManifestID) ||
 		!validAuthority(value.TenantID, "tenant_") || !validAuthority(value.RepositoryID, "repo_") ||
-		strings.TrimSpace(value.CreatedBy) == "" || value.CreatedAt.IsZero() ||
+		strings.TrimSpace(value.CreatedBy) == "" || len(value.CreatedBy) > 160 || value.CreatedAt.IsZero() ||
 		len(value.Entries) < 1 || len(value.Entries) > MaximumBundleEntries ||
-		len(value.SourceRefs) < 1 || !uniqueNonBlank(value.SourceRefs) {
+		len(value.SourceRefs) < 1 || len(value.SourceRefs) > MaximumBundleSourceRefs ||
+		!uniqueNonBlank(value.SourceRefs) || slices.ContainsFunc(value.SourceRefs, func(reference string) bool { return len(reference) > 500 }) {
 		return fmt.Errorf("artifact bundle identity or metadata is invalid")
 	}
 	switch value.Family {
@@ -388,11 +393,12 @@ func ValidateArtifactBundleManifest(value ArtifactBundleManifest) error {
 	previousPath := ""
 	for index, entry := range value.Entries {
 		cleaned := path.Clean(entry.LogicalPath)
-		if entry.LogicalPath == "" || cleaned != entry.LogicalPath || path.IsAbs(entry.LogicalPath) ||
+		if entry.LogicalPath == "" || len(entry.LogicalPath) > 4096 || cleaned != entry.LogicalPath || path.IsAbs(entry.LogicalPath) ||
 			entry.LogicalPath == "." || strings.HasPrefix(entry.LogicalPath, "../") ||
 			(index > 0 && strings.Compare(previousPath, entry.LogicalPath) >= 0) ||
 			!artifactIDPattern.MatchString(entry.ArtifactID) || !contentHashPattern.MatchString(entry.ContentHash) ||
-			entry.SizeBytes < 0 || entry.SizeBytes > MaximumArtifactObjectBytes || strings.TrimSpace(entry.MediaType) == "" {
+			entry.SizeBytes < 0 || entry.SizeBytes > MaximumArtifactObjectBytes ||
+			len(entry.MediaType) < 3 || len(entry.MediaType) > 120 || strings.TrimSpace(entry.MediaType) != entry.MediaType {
 			return fmt.Errorf("artifact bundle entry %d is invalid or not canonically ordered", index)
 		}
 		if total > MaximumBundleBytes-entry.SizeBytes {

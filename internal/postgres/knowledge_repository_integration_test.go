@@ -6,8 +6,11 @@ import (
 	"sort"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/rvbernucci/forja-guide/internal/clock"
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
@@ -16,6 +19,16 @@ import (
 func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	pool := migratedPool(t)
 	store := newIntegrationStore(t, pool)
+	futureStore, err := NewStore(
+		pool,
+		clock.Fixed{Time: time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)},
+		DefaultTenantID,
+		DefaultRepositoryID,
+		WithMemoryPolicyPrincipal("memory-policy"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	bodyArtifact := publishKnowledgeArtifact(t, store, "artifact_repository_body", "40000000-0000-4000-8000-000000000001", "Durable project decision", "test_report")
 	transcriptArtifact := publishKnowledgeArtifact(t, store, "artifact_repository_transcript", "40000000-0000-4000-8000-000000000002", "Canonical transcript", "conversation")
@@ -80,6 +93,20 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 		t.Fatalf("concurrent message sequences=%v", sequences)
 	}
 
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	transcriptSourceRefs, err := conversationTranscriptSourceRefs(
+		t.Context(), tx, DefaultTenantID, DefaultRepositoryID, conversationID, 1+messageCount,
+	)
+	if err != nil {
+		_ = tx.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
 	manifest, err := store.CreateArtifactBundleManifest(t.Context(), contracts.ArtifactBundleManifest{
 		ManifestID: "manifest_40000000-0000-4000-8000-000000000030",
 		Family:     "conversation_transcript",
@@ -91,11 +118,17 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 			MediaType:   transcriptArtifact.MediaType,
 		}},
 		TotalSizeBytes: *transcriptArtifact.SizeBytes,
-		SourceRefs:     []string{conversationID},
+		SourceRefs:     transcriptSourceRefs,
 		CreatedBy:      "integration-suite",
 	}, testMetadata("knowledge-create-transcript-manifest"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	replayedManifest, err := futureStore.CreateArtifactBundleManifest(
+		t.Context(), manifest, testMetadata("knowledge-create-transcript-manifest"),
+	)
+	if err != nil || !replayedManifest.CreatedAt.Equal(manifest.CreatedAt) {
+		t.Fatalf("manifest replay=%#v err=%v", replayedManifest, err)
 	}
 	closed, err := store.CloseConversation(t.Context(), persistence.CloseConversationCommand{
 		ConversationID:     conversationID,
@@ -129,6 +162,13 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	replayedCandidate, err := futureStore.ProposeMemory(
+		t.Context(), firstCandidate,
+		knowledgeMetadata("knowledge-propose-first", "agent", "planner-agent"),
+	)
+	if err != nil || !replayedCandidate.ProposedAt.Equal(firstCandidate.ProposedAt) {
+		t.Fatalf("candidate replay=%#v err=%v", replayedCandidate, err)
+	}
 	firstMemory := contracts.MemoryRecord{
 		MemoryID:          "memory_40000000-0000-4000-8000-000000000041",
 		SourceCandidateID: firstCandidate.CandidateID,
@@ -147,9 +187,17 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	}
 	firstMemory, err = store.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
 		Memory: firstMemory, ExpectedCandidateVersion: firstCandidate.Version,
+		Principal: promotionPrincipal(t, "human", "reviewer"),
 	}, knowledgeMetadata("knowledge-human-promotion", "human", "reviewer"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	replayedMemory, err := futureStore.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
+		Memory: firstMemory, ExpectedCandidateVersion: firstCandidate.Version,
+		Principal: promotionPrincipal(t, "human", "reviewer"),
+	}, knowledgeMetadata("knowledge-human-promotion", "human", "reviewer"))
+	if err != nil || !replayedMemory.PromotedAt.Equal(firstMemory.PromotedAt) {
+		t.Fatalf("memory replay=%#v err=%v", replayedMemory, err)
 	}
 
 	secondCandidate, err := store.ProposeMemory(t.Context(), contracts.MemoryCandidate{
@@ -164,8 +212,26 @@ func TestKnowledgeRepositoryConversationAndMemoryLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	unauthorizedPolicyMemory := contracts.MemoryRecord{
+		MemoryID:          "memory_40000000-0000-4000-8000-000000000099",
+		SourceCandidateID: secondCandidate.CandidateID,
+		Kind:              secondCandidate.Kind,
+		ContentArtifactID: secondCandidate.ProposedArtifactID,
+		ContentHash:       secondCandidate.ProposedContentHash,
+		AuthorityClass:    "policy_approved",
+		PromotedBy:        "unconfigured-policy",
+		PromotionReason:   "An unconfigured system identity must not promote memory",
+		Supersedes:        []string{firstMemory.MemoryID},
+	}
+	if _, err := store.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
+		Memory: unauthorizedPolicyMemory, ExpectedCandidateVersion: secondCandidate.Version,
+		Principal: promotionPrincipal(t, "system", "unconfigured-policy"),
+	}, knowledgeMetadata("knowledge-unconfigured-policy", "system", "unconfigured-policy")); !fault.IsCode(err, fault.CodePermissionDenied) {
+		t.Fatalf("unconfigured policy promotion error=%v", err)
+	}
 	secondMemory, err := store.PromoteMemory(t.Context(), persistence.MemoryPromotionCommand{
 		ExpectedCandidateVersion: secondCandidate.Version,
+		Principal:                promotionPrincipal(t, "system", "memory-policy"),
 		Memory: contracts.MemoryRecord{
 			MemoryID:          "memory_40000000-0000-4000-8000-000000000043",
 			SourceCandidateID: secondCandidate.CandidateID,
@@ -294,6 +360,82 @@ func TestKnowledgeRepositoryRejectsCrossTenantArtifactReference(t *testing.T) {
 	}
 }
 
+func TestConversationCloseRejectsStaleTranscriptInventory(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	body := publishKnowledgeArtifact(
+		t, store, "artifact_stale_transcript_body",
+		"40000000-0000-4000-8000-000000000110", "message body", "test_report",
+	)
+	transcript := publishKnowledgeArtifact(
+		t, store, "artifact_stale_transcript",
+		"40000000-0000-4000-8000-000000000111", "stale transcript", "conversation",
+	)
+	conversationID := "conversation_40000000-0000-4000-8000-000000000112"
+	if _, err := store.CreateConversation(t.Context(), contracts.Conversation{
+		ConversationID: conversationID, RetentionClass: "project", CreatedBy: "co-architect",
+	}, knowledgeMetadata("stale-transcript-conversation", "agent", "co-architect")); err != nil {
+		t.Fatal(err)
+	}
+	appendMessage := func(messageID, partID, key string) {
+		t.Helper()
+		if _, err := store.AppendMessage(t.Context(), persistence.MessageDraft{
+			MessageID: messageID, ConversationID: conversationID,
+			Role: "human", AuthorID: "author",
+			ContentParts: []contracts.ContentPart{{
+				PartID: partID, Ordinal: 0, Kind: "text",
+				ArtifactID: body.ArtifactID, ContentHash: body.ContentHash,
+				MediaType: body.MediaType, SizeBytes: *body.SizeBytes,
+			}},
+		}, knowledgeMetadata(key, "human", "author")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appendMessage(
+		"message_40000000-0000-4000-8000-000000000113",
+		"part_40000000-0000-4000-8000-000000000114",
+		"stale-transcript-first-message",
+	)
+	tx, err := pool.Begin(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := conversationTranscriptSourceRefs(
+		t.Context(), tx, DefaultTenantID, DefaultRepositoryID, conversationID, 2,
+	)
+	if err != nil {
+		_ = tx.Rollback(t.Context())
+		t.Fatal(err)
+	}
+	if err := tx.Commit(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	manifest, err := store.CreateArtifactBundleManifest(t.Context(), contracts.ArtifactBundleManifest{
+		ManifestID: "manifest_40000000-0000-4000-8000-000000000115",
+		Family:     "conversation_transcript",
+		Entries: []contracts.ArtifactBundleEntry{{
+			LogicalPath: "conversation/transcript.txt", ArtifactID: transcript.ArtifactID,
+			ContentHash: transcript.ContentHash, SizeBytes: *transcript.SizeBytes,
+			MediaType: transcript.MediaType,
+		}},
+		TotalSizeBytes: *transcript.SizeBytes, SourceRefs: refs, CreatedBy: "integration-suite",
+	}, testMetadata("stale-transcript-manifest"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	appendMessage(
+		"message_40000000-0000-4000-8000-000000000116",
+		"part_40000000-0000-4000-8000-000000000117",
+		"stale-transcript-second-message",
+	)
+	if _, err := store.CloseConversation(t.Context(), persistence.CloseConversationCommand{
+		ConversationID: conversationID, ExpectedVersion: 3,
+		TranscriptArtifact: transcript.ArtifactID, TranscriptManifest: manifest.ManifestID,
+	}, testMetadata("stale-transcript-close")); !fault.IsCode(err, fault.CodeInvalidArgument) {
+		t.Fatalf("stale transcript close error=%v", err)
+	}
+}
+
 func publishKnowledgeArtifact(
 	t *testing.T,
 	store *Store,
@@ -333,4 +475,16 @@ func knowledgeMetadata(key, actorType, actorID string) runstate.CommandMetadata 
 		CorrelationID:  key,
 		AuditToolName:  "knowledge-integration",
 	}
+}
+
+func promotionPrincipal(t *testing.T, actorType, actorID string) control.Principal {
+	t.Helper()
+	principal, err := control.NewScopedPrincipal(
+		actorType, actorID, DefaultTenantID, DefaultRepositoryID,
+		control.PermissionMemoryPromote,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return principal
 }

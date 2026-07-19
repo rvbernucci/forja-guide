@@ -144,7 +144,7 @@ func (s *Store) CompleteArtifactReconciliation(
 		return contracts.Artifact{}, fault.New(fault.CodeConflict, "postgres.CompleteArtifactReconciliation", "terminal artifact publication cannot be reconciled")
 	}
 	now := postgresTimestamp(s.clock.Now())
-	if _, err := tx.Exec(ctx, `
+	objectResult, err := tx.Exec(ctx, `
 		UPDATE forja.artifact_objects
 		SET state='active', provider_checksum_sha256=NULLIF($4, ''),
 			provider_etag=$5, provider_version=NULLIF($6, ''), failure_class=NULL,
@@ -153,8 +153,12 @@ func (s *Store) CompleteArtifactReconciliation(
 		  AND state IN ('reserved', 'uploading', 'verified', 'failed', 'active')`,
 		s.tenantID, s.repositoryID, digest, evidence.ProviderChecksumSHA256,
 		evidence.ETag, evidence.VersionID, now,
-	); err != nil {
+	)
+	if err != nil {
 		return contracts.Artifact{}, databaseError("postgres.CompleteArtifactReconciliation.activateObject", err)
+	}
+	if objectResult.RowsAffected() != 1 {
+		return contracts.Artifact{}, fault.New(fault.CodeConflict, "postgres.CompleteArtifactReconciliation", "content object cannot be activated from its lifecycle state")
 	}
 	publication.State = "active"
 	publication.Version++
@@ -245,13 +249,18 @@ func (s *Store) FailArtifactReconciliation(
 	); err != nil {
 		return persistence.ArtifactPublication{}, databaseError("postgres.FailArtifactReconciliation.operation", err)
 	}
-	if _, err := tx.Exec(ctx, `
+	objectResult, err := tx.Exec(ctx, `
 		UPDATE forja.artifact_objects
 		SET state='failed', failure_class=$4, updated_at=$5
-		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3 AND state<>'active'`,
+		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3
+		  AND state IN ('reserved', 'uploading', 'verified', 'failed')`,
 		s.tenantID, s.repositoryID, digest, failureClass, now,
-	); err != nil {
+	)
+	if err != nil {
 		return persistence.ArtifactPublication{}, databaseError("postgres.FailArtifactReconciliation.object", err)
+	}
+	if objectResult.RowsAffected() != 1 {
+		return persistence.ArtifactPublication{}, fault.New(fault.CodeConflict, "postgres.FailArtifactReconciliation", "content object cannot enter failed state from its lifecycle state")
 	}
 	payload, _ := json.Marshal(struct {
 		Publication  persistence.ArtifactPublication `json:"publication"`

@@ -2,6 +2,7 @@ package contracts
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -96,6 +97,14 @@ func TestKnowledgeSemanticValidationFailsClosed(t *testing.T) {
 			t.Fatal("message with noncanonical part order passed")
 		}
 	})
+	t.Run("message citations must be an array", func(t *testing.T) {
+		message := validKnowledgeMessage(t, now)
+		message.Citations = nil
+		message.ContentHash, _ = ComputeMessageContentHash(message.ContentParts, message.Citations)
+		if err := ValidateMessage(message); err == nil {
+			t.Fatal("message with null citations passed")
+		}
+	})
 	t.Run("message part kind", func(t *testing.T) {
 		message := validKnowledgeMessage(t, now)
 		message.ContentParts[0].Kind = "executable_instruction"
@@ -138,6 +147,19 @@ func TestKnowledgeSemanticValidationFailsClosed(t *testing.T) {
 			t.Fatal("memory with unknown kind passed")
 		}
 	})
+	t.Run("memory supersedes must be an array", func(t *testing.T) {
+		memory := MemoryRecord{
+			MemoryID: "memory_00000000-0000-4000-8000-000000000009", SchemaVersion: KnowledgeSchemaVersion,
+			TenantID: testTenantID, RepositoryID: testRepositoryID,
+			SourceCandidateID: "memory_candidate_00000000-0000-4000-8000-000000000008",
+			Kind:              "lesson", Status: "active", Version: 1, ContentArtifactID: testArtifactID,
+			ContentHash: testDigest, AuthorityClass: "human_approved", PromotedBy: "reviewer",
+			PromotionReason: "verified", PromotedAt: now,
+		}
+		if err := ValidateMemoryRecord(memory); err == nil {
+			t.Fatal("memory with null supersedes passed")
+		}
+	})
 	t.Run("candidate expiry precedes proposal", func(t *testing.T) {
 		expires := now.Add(-time.Minute)
 		candidate := MemoryCandidate{
@@ -163,6 +185,21 @@ func TestKnowledgeSemanticValidationFailsClosed(t *testing.T) {
 		}
 		if err := ValidateArtifactBundleManifest(manifest); err == nil {
 			t.Fatal("bundle traversal passed")
+		}
+	})
+	t.Run("bundle source reference bounds", func(t *testing.T) {
+		manifest := ArtifactBundleManifest{
+			ManifestID: "manifest_00000000-0000-4000-8000-000000000010", SchemaVersion: KnowledgeSchemaVersion,
+			TenantID: testTenantID, RepositoryID: testRepositoryID, Family: "evidence",
+			Entries: []ArtifactBundleEntry{{
+				LogicalPath: "report.txt", ArtifactID: testArtifactID,
+				ContentHash: testDigest, SizeBytes: 1, MediaType: "text/plain",
+			}},
+			TotalSizeBytes: 1, SourceRefs: []string{strings.Repeat("x", 501)},
+			CreatedBy: "validator", CreatedAt: now,
+		}
+		if err := ValidateArtifactBundleManifest(manifest); err == nil {
+			t.Fatal("bundle with oversized source reference passed")
 		}
 	})
 }

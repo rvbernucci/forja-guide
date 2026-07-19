@@ -1,11 +1,13 @@
 package postgres
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -90,6 +92,9 @@ func (s *Store) AppendMessage(
 ) (contracts.Message, error) {
 	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
 		return contracts.Message{}, err
+	}
+	if draft.Citations == nil {
+		draft.Citations = []contracts.Citation{}
 	}
 	if draft.AuthorID != metadata.ActorID {
 		return contracts.Message{}, fault.New(fault.CodeInvalidArgument, "postgres.AppendMessage", "message author does not match the command actor")
@@ -243,16 +248,20 @@ func (s *Store) CreateArtifactBundleManifest(
 	manifest.SchemaVersion = contracts.KnowledgeSchemaVersion
 	manifest.TenantID = "tenant_" + s.tenantID
 	manifest.RepositoryID = "repo_" + s.repositoryID
-	manifest.CreatedAt = postgresTimestamp(s.clock.Now())
+	manifest.CreatedAt = time.Time{}
 	if manifest.CreatedBy != metadata.ActorID {
 		return contracts.ArtifactBundleManifest{}, fault.New(fault.CodeInvalidArgument, "postgres.CreateArtifactBundleManifest", "manifest creator does not match command actor")
 	}
+	requestBytes, err := json.Marshal(manifest)
+	if err != nil {
+		return contracts.ArtifactBundleManifest{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.CreateArtifactBundleManifest", "encode manifest intent", err)
+	}
+	scope := "artifact_manifest_create:" + s.repositoryID + ":" + manifest.ManifestID
+	requestHash := hashKnowledgeCommand(metadata, string(requestBytes))
+	manifest.CreatedAt = postgresTimestamp(s.clock.Now())
 	if err := contracts.ValidateArtifactBundleManifest(manifest); err != nil {
 		return contracts.ArtifactBundleManifest{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.CreateArtifactBundleManifest", "validate manifest", err)
 	}
-	encoded, _ := json.Marshal(manifest)
-	scope := "artifact_manifest_create:" + s.repositoryID + ":" + manifest.ManifestID
-	requestHash := hashKnowledgeCommand(metadata, string(encoded))
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return contracts.ArtifactBundleManifest{}, databaseError("postgres.CreateArtifactBundleManifest.begin", err)
@@ -344,30 +353,42 @@ func (s *Store) CloseConversation(
 	if conversation.Status != "active" || conversation.Version != command.ExpectedVersion {
 		return contracts.Conversation{}, fault.New(fault.CodeConflict, "postgres.CloseConversation", "conversation is not a matching active version")
 	}
-	var validTranscript bool
+	requiredSourceRefs, err := conversationTranscriptSourceRefs(
+		ctx, tx, s.tenantID, s.repositoryID, command.ConversationID, command.ExpectedVersion,
+	)
+	if err != nil {
+		return contracts.Conversation{}, err
+	}
+	var sourceRefsJSON []byte
 	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1
-			FROM forja.artifacts AS artifact
-			JOIN forja.artifact_bundle_entries AS entry
-			  ON entry.tenant_id=artifact.tenant_id
-			 AND entry.repository_id=artifact.repository_id
-			 AND entry.artifact_id=artifact.artifact_id
-			 AND entry.content_sha256=artifact.content_sha256
-			JOIN forja.artifact_bundle_manifests AS manifest
-			  ON manifest.tenant_id=entry.tenant_id
-			 AND manifest.repository_id=entry.repository_id
-			 AND manifest.manifest_id=entry.manifest_id
-			WHERE artifact.tenant_id=$1 AND artifact.repository_id=$2
-			  AND artifact.artifact_id=$3 AND artifact.kind='conversation'
-			  AND artifact.status IN ('active', 'validated')
-			  AND manifest.manifest_id=$4 AND manifest.family='conversation_transcript'
-		)`, s.tenantID, s.repositoryID, command.TranscriptArtifact, command.TranscriptManifest,
-	).Scan(&validTranscript); err != nil {
+		SELECT manifest.source_refs
+		FROM forja.artifacts AS artifact
+		JOIN forja.artifact_bundle_entries AS entry
+		  ON entry.tenant_id=artifact.tenant_id
+		 AND entry.repository_id=artifact.repository_id
+		 AND entry.artifact_id=artifact.artifact_id
+		 AND entry.content_sha256=artifact.content_sha256
+		JOIN forja.artifact_bundle_manifests AS manifest
+		  ON manifest.tenant_id=entry.tenant_id
+		 AND manifest.repository_id=entry.repository_id
+		 AND manifest.manifest_id=entry.manifest_id
+		WHERE artifact.tenant_id=$1 AND artifact.repository_id=$2
+		  AND artifact.artifact_id=$3 AND artifact.kind='conversation'
+		  AND artifact.status IN ('active', 'validated')
+		  AND manifest.manifest_id=$4 AND manifest.family='conversation_transcript'
+		LIMIT 1
+		FOR SHARE OF artifact`, s.tenantID, s.repositoryID, command.TranscriptArtifact, command.TranscriptManifest,
+	).Scan(&sourceRefsJSON); err != nil {
 		return contracts.Conversation{}, databaseError("postgres.CloseConversation.transcript", err)
 	}
-	if !validTranscript {
-		return contracts.Conversation{}, fault.New(fault.CodeInvalidArgument, "postgres.CloseConversation", "transcript artifact and manifest are not exact active evidence")
+	var sourceRefs []string
+	if err := json.Unmarshal(sourceRefsJSON, &sourceRefs); err != nil {
+		return contracts.Conversation{}, fault.Wrap(fault.CodeInternal, "postgres.CloseConversation", "decode transcript source refs", err)
+	}
+	for _, required := range requiredSourceRefs {
+		if !slices.Contains(sourceRefs, required) {
+			return contracts.Conversation{}, fault.New(fault.CodeInvalidArgument, "postgres.CloseConversation", "transcript manifest is not bound to the exact final conversation history")
+		}
 	}
 	now := postgresTimestamp(s.clock.Now())
 	conversation.Status = "closed"
@@ -396,6 +417,41 @@ func (s *Store) CloseConversation(
 		return contracts.Conversation{}, databaseError("postgres.CloseConversation.commit", err)
 	}
 	return conversation, nil
+}
+
+func conversationTranscriptSourceRefs(
+	ctx context.Context,
+	tx pgx.Tx,
+	tenantID, repositoryID, conversationID string,
+	conversationVersion int,
+) ([]string, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT sequence_number, message_id, encode(content_sha256, 'hex')
+		FROM forja.messages
+		WHERE tenant_id=$1 AND repository_id=$2 AND conversation_id=$3
+		ORDER BY sequence_number`, tenantID, repositoryID, conversationID)
+	if err != nil {
+		return nil, databaseError("postgres.conversationTranscriptSourceRefs", err)
+	}
+	defer rows.Close()
+	parts := []string{conversationID, fmt.Sprint(conversationVersion)}
+	for rows.Next() {
+		var sequence int
+		var messageID, digestHex string
+		if err := rows.Scan(&sequence, &messageID, &digestHex); err != nil {
+			return nil, databaseError("postgres.conversationTranscriptSourceRefs.scan", err)
+		}
+		parts = append(parts, fmt.Sprint(sequence), messageID, digestHex)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, databaseError("postgres.conversationTranscriptSourceRefs.rows", err)
+	}
+	digest := hex.EncodeToString(hashRequest(parts...))
+	return []string{
+		conversationID,
+		fmt.Sprintf("conversation_version:%d", conversationVersion),
+		"message_inventory:sha256:" + digest,
+	}, nil
 }
 
 func (s *Store) TombstoneConversation(
@@ -527,19 +583,23 @@ func verifyExactArtifact(
 	if err != nil {
 		return fault.Wrap(fault.CodeInvalidArgument, "postgres.verifyExactArtifact", "decode content hash", err)
 	}
-	var exact bool
+	var storedDigest []byte
+	var storedSize int64
+	var storedMediaType, status string
 	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM forja.artifacts
-			WHERE tenant_id=$1 AND repository_id=$2 AND artifact_id=$3
-			  AND content_sha256=$4 AND status IN ('active', 'validated')
-			  AND ($5::bigint < 0 OR size_bytes=$5)
-			  AND ($6='' OR media_type=$6)
-		)`, tenantID, repositoryID, artifactID, digest, size, mediaType,
-	).Scan(&exact); err != nil {
+		SELECT content_sha256, size_bytes, media_type, status
+		FROM forja.artifacts
+		WHERE tenant_id=$1 AND repository_id=$2 AND artifact_id=$3
+		FOR SHARE`, tenantID, repositoryID, artifactID,
+	).Scan(&storedDigest, &storedSize, &storedMediaType, &status); errors.Is(err, pgx.ErrNoRows) {
+		return fault.New(fault.CodeInvalidArgument, "postgres.verifyExactArtifact", "artifact reference is not exact active evidence")
+	} else if err != nil {
 		return databaseError("postgres.verifyExactArtifact", err)
 	}
-	if !exact {
+	if !bytes.Equal(storedDigest, digest) ||
+		(status != "active" && status != "validated") ||
+		(size >= 0 && storedSize != size) ||
+		(mediaType != "" && storedMediaType != mediaType) {
 		return fault.New(fault.CodeInvalidArgument, "postgres.verifyExactArtifact", "artifact reference is not exact active evidence")
 	}
 	return nil

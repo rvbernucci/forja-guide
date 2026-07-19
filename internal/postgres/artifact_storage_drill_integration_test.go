@@ -3,11 +3,16 @@ package postgres
 import (
 	"bytes"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"sort"
 	"testing"
 
+	"github.com/aws/aws-sdk-go-v2/aws"
+	awsconfig "github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/aws/aws-sdk-go-v2/service/s3/types"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
@@ -51,6 +56,9 @@ func TestRealS3ArtifactBundleRestoreDrill(t *testing.T) {
 	if phase != "seed" && phase != "verify" {
 		t.Fatal("FORJA_TEST_S3_DRILL_PHASE must be seed or verify")
 	}
+	if phase == "seed" {
+		ensureRealS3DrillBucket(t, endpoint, bucket)
+	}
 
 	pool := integrationPool(t)
 	if phase == "seed" {
@@ -71,6 +79,51 @@ func TestRealS3ArtifactBundleRestoreDrill(t *testing.T) {
 		seedRealS3ArtifactBundle(t, store, bodies)
 	}
 	verifyRealS3ArtifactBundle(t, pool, bodies)
+}
+
+func ensureRealS3DrillBucket(t *testing.T, endpoint, bucket string) {
+	t.Helper()
+	configuration, err := awsconfig.LoadDefaultConfig(t.Context(), awsconfig.WithRegion("us-east-1"))
+	if err != nil {
+		t.Fatalf("load real S3 drill configuration: %v", err)
+	}
+	client := s3.NewFromConfig(configuration, func(options *s3.Options) {
+		options.BaseEndpoint = aws.String(endpoint)
+		options.UsePathStyle = true
+	})
+	if _, err := client.CreateBucket(t.Context(), &s3.CreateBucketInput{
+		Bucket: aws.String(bucket),
+	}); err != nil {
+		t.Fatalf("create real S3 drill bucket: %v", err)
+	}
+	if _, err := client.PutBucketVersioning(t.Context(), &s3.PutBucketVersioningInput{
+		Bucket: aws.String(bucket),
+		VersioningConfiguration: &types.VersioningConfiguration{
+			Status: types.BucketVersioningStatusEnabled,
+		},
+	}); err != nil {
+		t.Fatalf("enable real S3 drill versioning: %v", err)
+	}
+	probe := []byte("forja-s3-capability-probe")
+	digest := sha256.Sum256(probe)
+	put, err := client.PutObject(t.Context(), &s3.PutObjectInput{
+		Bucket:            aws.String(bucket),
+		Key:               aws.String("capability-probe"),
+		Body:              bytes.NewReader(probe),
+		ContentLength:     aws.Int64(int64(len(probe))),
+		ContentType:       aws.String("text/plain"),
+		IfNoneMatch:       aws.String("*"),
+		ChecksumAlgorithm: types.ChecksumAlgorithmSha256,
+		ChecksumSHA256:    aws.String(base64.StdEncoding.EncodeToString(digest[:])),
+	})
+	if err != nil {
+		t.Fatalf("prove conditional checksum publication support: %v", err)
+	}
+	if _, err := client.DeleteObject(t.Context(), &s3.DeleteObjectInput{
+		Bucket: aws.String(bucket), Key: aws.String("capability-probe"), VersionId: put.VersionId,
+	}); err != nil {
+		t.Fatalf("remove real S3 capability probe: %v", err)
+	}
 }
 
 func seedRealS3ArtifactBundle(t *testing.T, store *Store, bodies *objectstore.Store) {

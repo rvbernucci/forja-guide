@@ -21,6 +21,7 @@ func TestS3ProtocolConditionalPublicationAndExistingObjectVerification(t *testin
 	var stored []byte
 	putCalls := 0
 	getCalls := 0
+	deleteCalls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		mutex.Lock()
 		defer mutex.Unlock()
@@ -68,6 +69,15 @@ func TestS3ProtocolConditionalPublicationAndExistingObjectVerification(t *testin
 			writer.Header().Set("X-Amz-Meta-Forja-Media-Type", descriptor.MediaType)
 			writer.WriteHeader(http.StatusOK)
 			_, _ = writer.Write(stored)
+		case http.MethodDelete:
+			deleteCalls++
+			if request.URL.Query().Get("versionId") != "wire-version" ||
+				request.Header.Get("If-Match") != `"wire-etag"` {
+				http.Error(writer, "delete did not bind exact version", http.StatusBadRequest)
+				return
+			}
+			stored = nil
+			writer.WriteHeader(http.StatusNoContent)
 		default:
 			http.Error(writer, "unsupported", http.StatusMethodNotAllowed)
 		}
@@ -84,17 +94,45 @@ func TestS3ProtocolConditionalPublicationAndExistingObjectVerification(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	first, err := store.Publish(t.Context(), testAuthority, descriptor, bytes.NewReader(body))
-	if err != nil {
+	const competitors = 8
+	results := make(chan Evidence, competitors)
+	errors := make(chan error, competitors)
+	var group sync.WaitGroup
+	for range competitors {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			evidence, publishErr := store.Publish(t.Context(), testAuthority, descriptor, bytes.NewReader(body))
+			if publishErr != nil {
+				errors <- publishErr
+				return
+			}
+			results <- evidence
+		}()
+	}
+	group.Wait()
+	close(results)
+	close(errors)
+	for publishErr := range errors {
+		t.Fatal(publishErr)
+	}
+	created := 0
+	for evidence := range results {
+		if evidence.Created {
+			created++
+		}
+		if evidence.ETag != `"wire-etag"` {
+			t.Fatalf("unexpected evidence: %#v", evidence)
+		}
+	}
+	if created != 1 || putCalls != competitors || getCalls != competitors {
+		t.Fatalf("created=%d puts=%d gets=%d", created, putCalls, getCalls)
+	}
+	if err := store.Delete(t.Context(), testAuthority, descriptor, `"wire-etag"`, "wire-version"); err != nil {
 		t.Fatal(err)
 	}
-	second, err := store.Publish(t.Context(), testAuthority, descriptor, bytes.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !first.Created || second.Created || putCalls != 2 || getCalls != 2 ||
-		first.ETag != `"wire-etag"` || second.ObjectKey != first.ObjectKey {
-		t.Fatalf("first=%#v second=%#v puts=%d gets=%d", first, second, putCalls, getCalls)
+	if deleteCalls != 1 || stored != nil {
+		t.Fatalf("delete_calls=%d stored=%v", deleteCalls, stored)
 	}
 }
 

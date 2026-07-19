@@ -88,13 +88,14 @@ func TestDeleteRequiresCanonicalETag(t *testing.T) {
 	descriptor := descriptorFor(body, "text/plain")
 	fake := &fakeS3{body: body, descriptor: descriptor}
 	store, _ := newWithClient("forja-artifacts", fake)
-	if err := store.Delete(t.Context(), testAuthority, descriptor, ""); err == nil {
+	if err := store.Delete(t.Context(), testAuthority, descriptor, "", ""); err == nil {
 		t.Fatal("purge accepted no transport evidence")
 	}
-	if err := store.Delete(t.Context(), testAuthority, descriptor, `"etag"`); err != nil {
+	if err := store.Delete(t.Context(), testAuthority, descriptor, `"etag"`, "version-1"); err != nil {
 		t.Fatal(err)
 	}
-	if fake.deleted == nil || aws.ToString(fake.deleted.IfMatch) != `"etag"` {
+	if fake.deleted == nil || aws.ToString(fake.deleted.IfMatch) != `"etag"` ||
+		aws.ToString(fake.deleted.VersionId) != "version-1" {
 		t.Fatal("purge was not conditional")
 	}
 }

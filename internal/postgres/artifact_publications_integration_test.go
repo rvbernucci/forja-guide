@@ -1,15 +1,20 @@
 package postgres
 
 import (
+	"bytes"
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"strings"
 	"sync"
 	"testing"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/knowledge"
+	"github.com/rvbernucci/forja-guide/internal/objectstore"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 )
 
@@ -118,6 +123,95 @@ func TestArtifactPublicationRetryAndConcurrentReservation(t *testing.T) {
 	if err != nil || retrying.State != "uploading" {
 		t.Fatalf("retrying publication = %#v err=%v", retrying, err)
 	}
+}
+
+func TestConcurrentKnowledgeServicePublicationActivatesOneCanonicalArtifact(t *testing.T) {
+	pool := migratedPool(t)
+	repository := newIntegrationStore(t, pool)
+	body := []byte("concurrent end-to-end evidence")
+	intent := artifactPublicationIntentFixture(
+		"artifact_concurrent_service",
+		"30000000-0000-4000-8000-000000000020",
+		string(body),
+	)
+	metadata := testMetadata("artifact-concurrent-service")
+	bodies := &concurrentBodyStore{}
+	service, err := knowledge.NewService(repository, bodies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const competitors = 8
+	results := make(chan error, competitors)
+	var group sync.WaitGroup
+	for range competitors {
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			artifact, publishErr := service.PublishArtifact(t.Context(), knowledge.PublishArtifactCommand{
+				Intent: intent, Metadata: metadata, Body: bytes.NewReader(body),
+			})
+			if publishErr == nil && (artifact.ArtifactID != intent.ArtifactID || artifact.ContentHash != intent.ContentHash) {
+				publishErr = fmt.Errorf("unexpected artifact: %#v", artifact)
+			}
+			results <- publishErr
+		}()
+	}
+	group.Wait()
+	close(results)
+	for resultErr := range results {
+		if resultErr != nil {
+			t.Fatal(resultErr)
+		}
+	}
+	var operations, artifacts, objects int
+	if err := pool.QueryRow(t.Context(), `
+		SELECT
+			(SELECT count(*) FROM forja.artifact_operations),
+			(SELECT count(*) FROM forja.artifacts),
+			(SELECT count(*) FROM forja.artifact_objects)`,
+	).Scan(&operations, &artifacts, &objects); err != nil {
+		t.Fatal(err)
+	}
+	if operations != 1 || artifacts != 1 || objects != 1 || bodies.created != 1 || bodies.calls < 1 {
+		t.Fatalf("operations=%d artifacts=%d objects=%d body_calls=%d created=%d", operations, artifacts, objects, bodies.calls, bodies.created)
+	}
+}
+
+type concurrentBodyStore struct {
+	mutex   sync.Mutex
+	body    []byte
+	calls   int
+	created int
+}
+
+func (s *concurrentBodyStore) Publish(
+	_ context.Context,
+	authority objectstore.Authority,
+	descriptor objectstore.Descriptor,
+	body io.ReadSeeker,
+) (objectstore.Evidence, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.calls++
+	value := make([]byte, descriptor.SizeBytes)
+	if _, err := io.ReadFull(body, value); err != nil {
+		return objectstore.Evidence{}, err
+	}
+	if digest := sha256.Sum256(value); digest != descriptor.SHA256 {
+		return objectstore.Evidence{}, fmt.Errorf("body digest mismatch")
+	}
+	created := false
+	if s.body == nil {
+		s.body = append([]byte(nil), value...)
+		s.created++
+		created = true
+	} else if !bytes.Equal(s.body, value) {
+		return objectstore.Evidence{}, fmt.Errorf("conditional body mismatch")
+	}
+	return objectstore.Evidence{
+		ObjectKey: artifactObjectKey(authority.TenantID, authority.RepositoryID, descriptor.SHA256[:]),
+		ETag:      `"concurrent-etag"`, VersionID: "concurrent-version", Created: created,
+	}, nil
 }
 
 func artifactPublicationIntentFixture(artifactID, operationSuffix, body string) persistence.ArtifactPublicationIntent {

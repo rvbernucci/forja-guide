@@ -1008,7 +1008,9 @@ def verify_knowledge_receipt(receipt, candidates, scope_parts):
             aggregate_id=scope_parts[2],
         )
         status = 201
-        parts = [go_json_bytes(ordered_manifest(response)).decode("utf-8")]
+        manifest_intent = ordered_manifest(response)
+        manifest_intent["created_at"] = "0001-01-01T00:00:00Z"
+        parts = [go_json_bytes(manifest_intent).decode("utf-8")]
     elif command == "conversation_close":
         primary = find_event(
             candidates, "conversation", "conversation.closed", response,
@@ -1032,7 +1034,9 @@ def verify_knowledge_receipt(receipt, candidates, scope_parts):
             aggregate_id=scope_parts[2],
         )
         status = 201
-        parts = [go_json_bytes(ordered_candidate(response)).decode("utf-8")]
+        candidate_intent = ordered_candidate(response)
+        candidate_intent["proposed_at"] = "0001-01-01T00:00:00Z"
+        parts = [go_json_bytes(candidate_intent).decode("utf-8")]
     elif command == "memory_promote":
         primary = find_event(
             candidates, "memory", "memory.promoted", response,
@@ -1048,8 +1052,10 @@ def verify_knowledge_receipt(receipt, candidates, scope_parts):
             if event["aggregate_type"] == "memory"
             and event["event_type"] == "memory.superseded"
         )
+        memory_intent = ordered_memory(response)
+        memory_intent["promoted_at"] = "0001-01-01T00:00:00Z"
         command_value = {
-            "Memory": ordered_memory(response),
+            "Memory": memory_intent,
             "ExpectedCandidateVersion": promoted_candidate["payload"]["version"] - 1,
         }
         status = 201
@@ -1117,10 +1123,25 @@ def verify_knowledge_receipt(receipt, candidates, scope_parts):
             candidates, "artifact", "artifact.object_purged",
         )
         content_hash = "sha256:" + scope_parts[3]
-        if primary["payload"] != {"content_hash": content_hash, "deleted": True}:
+        require_object(
+            primary["payload"],
+            {"content_hash", "provider_etag", "provider_version", "deleted"},
+            "artifact purge",
+        )
+        if (
+            primary["payload"]["content_hash"] != content_hash
+            or not isinstance(primary["payload"]["provider_etag"], str)
+            or not primary["payload"]["provider_etag"].strip()
+            or not isinstance(primary["payload"]["provider_version"], str)
+            or primary["payload"]["deleted"] is not True
+        ):
             raise ValueError("artifact purge event differs from its scope")
         status = 200
-        parts = [content_hash]
+        parts = [
+            content_hash,
+            primary["payload"]["provider_etag"],
+            primary["payload"]["provider_version"],
+        ]
     else:
         raise AssertionError(f"unreachable knowledge command {command}")
 

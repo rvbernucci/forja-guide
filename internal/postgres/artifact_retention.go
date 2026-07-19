@@ -117,7 +117,8 @@ func (s *Store) ListArtifactRetentionCandidates(
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT encode(object.content_sha256, 'hex'), object.object_key,
-		       object.provider_etag, object.size_bytes, object.media_type,
+		       object.provider_etag, COALESCE(object.provider_version, ''),
+		       object.size_bytes, object.media_type,
 		       object.tombstoned_at
 		FROM forja.artifact_objects AS object
 		WHERE object.tenant_id=$1 AND object.repository_id=$2
@@ -140,7 +141,7 @@ func (s *Store) ListArtifactRetentionCandidates(
 	for rows.Next() {
 		var item persistence.RetentionCandidate
 		var digestHex string
-		if err := rows.Scan(&digestHex, &item.ObjectKey, &item.ETag, &item.SizeBytes, &item.MediaType, &item.TombstonedAt); err != nil {
+		if err := rows.Scan(&digestHex, &item.ObjectKey, &item.ETag, &item.VersionID, &item.SizeBytes, &item.MediaType, &item.TombstonedAt); err != nil {
 			return nil, databaseError("postgres.ListArtifactRetentionCandidates.scan", err)
 		}
 		item.TenantID = s.tenantID
@@ -159,6 +160,7 @@ func (s *Store) MarkArtifactObjectPurged(
 	ctx context.Context,
 	contentHash string,
 	expectedETag string,
+	expectedVersionID string,
 	metadata runstate.CommandMetadata,
 ) error {
 	if err := validateRetentionAuthority(metadata); err != nil {
@@ -169,7 +171,7 @@ func (s *Store) MarkArtifactObjectPurged(
 		return fault.New(fault.CodeInvalidArgument, "postgres.MarkArtifactObjectPurged", "purge evidence is invalid")
 	}
 	scope := "artifact_object_purge:" + s.repositoryID + ":" + contentHash
-	requestHash := hashKnowledgeCommand(metadata, contentHash)
+	requestHash := hashKnowledgeCommand(metadata, contentHash, expectedETag, expectedVersionID)
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return databaseError("postgres.MarkArtifactObjectPurged.begin", err)
@@ -186,28 +188,20 @@ func (s *Store) MarkArtifactObjectPurged(
 		}
 		return nil
 	}
-	var state, storedETag string
+	var state, storedETag, storedVersionID string
 	if err := tx.QueryRow(ctx, `
-		SELECT state, provider_etag FROM forja.artifact_objects
+		SELECT state, provider_etag, COALESCE(provider_version, '')
+		FROM forja.artifact_objects
 		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3
 		FOR UPDATE`, s.tenantID, s.repositoryID, digest,
-	).Scan(&state, &storedETag); err != nil {
+	).Scan(&state, &storedETag, &storedVersionID); err != nil {
 		return databaseError("postgres.MarkArtifactObjectPurged.load", err)
 	}
-	if state != "tombstoned" || storedETag != expectedETag {
+	if state != "tombstoned" || storedETag != expectedETag || storedVersionID != expectedVersionID {
 		return fault.New(fault.CodeConflict, "postgres.MarkArtifactObjectPurged", "object is not the exact tombstoned purge candidate")
 	}
-	var liveAliases bool
-	if err := tx.QueryRow(ctx, `
-		SELECT EXISTS (
-			SELECT 1 FROM forja.artifacts
-			WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3
-			  AND tombstoned_at IS NULL
-		)`, s.tenantID, s.repositoryID, digest).Scan(&liveAliases); err != nil {
-		return databaseError("postgres.MarkArtifactObjectPurged.references", err)
-	}
-	if liveAliases {
-		return fault.New(fault.CodeConflict, "postgres.MarkArtifactObjectPurged", "live artifact aliases prevent purge")
+	if err := ensureNoLiveArtifactReferences(ctx, tx, s.tenantID, s.repositoryID, "", digest); err != nil {
+		return err
 	}
 	now := postgresTimestamp(s.clock.Now())
 	if _, err := tx.Exec(ctx, `
@@ -219,9 +213,11 @@ func (s *Store) MarkArtifactObjectPurged(
 		return databaseError("postgres.MarkArtifactObjectPurged.update", err)
 	}
 	payload, _ := json.Marshal(struct {
-		ContentHash string `json:"content_hash"`
-		Deleted     bool   `json:"deleted"`
-	}{ContentHash: contentHash, Deleted: true})
+		ContentHash     string `json:"content_hash"`
+		ProviderETag    string `json:"provider_etag"`
+		ProviderVersion string `json:"provider_version"`
+		Deleted         bool   `json:"deleted"`
+	}{ContentHash: contentHash, ProviderETag: expectedETag, ProviderVersion: expectedVersionID, Deleted: true})
 	if err := s.appendEvent(ctx, tx, "artifact", "object:"+contentHash, 1, "artifact.object_purged", now, payload, metadata); err != nil {
 		return err
 	}
@@ -248,36 +244,43 @@ func ensureNoLiveArtifactReferences(
 				JOIN forja.messages AS message USING (tenant_id, repository_id, message_id)
 				JOIN forja.conversations AS conversation USING (tenant_id, repository_id, conversation_id)
 				WHERE part.tenant_id=$1 AND part.repository_id=$2
-				  AND part.artifact_id=$3 AND part.content_sha256=$4
+				  AND ($3='' OR part.artifact_id=$3) AND part.content_sha256=$4
 				  AND conversation.status<>'tombstoned'
 			) OR EXISTS (
 				SELECT 1 FROM forja.message_citations AS citation
 				JOIN forja.messages AS message USING (tenant_id, repository_id, message_id)
 				JOIN forja.conversations AS conversation USING (tenant_id, repository_id, conversation_id)
 				WHERE citation.tenant_id=$1 AND citation.repository_id=$2
-				  AND citation.source_artifact_id=$3 AND citation.source_content_sha256=$4
+				  AND ($3='' OR citation.source_artifact_id=$3) AND citation.source_content_sha256=$4
 				  AND conversation.status<>'tombstoned'
 			) OR EXISTS (
 				SELECT 1 FROM forja.memory_candidates AS candidate
 				WHERE candidate.tenant_id=$1 AND candidate.repository_id=$2
-				  AND candidate.proposed_artifact_id=$3 AND candidate.proposed_content_sha256=$4
+				  AND ($3='' OR candidate.proposed_artifact_id=$3) AND candidate.proposed_content_sha256=$4
 				  AND candidate.status='proposed'
 			) OR EXISTS (
 				SELECT 1 FROM forja.memory_records AS memory
 				WHERE memory.tenant_id=$1 AND memory.repository_id=$2
-				  AND memory.content_artifact_id=$3 AND memory.content_sha256=$4
+				  AND ($3='' OR memory.content_artifact_id=$3) AND memory.content_sha256=$4
 				  AND memory.status IN ('active', 'superseded')
 			) OR EXISTS (
 				SELECT 1 FROM forja.conversations AS conversation
 				WHERE conversation.tenant_id=$1 AND conversation.repository_id=$2
-				  AND conversation.transcript_artifact_id=$3
+				  AND ($3='' OR conversation.transcript_artifact_id=$3)
+				  AND EXISTS (
+					SELECT 1 FROM forja.artifacts AS transcript
+					WHERE transcript.tenant_id=conversation.tenant_id
+					  AND transcript.repository_id=conversation.repository_id
+					  AND transcript.artifact_id=conversation.transcript_artifact_id
+					  AND transcript.content_sha256=$4
+				  )
 				  AND conversation.status<>'tombstoned'
 			) OR EXISTS (
 				SELECT 1
 				FROM forja.artifact_bundle_entries AS entry
 				JOIN forja.artifact_bundle_manifests AS manifest USING (tenant_id, repository_id, manifest_id)
 				WHERE entry.tenant_id=$1 AND entry.repository_id=$2
-				  AND entry.artifact_id=$3 AND entry.content_sha256=$4
+				  AND ($3='' OR entry.artifact_id=$3) AND entry.content_sha256=$4
 				  AND (
 					manifest.family<>'conversation_transcript'
 					OR NOT EXISTS (

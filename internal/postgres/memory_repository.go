@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
@@ -23,13 +25,12 @@ func (s *Store) ProposeMemory(
 	if err := runstate.ValidateCommandMetadata(metadata); err != nil {
 		return contracts.MemoryCandidate{}, err
 	}
-	now := postgresTimestamp(s.clock.Now())
 	candidate.SchemaVersion = contracts.KnowledgeSchemaVersion
 	candidate.TenantID = "tenant_" + s.tenantID
 	candidate.RepositoryID = "repo_" + s.repositoryID
 	candidate.Status = "proposed"
 	candidate.Version = 1
-	candidate.ProposedAt = now
+	candidate.ProposedAt = time.Time{}
 	candidate.MemoryID = nil
 	candidate.ResolvedBy = nil
 	candidate.ResolutionReason = nil
@@ -37,12 +38,17 @@ func (s *Store) ProposeMemory(
 	if candidate.ProposedBy != metadata.ActorID {
 		return contracts.MemoryCandidate{}, fault.New(fault.CodeInvalidArgument, "postgres.ProposeMemory", "candidate proposer does not match command actor")
 	}
+	requestBytes, err := json.Marshal(candidate)
+	if err != nil {
+		return contracts.MemoryCandidate{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.ProposeMemory", "encode candidate intent", err)
+	}
+	scope := "memory_candidate_propose:" + s.repositoryID + ":" + candidate.CandidateID
+	requestHash := hashKnowledgeCommand(metadata, string(requestBytes))
+	now := postgresTimestamp(s.clock.Now())
+	candidate.ProposedAt = now
 	if err := contracts.ValidateMemoryCandidate(candidate); err != nil {
 		return contracts.MemoryCandidate{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.ProposeMemory", "validate candidate", err)
 	}
-	encoded, _ := json.Marshal(candidate)
-	scope := "memory_candidate_propose:" + s.repositoryID + ":" + candidate.CandidateID
-	requestHash := hashKnowledgeCommand(metadata, string(encoded))
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return contracts.MemoryCandidate{}, databaseError("postgres.ProposeMemory.begin", err)
@@ -128,30 +134,45 @@ func (s *Store) PromoteMemory(
 		return contracts.MemoryRecord{}, err
 	}
 	memory := command.Memory
-	if memory.PromotedBy != metadata.ActorID ||
+	if memory.Supersedes == nil {
+		memory.Supersedes = []string{}
+	}
+	principal := command.Principal
+	_, canPromote := principal.Permissions[control.PermissionMemoryPromote]
+	if principal.ActorID != metadata.ActorID || principal.ActorType != metadata.ActorType ||
+		principal.TenantID != s.tenantID || principal.RepositoryID != s.repositoryID ||
+		!canPromote || memory.PromotedBy != metadata.ActorID ||
 		(memory.AuthorityClass == "human_approved" && metadata.ActorType != "human") ||
-		(memory.AuthorityClass == "policy_approved" && metadata.ActorType != "system") ||
+		(memory.AuthorityClass == "policy_approved" &&
+			(metadata.ActorType != "system" || metadata.ActorID != s.memoryPolicyPrincipalID || s.memoryPolicyPrincipalID == "")) ||
 		!slices.Contains([]string{"human_approved", "policy_approved"}, memory.AuthorityClass) {
 		return contracts.MemoryRecord{}, fault.New(fault.CodePermissionDenied, "postgres.PromoteMemory", "actor cannot promote durable memory")
 	}
-	now := postgresTimestamp(s.clock.Now())
 	memory.SchemaVersion = contracts.KnowledgeSchemaVersion
 	memory.TenantID = "tenant_" + s.tenantID
 	memory.RepositoryID = "repo_" + s.repositoryID
 	memory.Status = "active"
 	memory.Version = 1
-	memory.PromotedAt = now
+	memory.PromotedAt = time.Time{}
 	memory.SupersededBy = nil
 	memory.SupersededAt = nil
 	memory.ExpiredAt = nil
 	memory.TombstonedAt = nil
+	requestCommand := struct {
+		Memory                   contracts.MemoryRecord
+		ExpectedCandidateVersion int
+	}{Memory: memory, ExpectedCandidateVersion: command.ExpectedCandidateVersion}
+	encoded, err := json.Marshal(requestCommand)
+	if err != nil {
+		return contracts.MemoryRecord{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.PromoteMemory", "encode memory intent", err)
+	}
+	scope := "memory_promote:" + s.repositoryID + ":" + memory.MemoryID
+	requestHash := hashKnowledgeCommand(metadata, string(encoded))
+	now := postgresTimestamp(s.clock.Now())
+	memory.PromotedAt = now
 	if err := contracts.ValidateMemoryRecord(memory); err != nil {
 		return contracts.MemoryRecord{}, fault.Wrap(fault.CodeInvalidArgument, "postgres.PromoteMemory", "validate memory", err)
 	}
-	command.Memory = memory
-	encoded, _ := json.Marshal(command)
-	scope := "memory_promote:" + s.repositoryID + ":" + memory.MemoryID
-	requestHash := hashKnowledgeCommand(metadata, string(encoded))
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
 		return contracts.MemoryRecord{}, databaseError("postgres.PromoteMemory.begin", err)
@@ -404,7 +425,10 @@ func (s *Store) ListActiveMemories(ctx context.Context, kind string, limit int) 
 		limit < 1 || limit > 500 {
 		return nil, fault.New(fault.CodeInvalidArgument, "postgres.ListActiveMemories", "memory query is invalid")
 	}
-	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{AccessMode: pgx.ReadOnly})
+	now := postgresTimestamp(s.clock.Now())
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly,
+	})
 	if err != nil {
 		return nil, databaseError("postgres.ListActiveMemories.begin", err)
 	}
@@ -413,10 +437,10 @@ func (s *Store) ListActiveMemories(ctx context.Context, kind string, limit int) 
 		SELECT memory_id
 		FROM forja.memory_records
 		WHERE tenant_id=$1 AND repository_id=$2 AND status='active'
-		  AND (expires_at IS NULL OR expires_at > clock_timestamp())
-		  AND ($3='' OR kind=$3)
+		  AND (expires_at IS NULL OR expires_at > $3)
+		  AND ($4='' OR kind=$4)
 		ORDER BY promoted_at DESC, memory_id
-		LIMIT $4`, s.tenantID, s.repositoryID, kind, limit)
+		LIMIT $5`, s.tenantID, s.repositoryID, now, kind, limit)
 	if err != nil {
 		return nil, databaseError("postgres.ListActiveMemories", err)
 	}
@@ -438,6 +462,9 @@ func (s *Store) ListActiveMemories(ctx context.Context, kind string, limit int) 
 		value, err := loadMemoryRecord(ctx, tx, s.tenantID, s.repositoryID, id, false)
 		if err != nil {
 			return nil, err
+		}
+		if value.Status != "active" || (value.ExpiresAt != nil && !value.ExpiresAt.After(now)) {
+			return nil, fault.New(fault.CodeInternal, "postgres.ListActiveMemories", "active-memory snapshot contains an ineligible record")
 		}
 		result = append(result, value)
 	}

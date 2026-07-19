@@ -14,8 +14,8 @@ import (
 
 func TestRetentionPurgesOnlyCanonicalCandidates(t *testing.T) {
 	repository := &fakeRetentionRepository{candidates: []persistence.RetentionCandidate{
-		{ContentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ETag: "one", SizeBytes: 1, MediaType: "text/plain"},
-		{ContentHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", ETag: "two", SizeBytes: 1, MediaType: "text/plain"},
+		{ContentHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ETag: "one", VersionID: "version-one", SizeBytes: 1, MediaType: "text/plain"},
+		{ContentHash: "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", ETag: "two", VersionID: "version-two", SizeBytes: 1, MediaType: "text/plain"},
 	}}
 	purger := &fakeBodyPurger{failETag: "two"}
 	service, err := NewRetentionService(repository, purger)
@@ -51,14 +51,14 @@ func (f *fakeRetentionRepository) ListArtifactRetentionCandidates(context.Contex
 	return f.candidates, nil
 }
 
-func (f *fakeRetentionRepository) MarkArtifactObjectPurged(context.Context, string, string, runstate.CommandMetadata) error {
+func (f *fakeRetentionRepository) MarkArtifactObjectPurged(context.Context, string, string, string, runstate.CommandMetadata) error {
 	f.marked++
 	return nil
 }
 
 type fakeBodyPurger struct{ failETag string }
 
-func (f *fakeBodyPurger) Delete(_ context.Context, _ objectstore.Authority, _ objectstore.Descriptor, etag string) error {
+func (f *fakeBodyPurger) Delete(_ context.Context, _ objectstore.Authority, _ objectstore.Descriptor, etag, _ string) error {
 	if etag == f.failETag {
 		return objectstore.ErrUnavailable
 	}

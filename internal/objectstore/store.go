@@ -159,6 +159,7 @@ func (s *Store) Delete(
 	authority Authority,
 	descriptor Descriptor,
 	expectedETag string,
+	versionID string,
 ) error {
 	key, err := validateAndKey(authority, descriptor)
 	if err != nil {
@@ -167,11 +168,15 @@ func (s *Store) Delete(
 	if strings.TrimSpace(expectedETag) == "" {
 		return fmt.Errorf("expected ETag is required for physical purge")
 	}
-	if _, err := s.client.DeleteObject(ctx, &s3.DeleteObjectInput{
+	input := &s3.DeleteObjectInput{
 		Bucket:  aws.String(s.bucket),
 		Key:     aws.String(key),
 		IfMatch: aws.String(expectedETag),
-	}); err != nil {
+	}
+	if versionID != "" {
+		input.VersionId = aws.String(versionID)
+	}
+	if _, err := s.client.DeleteObject(ctx, input); err != nil {
 		if isNotFound(err) {
 			return ErrNotFound
 		}

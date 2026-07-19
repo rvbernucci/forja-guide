@@ -18,7 +18,7 @@ type RetentionRepository interface {
 }
 
 type BodyPurger interface {
-	Delete(context.Context, objectstore.Authority, objectstore.Descriptor, string) error
+	Delete(context.Context, objectstore.Authority, objectstore.Descriptor, string, string) error
 }
 
 type RetentionReport struct {
@@ -69,14 +69,14 @@ func (s *RetentionService) Purge(
 		}
 		deleteErr := s.bodies.Delete(ctx, objectstore.Authority{
 			TenantID: authority.TenantID, RepositoryID: authority.RepositoryID,
-		}, descriptor, candidate.ETag)
+		}, descriptor, candidate.ETag, candidate.VersionID)
 		if deleteErr != nil && !errors.Is(deleteErr, objectstore.ErrNotFound) {
 			report.Deferred++
 			continue
 		}
 		itemMetadata := reconciliationMetadata(metadata, candidate.ContentHash)
 		if err := s.repository.MarkArtifactObjectPurged(
-			ctx, candidate.ContentHash, candidate.ETag, itemMetadata,
+			ctx, candidate.ContentHash, candidate.ETag, candidate.VersionID, itemMetadata,
 		); err != nil {
 			report.Deferred++
 			continue

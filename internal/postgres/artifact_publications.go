@@ -89,19 +89,24 @@ func (s *Store) PrepareArtifactPublication(
 	); err != nil {
 		return persistence.ArtifactPublication{}, nil, databaseError("postgres.PrepareArtifactPublication.reserveObject", err)
 	}
-	var storedKey, storedMediaType string
+	var storedKey, storedMediaType, storedState string
 	var storedSize int64
 	if err := tx.QueryRow(ctx, `
-		SELECT object_key, size_bytes, media_type
+		SELECT object_key, size_bytes, media_type, state
 		FROM forja.artifact_objects
 		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3
 		FOR UPDATE`, s.tenantID, s.repositoryID, digest,
-	).Scan(&storedKey, &storedSize, &storedMediaType); err != nil {
+	).Scan(&storedKey, &storedSize, &storedMediaType, &storedState); err != nil {
 		return persistence.ArtifactPublication{}, nil, databaseError("postgres.PrepareArtifactPublication.verifyObject", err)
 	}
 	if storedKey != objectKey || storedSize != intent.SizeBytes || storedMediaType != intent.MediaType {
 		return persistence.ArtifactPublication{}, nil, fault.New(
 			fault.CodeConflict, "postgres.PrepareArtifactPublication", "content hash is bound to different metadata",
+		)
+	}
+	if storedState == "tombstoned" || storedState == "purged" {
+		return persistence.ArtifactPublication{}, nil, fault.New(
+			fault.CodeConflict, "postgres.PrepareArtifactPublication", "content object has completed its retention lifecycle",
 		)
 	}
 	if _, err := tx.Exec(ctx, `
@@ -253,7 +258,7 @@ func (s *Store) CompleteArtifactPublication(
 		return contracts.Artifact{}, fault.New(fault.CodeConflict, "postgres.CompleteArtifactPublication", "artifact publication cannot activate from its current state")
 	}
 	now := postgresTimestamp(s.clock.Now())
-	if _, err := tx.Exec(ctx, `
+	objectResult, err := tx.Exec(ctx, `
 		UPDATE forja.artifact_objects
 		SET state='active', provider_checksum_sha256=NULLIF($4, ''),
 			provider_etag=$5, provider_version=NULLIF($6, ''), failure_class=NULL,
@@ -262,8 +267,12 @@ func (s *Store) CompleteArtifactPublication(
 		  AND state IN ('reserved', 'uploading', 'verified', 'failed', 'active')`,
 		s.tenantID, s.repositoryID, digest, evidence.ProviderChecksumSHA256,
 		evidence.ETag, evidence.VersionID, now,
-	); err != nil {
+	)
+	if err != nil {
 		return contracts.Artifact{}, databaseError("postgres.CompleteArtifactPublication.object", err)
+	}
+	if objectResult.RowsAffected() != 1 {
+		return contracts.Artifact{}, fault.New(fault.CodeConflict, "postgres.CompleteArtifactPublication", "content object cannot be activated from its lifecycle state")
 	}
 	publication.State = "active"
 	publication.Version++
@@ -362,13 +371,18 @@ func (s *Store) FailArtifactPublication(
 	); err != nil {
 		return persistence.ArtifactPublication{}, databaseError("postgres.FailArtifactPublication.operation", err)
 	}
-	if _, err := tx.Exec(ctx, `
+	objectResult, err := tx.Exec(ctx, `
 		UPDATE forja.artifact_objects
 		SET state='failed', failure_class=$4, updated_at=$5
-		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3 AND state<>'active'`,
+		WHERE tenant_id=$1 AND repository_id=$2 AND content_sha256=$3
+		  AND state IN ('reserved', 'uploading', 'verified', 'failed')`,
 		s.tenantID, s.repositoryID, digest, failureClass, now,
-	); err != nil {
+	)
+	if err != nil {
 		return persistence.ArtifactPublication{}, databaseError("postgres.FailArtifactPublication.object", err)
+	}
+	if objectResult.RowsAffected() != 1 {
+		return persistence.ArtifactPublication{}, fault.New(fault.CodeConflict, "postgres.FailArtifactPublication", "content object cannot enter failed state from its lifecycle state")
 	}
 	if err := s.appendArtifactPublicationEvent(ctx, tx, "artifact.publication_failed", publication, metadata); err != nil {
 		return persistence.ArtifactPublication{}, err

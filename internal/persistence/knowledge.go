@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/rvbernucci/forja-guide/internal/contracts"
+	"github.com/rvbernucci/forja-guide/internal/control"
 	"github.com/rvbernucci/forja-guide/internal/runstate"
 )
 
@@ -28,6 +29,7 @@ type CloseConversationCommand struct {
 type MemoryPromotionCommand struct {
 	Memory                   contracts.MemoryRecord
 	ExpectedCandidateVersion int
+	Principal                control.Principal
 }
 
 type KnowledgeRepository interface {
@@ -91,6 +93,7 @@ type RetentionCandidate struct {
 	ContentHash  string
 	ObjectKey    string
 	ETag         string
+	VersionID    string
 	SizeBytes    int64
 	MediaType    string
 	TombstonedAt time.Time
@@ -110,6 +113,7 @@ type ArtifactRetentionRepository interface {
 	) ([]RetentionCandidate, error)
 	MarkArtifactObjectPurged(
 		context.Context,
+		string,
 		string,
 		string,
 		runstate.CommandMetadata,
