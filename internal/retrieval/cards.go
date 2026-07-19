@@ -3,6 +3,9 @@ package retrieval
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -98,6 +101,67 @@ func BuildTestSource(snapshot contracts.RepositorySnapshot, file contracts.FileC
 		return CardSource{}, fmt.Errorf("test source requires a canonical test symbol")
 	}
 	return buildIndexedSymbolSource(snapshot, file, symbol, authorityClass, proofRefs, "test")
+}
+
+// BuildDecisionSource produces a bounded card for a resolved, durable approval
+// decision. Pending decisions are intentionally absent: they are not a stable
+// outcome and must not influence future context selection.
+func BuildDecisionSource(tenantID, repositoryID string, decision contracts.Decision) (CardSource, error) {
+	if err := validateDecisionForRetrieval(decision); err != nil {
+		return CardSource{}, err
+	}
+	sourceHash, err := decisionSourceHash(decision)
+	if err != nil {
+		return CardSource{}, err
+	}
+	body := "risk_class: " + decision.RiskClass + "\nstatus: " + decision.Status
+	if decision.Reason != nil {
+		body += "\nreason: " + *decision.Reason
+	}
+	return CardSource{
+		TenantID: tenantID, RepositoryID: repositoryID,
+		EntityID: decision.DecisionID, ArtifactFamily: "decision", SourceHash: sourceHash,
+		AuthorityClass: "canonical", Status: "active",
+		Title: "decision: " + decision.Action, Body: body,
+		ProofRefs: []string{"decision:" + decision.DecisionID, "sprint:" + decision.SprintID, "run:" + decision.RunID},
+	}, nil
+}
+
+func validateDecisionForRetrieval(decision contracts.Decision) error {
+	if decision.SchemaVersion != "1.0" || !strings.HasPrefix(decision.DecisionID, "decision_") ||
+		!strings.HasPrefix(decision.SprintID, "sprint_") || !strings.HasPrefix(decision.RunID, "run_") ||
+		decision.Version < 1 || strings.TrimSpace(decision.Action) != decision.Action || decision.Action == "" || len(decision.Action) > 160 ||
+		(decision.RiskClass != "low" && decision.RiskClass != "medium" && decision.RiskClass != "high" && decision.RiskClass != "critical") ||
+		(decision.Status != "approved" && decision.Status != "rejected") || decision.DecidedBy == nil || strings.TrimSpace(*decision.DecidedBy) == "" ||
+		decision.Reason == nil || strings.TrimSpace(*decision.Reason) == "" || len(*decision.Reason) > 2000 || decision.DecidedAt == nil || decision.DecidedAt.IsZero() {
+		return fmt.Errorf("decision is not a resolved canonical retrieval source")
+	}
+	return nil
+}
+
+func decisionSourceHash(decision contracts.Decision) (string, error) {
+	payload := struct {
+		DecisionID string  `json:"decision_id"`
+		SprintID   string  `json:"sprint_id"`
+		RunID      string  `json:"run_id"`
+		Action     string  `json:"action"`
+		RiskClass  string  `json:"risk_class"`
+		Status     string  `json:"status"`
+		Version    int     `json:"version"`
+		Requested  string  `json:"requested_by"`
+		Decided    *string `json:"decided_by"`
+		Reason     *string `json:"reason"`
+	}{
+		DecisionID: decision.DecisionID, SprintID: decision.SprintID, RunID: decision.RunID,
+		Action: decision.Action, RiskClass: decision.RiskClass, Status: decision.Status,
+		Version: decision.Version, Requested: decision.RequestedBy, Decided: decision.DecidedBy, Reason: decision.Reason,
+	}
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("encode canonical decision source: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "sha256:" + hex.EncodeToString(digest[:]), nil
 }
 
 func buildIndexedSymbolSource(snapshot contracts.RepositorySnapshot, file contracts.FileCard, symbol contracts.SymbolCard, authorityClass string, proofRefs []string, artifactFamily string) (CardSource, error) {

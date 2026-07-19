@@ -80,6 +80,34 @@ func TestBuildTestSourceRequiresCanonicalTestAndUsesTestFamily(t *testing.T) {
 	}
 }
 
+func TestBuildDecisionSourceRequiresResolvedCanonicalDecisionAndIsStable(t *testing.T) {
+	t.Parallel()
+	decidedAt := time.Date(2026, 7, 19, 17, 0, 0, 0, time.UTC)
+	decidedBy := "operator"
+	reason := "The bounded change is ready."
+	decision := contracts.Decision{
+		DecisionID: "decision_11111111-2222-4333-8444-555555555555", SchemaVersion: "1.0",
+		SprintID: "sprint_11111111-2222-4333-8444-555555555555", RunID: "run_fixture",
+		Action: "submit_sprint", RiskClass: "medium", Status: "approved", Version: 2,
+		RequestedBy: "planner", DecidedBy: &decidedBy, Reason: &reason, DecidedAt: &decidedAt,
+	}
+	first, err := BuildDecisionSource(retrievalTenantID, retrievalRepositoryID, decision)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := BuildDecisionSource(retrievalTenantID, retrievalRepositoryID, decision)
+	if err != nil || first.SourceHash != second.SourceHash || first.ArtifactFamily != "decision" || first.SourceCommit != nil {
+		t.Fatalf("first=%#v second=%#v err=%v", first, second, err)
+	}
+	if _, err := BuildCardText(first); err != nil {
+		t.Fatal(err)
+	}
+	decision.Status = "pending"
+	if _, err := BuildDecisionSource(retrievalTenantID, retrievalRepositoryID, decision); err == nil {
+		t.Fatal("pending decision was accepted for retrieval")
+	}
+}
+
 func TestHashingSparseEncoderIsStableAndNormalized(t *testing.T) {
 	t.Parallel()
 	encoder := HashingSparseEncoder{}
