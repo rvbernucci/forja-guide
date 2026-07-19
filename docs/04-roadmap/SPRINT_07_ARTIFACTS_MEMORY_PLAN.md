@@ -97,36 +97,36 @@ gate.
 - [x] Re-read every first publication and verify exact bytes before activation.
 - [x] Treat an existing key as idempotent only after size, metadata, and body
   verification.
-- [ ] Reconcile interrupted uploads, missing objects, mismatched objects, and
+- [x] Reconcile interrupted uploads, missing objects, mismatched objects, and
   canonical records left before finalization.
 
 ### 4. Conversations and memory
 
-- [ ] Append conversations, messages, ordered content parts, and citations
+- [x] Append conversations, messages, ordered content parts, and citations
   without storing raw body bytes in PostgreSQL.
-- [ ] Close a conversation through an immutable transcript bundle manifest.
-- [ ] Propose memory only from canonical message and artifact references.
-- [ ] Promote memory only through dedicated human or policy authority.
-- [ ] Implement rejection, supersession, expiry, and tombstoning.
-- [ ] Emit projection-safe tombstone events before deletion.
+- [x] Close a conversation through an immutable transcript bundle manifest.
+- [x] Propose memory only from canonical message and artifact references.
+- [x] Promote memory only through dedicated human or policy authority.
+- [x] Implement rejection, supersession, expiry, and tombstoning.
+- [x] Emit projection-safe tombstone events before deletion.
 
 ### 5. Retention, manifests, and observability
 
-- [ ] Publish immutable, canonically ordered evidence bundle manifests.
-- [ ] Prevent purge while any live canonical reference remains.
-- [ ] Add bounded metrics and traces for object operations and memory lifecycle.
-- [ ] Exclude raw content, keys, credentials, and storage errors from telemetry.
-- [ ] Document backup, restore, reconciliation, and credential rotation.
+- [x] Publish immutable, canonically ordered evidence bundle manifests.
+- [x] Prevent purge while any live canonical reference remains.
+- [x] Add bounded metrics and traces for object operations and memory lifecycle.
+- [x] Exclude raw content, keys, credentials, and storage errors from telemetry.
+- [x] Document backup, restore, reconciliation, and credential rotation.
 
 ### 6. Acceptance and closure
 
-- [ ] Archive and restore a multi-object evidence bundle against PostgreSQL and
+- [x] Archive and restore a multi-object evidence bundle against PostgreSQL and
   a real S3-compatible endpoint.
-- [ ] Prove idempotent concurrent publication of identical bytes.
-- [ ] Prove hash mismatch, partial upload, missing object, and cross-tenant
+- [x] Prove idempotent concurrent publication of identical bytes.
+- [x] Prove hash mismatch, partial upload, missing object, and cross-tenant
   references fail closed.
-- [ ] Prove chat cannot promote itself into durable memory.
-- [ ] Prove tombstones precede purge and derived deletion requests.
+- [x] Prove chat cannot promote itself into durable memory.
+- [x] Prove tombstones precede purge and derived deletion requests.
 - [ ] Rehearse rollback to the authoritative Sprint 06 commit.
 - [ ] Run race, integration, security, and independent full-range reviews.
 - [ ] Publish a fail-closed Sprint 07 candidate and close it through the

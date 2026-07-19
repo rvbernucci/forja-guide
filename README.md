@@ -10,8 +10,8 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the closed **Sprint 05 isolated delivery boundary** and
-the in-progress **Sprint 06 observability plane** alongside the public
+This repository includes the closed **Sprint 06 fail-soft observability plane**
+and the in-progress **Sprint 07 artifacts and governed memory candidate** alongside the public
 architecture and roadmap. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
@@ -53,13 +53,24 @@ confidentiality boundary: workers require a dedicated disposable host until
 separate-identity containment and credential brokerage close the documented
 Sprint 12 gate.
 
-The in-progress Sprint 06 plane adds W3C-propagated OpenTelemetry traces across
+The closed Sprint 06 plane adds W3C-propagated OpenTelemetry traces across
 MCP, HTTP, scheduler, worker, validation, delivery, and PostgreSQL boundaries;
 closed-label Prometheus metrics; context-derived trace IDs in redacted JSON
 logs; and a read-only operational collector for stuck work, leases, outbox,
 projection lag, approvals, and crash loops. A pinned local Prometheus, Loki,
 Alloy, Tempo, and Grafana profile provides alerts and a runtime dashboard.
 Telemetry remains disposable and cannot authorize or alter canonical state.
+
+The Sprint 07 candidate adds content-addressed S3-compatible storage behind an
+operator-bound adapter, a PostgreSQL-journaled publication and reconciliation
+saga, immutable evidence manifests, conversations and message references,
+human- or policy-governed memory promotion, and tombstone-before-purge
+retention. Bodies are fully re-read and SHA-256 verified before canonical
+activation. A two-plane restore drill recovered a three-object evidence bundle
+into a new PostgreSQL database and a separate MinIO data directory, then
+revalidated the complete bodies, schema, events, outbox, and command receipts.
+Sprint 07 remains non-authoritative until its independent review and closure
+receipt are published.
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -116,6 +127,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 | [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |
+| [`internal/knowledge`](internal/knowledge/) | Governed artifact publication, reconciliation, and retention orchestration |
+| [`internal/objectstore`](internal/objectstore/) | Conditional content-addressed S3 publication and full-body verification |
 | [`deploy/observability`](deploy/observability/) | Version-pinned local Prometheus, Loki, Alloy, Tempo, and Grafana stack |
 
 See [CHANGELOG.md](CHANGELOG.md) for public release history.

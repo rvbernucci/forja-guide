@@ -1,6 +1,6 @@
 # Artifacts, Conversations, and Memory Contract
 
-Status: Sprint 07 contract; implementation in progress
+Status: Sprint 07 implemented candidate
 
 ## Authority
 
@@ -46,6 +46,11 @@ If any step fails, the artifact remains non-active. Retry uses the same
 idempotency fingerprint. An existing object is evidence only after exact
 verification; ETag equality is insufficient.
 
+The immutable publication intent is stored with the operation journal. A
+system reconciler can therefore recover after process loss without borrowing
+the original caller identity or reconstructing provenance from incomplete
+columns.
+
 ## Conversation Rules
 
 - Message sequence numbers are allocated under a conversation row lock.
@@ -64,6 +69,7 @@ verification; ETag equality is insufficient.
 - Promotion may atomically supersede active memories but cannot form cycles.
 - Expired, superseded, and tombstoned memories are excluded from normal reads.
 - Deletion is tombstone-first and cannot remove still-referenced body objects.
+- Active memory reads exclude expired records at database time.
 
 ## Limits
 
@@ -81,3 +87,6 @@ failure, interrupted finalization, and canonical conflict. Reconciliation may
 verify and finish a previously authorized operation, mark it failed, or queue
 an unreferenced object for retention-aware purge. It may never invent an
 artifact, message, or memory that lacks canonical authorization.
+
+Operational procedures are defined in
+[Artifact Storage Operations](../06-operations/ARTIFACT_STORAGE_OPERATIONS.md).

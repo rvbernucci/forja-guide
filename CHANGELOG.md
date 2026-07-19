@@ -119,6 +119,12 @@ implementation releases.
   detached recovery renewal, and shutdown-race-safe heartbeat error retention.
 - Never-created retry binding recovery and a publication fence that blocks all
   incompatible Run transitions from `prepared` through `published`.
+- Content-addressed S3-compatible artifact publication with conditional writes,
+  complete SHA-256 re-verification, PostgreSQL saga recovery, and retention.
+- Immutable evidence manifests, append-only conversations and citations, and
+  human- or policy-authorized durable memory promotion with supersession.
+- Content-free operational counts for artifact reconciliation, integrity
+  failures, tombstones, memory candidates, and active memories.
 
 ### Changed
 

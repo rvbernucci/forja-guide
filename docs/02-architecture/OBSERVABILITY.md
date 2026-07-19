@@ -1,6 +1,6 @@
 # Observability Architecture
 
-Status: Sprint 06 foundation implemented; closure pending
+Status: Sprint 06 foundation closed; Sprint 07 artifact and memory conditions added
 
 The trust, propagation, persistence, and failure behavior of this subsystem is
 recorded in
@@ -51,6 +51,10 @@ Implemented foundation metrics:
 - canonical outbox-to-projection checkpoint lag;
 - pending approval count;
 - worker crash-loop count;
+- stale artifact publication reconciliation count;
+- terminal artifact integrity failure count;
+- tombstoned object count;
+- live proposed-memory candidate and active-memory counts;
 - process and Go runtime metrics.
 
 Retrieval quality, graph quality, model cost, token budgets, and evidence
