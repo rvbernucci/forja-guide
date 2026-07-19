@@ -1,0 +1,16 @@
+SPRINT=07
+IMPLEMENTATION_COMMIT=1844cf2f046bb244372336b7bc7ecf0073a19194
+ARTIFACT_RESTORE_DRILL=passed
+POSTGRES_BACKUP_SHA256=cb745bc8146395467e420a2062541d044dfa5b44d37cc2d826f680befea6d392
+SOURCE_OBJECT_INVENTORY_SHA256=a93d117255cdfa3bf88ea9126dfd370425e3d4cdec43ab91be79c41b52319f82
+RESTORED_OBJECT_INVENTORY_SHA256=a93d117255cdfa3bf88ea9126dfd370425e3d4cdec43ab91be79c41b52319f82
+RESTORED_ARTIFACTS=3
+OBJECT_VERSIONING=enabled
+CANONICAL_READBACK=passed
+PHYSICAL_INVENTORY_MATCH=passed
+
+This sanitized receipt records the final local rehearsal. The runner created
+isolated source and restore databases, published a three-object evidence
+bundle, backed up and restored PostgreSQL, copied the stopped versioned object
+store, compared complete physical inventories, and revalidated every artifact
+body through the application API.

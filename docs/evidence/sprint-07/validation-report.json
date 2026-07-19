@@ -1,0 +1,81 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "validators": [
+    {
+      "name": "protected exact-main repository quality workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29682253548",
+      "head_sha": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+      "database": "PostgreSQL 18.3"
+    },
+    {
+      "name": "public CodeRabbit full-range implementation review",
+      "type": "independent",
+      "result": "findings_resolved",
+      "pull_request": "https://github.com/rvbernucci/forja-guide/pull/43",
+      "reviewed_commit": "0eed709c12b4955550f7db935219ba608c392208",
+      "reviewed_range_base": "115b6c117c5ffcc42b7a86f786aa89fb41aac554",
+      "reviewed_tree": "a1b0781ce9eb2b2f645feededddf7746ce052303",
+      "basis_tree": "a1b0781ce9eb2b2f645feededddf7746ce052303",
+      "artifact_path": "docs/evidence/sprint-07/reviews/merged-implementation-review.md",
+      "artifact_sha256": "b0d809931a010fa2a2ec87f58ae1cd023595daaa2acb8aaa497325ea3c3be15a",
+      "summary": "Iterative isolated reviews and the exact final public review resolved fifteen distinct findings; the final reviewed tree is byte-identical to the public implementation tree and CodeRabbit returned a passing status."
+    },
+    {
+      "name": "independent security review chain",
+      "type": "independent",
+      "result": "passed",
+      "summary": "No critical or high-severity vulnerability was found. Three observations were explicitly triaged as non-actionable under the declared trusted-administrator and ephemeral-test threat model."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit after this non-authoritative package is published to main."
+    }
+  ],
+  "resolved_review_findings": {
+    "count": 15,
+    "themes": [
+      "reference-safe lifecycle locking and exact-version purge",
+      "stable replay intent across clock changes",
+      "dedicated authenticated memory promotion authority",
+      "terminal reconciliation persistence and complete receipt verification",
+      "deterministic transcript bytes and exact provenance sets",
+      "schema parity, bounded manifests, and traversal rejection",
+      "concurrent full-service publication and reproducible two-plane restore",
+      "consistent not-found behavior"
+    ]
+  },
+  "acceptance": [
+    {
+      "criterion": "content-addressed publication is conditionally created, fully verified, and recoverable",
+      "result": "proven"
+    },
+    {
+      "criterion": "canonical references cannot race tombstone or exact-version purge",
+      "result": "proven"
+    },
+    {
+      "criterion": "closed conversations bind deterministic final transcript bytes and an exact source set",
+      "result": "proven"
+    },
+    {
+      "criterion": "agent-authored input cannot promote itself into durable memory",
+      "result": "proven"
+    },
+    {
+      "criterion": "database and physical object inventories restore together and pass canonical readback",
+      "result": "proven"
+    },
+    {
+      "criterion": "rollback refuses canonical history destruction and succeeds for an empty Sprint 07 schema",
+      "result": "proven"
+    }
+  ],
+  "recorded_at": "2026-07-19T09:59:25Z"
+}

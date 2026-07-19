@@ -1,0 +1,50 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "status": "passed",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-07/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
+    },
+    {
+      "name": "tenant and repository authority",
+      "result": "passed",
+      "summary": "Composite keys, scoped queries, operator-bound storage configuration, and cross-tenant negative tests prevent callers from selecting or crossing canonical authorities."
+    },
+    {
+      "name": "object integrity and substitution resistance",
+      "result": "passed",
+      "summary": "Keys derive only from validated authority and SHA-256, conditional writes reject replacement, first publication is fully reread, and purge requires exact ETag plus provider version evidence."
+    },
+    {
+      "name": "memory privilege separation",
+      "result": "passed",
+      "summary": "memory:promote is excluded from broad permission sets, untrusted agents and workers are mechanically denied it, and policy promotion requires the exact configured authenticated system principal."
+    },
+    {
+      "name": "conversation and citation provenance",
+      "result": "passed",
+      "summary": "Immutable messages reference active tenant-scoped artifacts, and conversation closure recomputes canonical transcript bytes plus the exact expected source-reference set."
+    },
+    {
+      "name": "retention and failure recovery",
+      "result": "passed",
+      "summary": "Tombstones commit before deletion, every live canonical reference is rechecked under lock, terminal reconciliation conflicts persist, and receipt verification rejects orphan knowledge events."
+    }
+  ],
+  "residual_risks": [
+    "PostgreSQL DBA, host root, CI administrator, and configured object-store administrator are trusted deployment roles and can alter their respective planes outside application controls.",
+    "Provider-specific conditional-write and checksum behavior must pass the documented capability probe before production admission.",
+    "Object-store credentials, network policy, encryption keys, bucket retention, and disaster-recovery geography remain deployment responsibilities.",
+    "Active-memory listing is bounded but not yet batched; this is a performance risk rather than an authorization or integrity risk.",
+    "Compiler lineage, semantic retrieval, graph projection, and context assembly remain intentionally absent until Sprints 08 through 11."
+  ],
+  "recorded_at": "2026-07-19T09:59:25Z"
+}

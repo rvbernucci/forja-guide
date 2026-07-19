@@ -1,0 +1,28 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "name": "Governed Artifacts, Conversations, and Memory",
+  "status": "completed",
+  "objective": "Preserve large work products and conversation evidence outside PostgreSQL while keeping lifecycle, provenance, authorization, retention, transcript binding, and durable memory promotion canonical and auditable inside PostgreSQL.",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "scope": [
+    "strict artifact bundle, conversation, message, memory candidate, and memory record contracts",
+    "Migration 007 PostgreSQL authority for artifact, conversation, message, citation, candidate, and memory lifecycle",
+    "content-addressed conditional S3-compatible publication with full-body verification and recovery journaling",
+    "reference-safe tombstone and exact ETag plus version physical purge",
+    "deterministic canonical conversation transcript bytes and exact source provenance",
+    "dedicated authenticated human or configured policy-system memory promotion authority",
+    "bounded content-free operational metrics, receipt verification, restore rehearsal, and rollback compatibility",
+    "iterative independent review, vulnerability scanning, and two-phase closure evidence"
+  ],
+  "out_of_scope": [
+    "compiler-derived repository and code lineage",
+    "Qdrant embeddings and semantic ranking",
+    "Neo4j graph projection",
+    "context-pack assembly",
+    "production object-store provisioning, network policy, and secret distribution"
+  ],
+  "author": "codex",
+  "independent_validator": "CodeRabbit full-range public review, protected GitHub Actions on PostgreSQL 18, and a separate immutable candidate review",
+  "completed_at": "2026-07-19T09:59:25Z"
+}
