@@ -12,6 +12,19 @@ from collections import defaultdict
 
 
 DOMAIN_AGGREGATES = {"run", "attempt", "sprint", "decision", "approval"}
+KNOWLEDGE_AGGREGATES = {
+    "artifact",
+    "artifact_manifest",
+    "conversation",
+    "memory",
+    "memory_candidate",
+    "message",
+}
+RECEIPT_BOUND_ARTIFACT_OPERATION_EVENTS = {
+    "artifact.publication_activated",
+    "artifact.publication_reconciled",
+    "artifact.publication_reconciliation_failed",
+}
 MUTATING_TOOLS = {
     "forja.plan_sprint",
     "forja.submit_sprint",
@@ -1574,6 +1587,16 @@ def is_generated_migration_event(event, events):
     )
 
 
+def requires_command_receipt(event):
+    """Identify canonical events that must be consumed by one durable receipt."""
+    if event["aggregate_type"] in DOMAIN_AGGREGATES | KNOWLEDGE_AGGREGATES:
+        return True
+    return (
+        event["aggregate_type"] == "artifact_operation"
+        and event["event_type"] in RECEIPT_BOUND_ARTIFACT_OPERATION_EVENTS
+    )
+
+
 def verify(command_events_path, receipts_path):
     events = load_events(command_events_path)
     receipts = load_receipts(receipts_path)
@@ -1731,7 +1754,7 @@ def verify(command_events_path, receipts_path):
         ] = evidence
 
     for event in events:
-        if event["aggregate_type"] in DOMAIN_AGGREGATES:
+        if requires_command_receipt(event):
             if is_generated_migration_event(event, events):
                 continue
             if (

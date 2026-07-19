@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import pathlib
 import unittest
+from unittest import mock
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -243,6 +244,23 @@ class KnowledgeReceiptEvidenceTests(unittest.TestCase):
         events[0]["repository_id"] = "00000000-0000-4000-8000-000000000099"
         with self.assertRaises(ValueError):
             VERIFIER.verify_receipt(receipt, events)
+
+    def test_rejects_orphan_knowledge_event(self) -> None:
+        """Every canonical knowledge event must be consumed by a receipt."""
+        _, events = self.evidence()
+        with mock.patch.object(VERIFIER, "load_events", return_value=events), \
+             mock.patch.object(VERIFIER, "load_receipts", return_value=[]):
+            with self.assertRaisesRegex(ValueError, "has no matching receipt"):
+                VERIFIER.verify("events.tsv", "receipts.tsv")
+
+    def test_ignores_nonterminal_artifact_saga_event(self) -> None:
+        """A pre-activation saga event has no completed command receipt yet."""
+        _, events = self.evidence()
+        events[0]["aggregate_type"] = "artifact_operation"
+        events[0]["event_type"] = "artifact.publication_uploading"
+        with mock.patch.object(VERIFIER, "load_events", return_value=events), \
+             mock.patch.object(VERIFIER, "load_receipts", return_value=[]):
+            VERIFIER.verify("events.tsv", "receipts.tsv")
 
 
 class DeliveryAuthorizationEvidenceTests(unittest.TestCase):
