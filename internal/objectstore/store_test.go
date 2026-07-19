@@ -100,6 +100,27 @@ func TestDeleteRequiresCanonicalETag(t *testing.T) {
 	}
 }
 
+func TestReadVerifiedReturnsOnlyBoundedIntegrityCheckedBytes(t *testing.T) {
+	body := []byte("approved memory body")
+	descriptor := descriptorFor(body, "text/plain")
+	fake := &fakeS3{body: body, descriptor: descriptor, etag: "etag", version: "version"}
+	store, err := newWithClient("forja-artifacts", fake)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, evidence, err := store.ReadVerified(t.Context(), testAuthority, descriptor, int64(len(body)))
+	if err != nil || !bytes.Equal(got, body) || evidence.ETag != "etag" {
+		t.Fatalf("body=%q evidence=%#v err=%v", got, evidence, err)
+	}
+	if _, _, err := store.ReadVerified(t.Context(), testAuthority, descriptor, int64(len(body)-1)); err == nil {
+		t.Fatal("undersized retrieval limit succeeded")
+	}
+	fake.descriptor = descriptorFor(body, "text/markdown")
+	if _, _, err := store.ReadVerified(t.Context(), testAuthority, descriptor, int64(len(body))); err == nil {
+		t.Fatal("metadata mismatch succeeded")
+	}
+}
+
 type fakeS3 struct {
 	body       []byte
 	descriptor Descriptor
