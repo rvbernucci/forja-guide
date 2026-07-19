@@ -1,0 +1,58 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "status": "passed",
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Pinned adapter dependency installation, module verification, vet, unit tests, race tests, reproducible linux/amd64 and linux/arm64 builds, daemon, MCP and worker smokes, 55 Python tests, and repository validation passed after the final review fix."
+    },
+    {
+      "name": "final reviewed implementation pull-request workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29689138201",
+      "head_sha": "88fe7c502e65062ebe8a12f781710882a4433724",
+      "database": "PostgreSQL 18.3",
+      "summary": "The final reviewed PR tree passed repository quality, PostgreSQL durability, deterministic index and rollback rehearsals, durable restart, and clean observability-stack rehearsal."
+    },
+    {
+      "name": "exact final public implementation workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29689354760",
+      "head_sha": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+      "database": "PostgreSQL 18.3",
+      "summary": "The exact squash-merged public implementation passed the complete protected workflow on a clean Linux host."
+    },
+    {
+      "name": "fresh-database PostgreSQL integration and rollback suite",
+      "command": "FORJA_TEST_DATABASE_URL='postgresql:///forja_s08_export_1784467910?host=/tmp&sslmode=disable' make test-integration",
+      "result": "passed",
+      "database": "PostgreSQL 14.19 local corroboration; PostgreSQL 18.3 is proven by protected CI",
+      "coverage": [
+        "Migration 008 authority, lifecycle, append-only, and semantic-delta constraints",
+        "tenant and repository isolation, concurrent replay, receipts, events, outbox, and artifact binding",
+        "real committed-Git indexing with Go, TypeScript, and Python adapters",
+        "selective dependency reuse and configuration-only invalidation",
+        "real Git delivery, crash recovery, and durable restart",
+        "Sprint 08 rollback to the authoritative Sprint 07 implementation"
+      ]
+    },
+    {
+      "name": "real deterministic indexing command drill",
+      "result": "passed",
+      "artifact_path": "docs/evidence/sprint-08/operations/index-command-drill.txt",
+      "artifact_sha256": "d30f1b8dd530accf11986392a611daa5b03e89ea63da29a9d68b417867dcb311",
+      "summary": "Four snapshots across two repository authorities produced four canonical receipts; Go and TypeScript were safely reused, Python was re-extracted, and a go.mod-only change forced Go re-extraction."
+    },
+    {
+      "name": "Sprint 07 rollback target rehearsal",
+      "result": "passed",
+      "rollback_target": "e763f85bef2de14d92d924300839d88b00ff00d0",
+      "summary": "Migration 008 rolled back only after proving Sprint 08 canonical state empty, and the exact Sprint 07 binary passed against the downgraded schema."
+    }
+  ],
+  "recorded_at": "2026-07-19T13:52:01Z"
+}

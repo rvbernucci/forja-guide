@@ -1,0 +1,50 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "08",
+  "status": "passed",
+  "basis_commit": "0cbce2a7256df476a94b96624834a9abd32c0bf8",
+  "checks": [
+    {
+      "name": "Go vulnerability reachability scan",
+      "command": "go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 ./...",
+      "result": "passed",
+      "findings": 0,
+      "scanner": "govulncheck@v1.6.0",
+      "artifact_path": "docs/evidence/sprint-08/security/govulncheck-v1.6.0.txt",
+      "artifact_sha256": "3016e51e4eac0d421674d2128bbbdefb2924b4646e0c14a1ab034977ad73fae5"
+    },
+    {
+      "name": "tenant and repository authority",
+      "result": "passed",
+      "summary": "Composite PostgreSQL authority, repository preflight, environment-resolved CLI identity, scoped queries, and cross-tenant negative tests prevent repository content or command flags from selecting canonical ownership."
+    },
+    {
+      "name": "committed Git and path boundary",
+      "result": "passed",
+      "summary": "Bounded Git object commands read exact committed blobs; symlinks, submodules, traversal, case collisions, unsupported encodings, oversized content, and mutable-worktree substitutions fail closed."
+    },
+    {
+      "name": "adapter execution and output boundary",
+      "result": "passed",
+      "summary": "Only bundled source-pinned adapters run with bounded requests, output, time, and environment; every result is treated as untrusted and must satisfy schema, source-hash, closure, and deterministic-ID validation."
+    },
+    {
+      "name": "canonical publication and semantic-delta integrity",
+      "result": "passed",
+      "summary": "PostgreSQL recomputes baseline-to-target deltas, constrains previous IDs by entity kind, rejects false rename claims, and atomically binds artifacts, events, outbox rows, and receipts."
+    },
+    {
+      "name": "content-free observability",
+      "result": "passed",
+      "summary": "Metrics and traces are bounded and exclude source bodies, paths, qualified names, tool output, and secrets."
+    }
+  ],
+  "residual_risks": [
+    "Bundled adapters are trusted release components with resource isolation, not a hostile-code sandbox; repository-provided and third-party adapters remain prohibited.",
+    "Unresolved dynamic-language relations remain explicit gaps and may reduce lineage coverage without corrupting canonical certainty.",
+    "Git, PostgreSQL, object-store, CI, and host administrators are trusted deployment roles and can alter their respective planes outside application controls.",
+    "Production credentials, network policy, encryption keys, backup geography, and object-store capability admission remain deployment responsibilities.",
+    "Qdrant and Neo4j projections remain intentionally absent until Sprints 09 and 10."
+  ],
+  "recorded_at": "2026-07-19T13:52:01Z"
+}
