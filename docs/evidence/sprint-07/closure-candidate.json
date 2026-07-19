@@ -1,0 +1,45 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "name": "Governed Artifacts, Conversations, and Memory",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "content_addressed_publication_verified": true,
+    "interrupted_publication_reconciled": true,
+    "canonical_reference_safe_tombstone": true,
+    "exact_version_physical_purge": true,
+    "deterministic_transcript_and_exact_provenance": true,
+    "governed_memory_promotion": true,
+    "complete_receipt_verification": true,
+    "two_plane_restore_demonstrated": true,
+    "rollback_compatibility_demonstrated": true
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "reviews/merged-implementation-review.md",
+    "security/govulncheck-v1.6.0.txt",
+    "operations/artifact-restore-drill.txt"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-19T09:59:25Z"
+}

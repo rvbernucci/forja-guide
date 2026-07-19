@@ -1,0 +1,60 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "status": "passed",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "tests": [
+    {
+      "name": "complete local quality gate",
+      "command": "make validate",
+      "result": "passed",
+      "summary": "Module verification, vet, unit tests, race tests, reproducible linux/amd64 and linux/arm64 builds, daemon, MCP and worker smoke tests, 51 Python tests, and repository validation passed after the final review fixes."
+    },
+    {
+      "name": "final reviewed implementation pull-request workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29682094002",
+      "head_sha": "0eed709c12b4955550f7db935219ba608c392208",
+      "database": "PostgreSQL 18.3",
+      "summary": "The final reviewed PR tree passed repository quality, PostgreSQL durability, rollback, durable restart, and the clean observability-stack rehearsal."
+    },
+    {
+      "name": "exact final public implementation workflow",
+      "result": "passed",
+      "url": "https://github.com/rvbernucci/forja-guide/actions/runs/29682253548",
+      "head_sha": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+      "database": "PostgreSQL 18.3",
+      "summary": "The exact squash-merged public implementation passed the complete protected workflow on a clean Linux host."
+    },
+    {
+      "name": "complete local PostgreSQL integration and rollback suite",
+      "command": "FORJA_TEST_DATABASE_URL='postgresql://localhost/forja_sprint07_dev?sslmode=disable' make test-integration",
+      "result": "passed",
+      "database": "PostgreSQL 14.19 local corroboration; PostgreSQL 18.3 is proven by protected CI",
+      "coverage": [
+        "Migration 007 schema and lifecycle constraints",
+        "artifact publication, reconciliation, retention, exact-version purge, and concurrent identity",
+        "conversation, transcript, candidate, promotion, memory lifecycle, tenant isolation, and replay",
+        "PostgreSQL backup and restore",
+        "real Git delivery and crash recovery",
+        "Sprint 07 rollback to the authoritative Sprint 06 implementation",
+        "durable restart and canonical-state preservation"
+      ]
+    },
+    {
+      "name": "real two-plane artifact restore rehearsal",
+      "command": "scripts/rehearse_artifact_restore.sh",
+      "result": "passed",
+      "artifact_path": "docs/evidence/sprint-07/operations/artifact-restore-drill.txt",
+      "artifact_sha256": "f331faf447bbb0401fa87edc5c08e7669875ba466862fe8feac8451355678165",
+      "summary": "Three canonical artifacts were restored into an isolated PostgreSQL database and a separate versioned MinIO data directory; physical source and restored inventories matched exactly and every body passed API readback verification."
+    },
+    {
+      "name": "Sprint 06 rollback target rehearsal",
+      "result": "passed",
+      "rollback_target": "115b6c117c5ffcc42b7a86f786aa89fb41aac554",
+      "summary": "Migration 007 rolled back only after proving every Sprint 07 canonical relation empty, and the exact Sprint 06 binary passed against the downgraded schema."
+    }
+  ],
+  "recorded_at": "2026-07-19T09:59:25Z"
+}

@@ -1,0 +1,33 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "status": "passed",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "strategy": "Disable new artifact, conversation, and memory intake; let in-flight publications settle or mark them reconciliation-required; preserve all objects, provider versions, tombstones, events, outbox rows, and receipts. Migration 007 may downgrade only while every Sprint 07 canonical relation and related audit record is empty. After canonical Sprint 07 history exists, rollback is a forward-repair deployment on the Sprint 07 schema, never destructive deletion to force an older binary to start.",
+  "rollback_target": "115b6c117c5ffcc42b7a86f786aa89fb41aac554",
+  "tests": [
+    {
+      "name": "authoritative Sprint 06 target rehearsal",
+      "result": "passed",
+      "summary": "The exact Sprint 06 implementation built and ran against the safely downgraded empty schema."
+    },
+    {
+      "name": "non-empty canonical-state refusal",
+      "result": "passed",
+      "summary": "Migration 007 down refuses to drop artifact, conversation, memory, related event, or idempotency history while any canonical row remains."
+    },
+    {
+      "name": "two-plane restore before promotion",
+      "result": "passed",
+      "summary": "A PostgreSQL backup and stopped physical object-store snapshot restored into isolated targets with identical object inventories and successful canonical API readback."
+    },
+    {
+      "name": "interrupted publication recovery",
+      "result": "passed",
+      "summary": "Journaled publication states reconcile missing, existing, corrupt, and canonical-conflict outcomes without inventing activation or deleting uncertain bytes."
+    }
+  ],
+  "data_migration_required": true,
+  "runtime_state_impact": "An empty pre-adoption deployment may return to Sprint 06 through Migration 007 down. A deployment with Sprint 07 history retains the schema and immutable object evidence and rolls back behavior through a Sprint 07-compatible forward repair.",
+  "recorded_at": "2026-07-19T09:59:25Z"
+}

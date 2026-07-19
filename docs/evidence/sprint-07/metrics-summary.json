@@ -1,0 +1,24 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "07",
+  "status": "recorded",
+  "basis_commit": "1844cf2f046bb244372336b7bc7ecf0073a19194",
+  "metrics": {
+    "tracked_files_before_evidence": 332,
+    "sprint_changed_files": 64,
+    "go_files": 131,
+    "go_test_files": 51,
+    "test_and_fuzz_entry_points": 415,
+    "knowledge_and_artifact_test_entry_points": 28,
+    "python_test_methods": 51,
+    "canonical_json_schemas": 19,
+    "postgres_migration_versions": 7,
+    "reproducible_linux_binaries": 8,
+    "restored_artifacts_in_two_plane_drill": 3,
+    "known_reachable_vulnerabilities": 0,
+    "implementation_review_findings_resolved": 15,
+    "unresolved_actionable_implementation_findings": 0
+  },
+  "official_database_target": "PostgreSQL 18.3",
+  "recorded_at": "2026-07-19T09:59:25Z"
+}
