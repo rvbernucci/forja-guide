@@ -32,6 +32,19 @@ Therefore the host infrastructure is available, but the governed retrieval
 workload is not yet deployed or configured. Running `forja-retrieval preflight`
 there would correctly fail closed rather than proving readiness.
 
+## CLI Executor Prepared
+
+The public `forja-retrieval` source and a statically linked `linux/amd64`
+binary were staged in the isolated `mariana-codex` workspace from commit
+`bebdbf9`. The uploaded binary checksum matched the locally built artifact.
+This is an operator CLI, not a long-running service and not a deployed
+retrieval workload.
+
+An invocation with no runtime configuration exited non-zero, named the missing
+required configuration keys, and wrote no preflight receipt. That proves the
+binary starts on the VPS and fails closed before it can contact any dependency.
+It does not prove a valid PostgreSQL, Qdrant, S3, or Bedrock connection.
+
 ## Wrapper Observation
 
 `mariana-validate-qdrant` returned a local-file-path validation failure when
@@ -44,7 +57,9 @@ until its system-wrapper invocation is repaired and independently rerun.
 
 Before preflight or private baseline capture:
 
-1. Build and deploy the `forja-retrieval` workload as an isolated service.
+1. Decide whether the first governed workload stays an operator CLI or becomes
+   a dedicated service. The CLI executor is already staged; a service needs a
+   separate systemd deployment contract.
 2. Inject the configuration named in
    [the deployment procedure](RETRIEVAL_RUNTIME_DEPLOYMENT.md) through a
    private runtime boundary.
@@ -52,8 +67,9 @@ Before preflight or private baseline capture:
    source with only the required Bedrock embedding permission.
 4. Supply PostgreSQL and, if non-loopback, Qdrant credentials through a secret
    manager. Never copy credentials from Coolify or another workload.
-5. Restore a Go build/runtime environment for the isolated workload, then run
-   the bounded preflight and write its mode-`0600` receipt outside Git.
+5. For a service deployment, create a reproducible build/runtime contract. For
+   the staged CLI, the static binary avoids a Go installation on the VPS.
+6. Run the bounded preflight and write its mode-`0600` receipt outside Git.
 
 Only a successful workload preflight followed by the private four-baseline
 capture can satisfy the remaining Sprint 09 acceptance evidence.
