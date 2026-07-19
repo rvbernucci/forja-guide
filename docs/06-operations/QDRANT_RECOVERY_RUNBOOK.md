@@ -45,9 +45,21 @@ and SDK compatibility before changing it.
    history. Stable point IDs make duplicate upserts idempotent.
 6. Compare the durable checkpoint with the maximum published outbox prefix and
    verify sampled point IDs against active PostgreSQL symbol/source hashes.
-7. Only after verification, use `SwitchQdrantAlias` to direct the serving alias
-   to the rebuilt physical collection. Preserve the previous collection during
-   the observation window.
+7. Only after verification, use `CutoverQdrantCollection` to direct the
+   serving alias to the rebuilt physical collection. It verifies the green
+   physical contract, records the prior alias observation, performs one atomic
+   Qdrant alias update, and reads the alias back. Preserve the previous
+   collection during the observation window.
+8. Only after the alias read-back succeeds, call
+   `ActivateRetrievalGeneration` for the matching registered PostgreSQL
+   generation. It drains the prior active generation transactionally. Do not
+   retire the prior generation while it remains the guarded rollback target.
+9. If the observed serving behavior requires rollback, call
+   `RollbackQdrantCollection` with the recorded prior target. It first proves
+   the alias still points to the expected green collection; it refuses to
+   overwrite a newer operator cutover. Read the alias back after rollback,
+   reactivate the recorded prior PostgreSQL generation, and record the result
+   in the operator ticket.
 
 ## Failure Handling
 
@@ -59,6 +71,10 @@ and SDK compatibility before changing it.
   broadening scope or trusting cached payloads.
 - If the physical collection verification fails, do not run a projector or
   switch an alias. Build a new generation and investigate the mismatch.
+- If Qdrant alias read-back succeeds but PostgreSQL generation activation
+  fails, pause retrieval traffic for that alias, preserve both physical
+  collections, re-observe the alias, and repair/retry the canonical lifecycle
+  transition. Do not guess which generation is serving or retire either one.
 - If a delivery reaches the configured retry ceiling, repair the dependency,
   retain the dead-letter evidence, call `RequeueProjectionDelivery`, and replay
   with a new fenced claim. Requeue accepts only `dead` deliveries and resets
@@ -71,6 +87,7 @@ and SDK compatibility before changing it.
 - Collection verification result without secrets or payload bodies.
 - Projector configuration hash, checkpoint before/after, count of published and
   dead deliveries, and bounded sampled canonical point IDs.
-- Alias target before/after plus the operator approval of the switch.
+- Alias target before/after, the observation-window decision, and the operator
+  approval of the switch or guarded rollback.
 - A successful governed query receipt and an unavailable-Qdrant degraded
   receipt.

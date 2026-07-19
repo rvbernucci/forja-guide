@@ -178,6 +178,13 @@ func RetrievalGenerationID(model, version string, dimensions int, sparseVersion 
 	)
 }
 
+// IsRetrievalGenerationID reports whether a value has the stable public form
+// for a retrieval collection generation. It does not establish that the
+// generation is registered, active, or backed by a verified physical store.
+func IsRetrievalGenerationID(value string) bool {
+	return retrievalGenerationIDPattern.MatchString(value)
+}
+
 // RetrievalPointID binds a projected point to its generation, canonical entity, and source bytes.
 func RetrievalPointID(generation, entityID, sourceHash string) string {
 	return StableRetrievalID("retrieval", generation, entityID, sourceHash)

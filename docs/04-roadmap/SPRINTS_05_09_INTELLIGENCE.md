@@ -146,8 +146,9 @@ preserving authority and access boundaries.
 - [x] Define versioned Qdrant collection protocol plans, named vectors,
   mandatory payload indexes, TLS/secret endpoint policy, an idempotent
   official-client point writer, explicit collection/alias operator calls, and
-  physical generation/vector/index verification. Alias observation and rollback
-  remain pending.
+  physical generation/vector/index verification. Alias observation and guarded
+  rollback are implemented; durable blue-green generation activation and a
+  live Qdrant integration exercise remain pending.
 - [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
   The deterministic symbol-card adapter and generic card contract are complete.
 - [x] Implement the dense/sparse request contracts, deterministic sparse

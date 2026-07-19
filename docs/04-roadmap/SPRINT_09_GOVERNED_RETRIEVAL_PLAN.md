@@ -106,8 +106,8 @@ documentation evidence.
 - [x] Use the version-pinned official Qdrant Go client.
 - [x] Create protocol plans for named dense and sparse vectors plus indexed
   filter payloads. The operator adapter creates physical collections, applies
-  required indexes, and switches one alias atomically; verification and
-  rollback wiring remain pending.
+  required indexes, verifies the green physical generation, switches one alias
+  atomically, reads the alias target back, and supports guarded rollback.
 - [x] Require TLS for non-loopback endpoints and obtain API keys only from an
   environment or operator secret boundary.
 - [x] Upsert points idempotently from stable IDs and source hashes. The writer
@@ -117,10 +117,12 @@ documentation evidence.
   delete retries while the canonical resolver remains fail-closed.
 - [x] Verify physical collection generation, vector dimensions, strict filtering,
   and payload schema before an operator enables projection work.
-- [ ] Verify the serving alias target and its observation window before retiring
-  a prior generation.
-- [ ] Implement build, verify, atomic alias switch, observation, and rollback
-  for blue-green re-embedding.
+- [x] Verify the serving alias target after cutover and before a guarded
+  rollback. PostgreSQL records registration, activation, draining, and safe
+  retirement of generations.
+- [ ] Execute a live Qdrant blue-green build, verify, atomic alias switch,
+  observation window, and rollback rehearsal. The current implementation and
+  fake-client tests cover the operator protocol; Docker is unavailable locally.
 
 ### 4. Governed hybrid retrieval
 
@@ -146,11 +148,11 @@ documentation evidence.
 
 - [ ] Add a bounded one-shot projection and query CLI without embedding secrets
   in process arguments or output.
-- [ ] Add low-cardinality metrics and traces for candidates, resolutions,
-  rejections, latency, checkpoint lag, projection retries, and collection
-  generation.
-- [ ] Keep query text, vectors, entity names, paths, and payload bodies out of
-  logs, metrics, and traces.
+- [ ] Add low-cardinality metrics and traces for latency, checkpoint lag, and
+  collection generation. Candidate, resolution, and delivery outcomes are
+  instrumented already.
+- [x] Keep query text, vectors, entity names, paths, and payload bodies out of
+  retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
 - [ ] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
   deleting the derived collection. Fenced retry and dead-letter repair are
