@@ -74,6 +74,11 @@ and SDK compatibility before changing it.
 - If Qdrant query or canonical resolution is unavailable, `QueryService`
   returns a bounded degraded receipt with no accepted context, rather than
   broadening scope or trusting cached payloads.
+- `QueryService` bounds a full retrieval request to five seconds by default;
+  `ProjectionWorker` bounds each delivery to fifteen seconds. Operators may
+  configure shorter limits but never more than thirty seconds. A timed-out
+  query returns a degraded receipt; a timed-out delivery is retained for
+  fenced retry and cannot advance its checkpoint.
 - If the physical collection verification fails, do not run a projector or
   switch an alias. Build a new generation and investigate the mismatch.
 - If Qdrant alias read-back succeeds but PostgreSQL generation activation

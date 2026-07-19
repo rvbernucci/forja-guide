@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	qdrant "github.com/qdrant/go-client/qdrant"
 
@@ -28,6 +29,7 @@ type QueryService struct {
 	Sparse         SparseEncoder
 	Resolver       CanonicalResolver
 	Observer       *observability.Observer
+	QueryTimeout   time.Duration
 }
 
 func (service QueryService) Search(ctx context.Context, query contracts.RetrievalQuery) (result contracts.RetrievalResult, err error) {
@@ -42,6 +44,12 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	if service.Client == nil || service.Embedder == nil || service.Sparse == nil || service.Resolver == nil || !qdrantCollectionNamePattern.MatchString(service.CollectionName) {
 		return contracts.RetrievalResult{}, fmt.Errorf("governed retrieval service is not configured")
 	}
+	if service.QueryTimeout < 0 || service.QueryTimeout > 30*time.Second {
+		return contracts.RetrievalResult{}, fmt.Errorf("governed retrieval query timeout is invalid")
+	}
+	queryContext, cancel := context.WithTimeout(ctx, service.queryTimeout())
+	defer cancel()
+	ctx = queryContext
 	descriptor := service.Embedder.Descriptor()
 	if descriptor.SparseEncoderVersion != service.Sparse.Version() || query.ExpectedGeneration == nil || *query.ExpectedGeneration != contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion) {
 		return contracts.RetrievalResult{}, fmt.Errorf("retrieval query does not bind the configured embedding generation")
@@ -99,6 +107,13 @@ func (service QueryService) Search(ctx context.Context, query contracts.Retrieva
 	}
 	service.recordQueryStats(ctx, result)
 	return result, nil
+}
+
+func (service QueryService) queryTimeout() time.Duration {
+	if service.QueryTimeout == 0 {
+		return 5 * time.Second
+	}
+	return service.QueryTimeout
 }
 
 func degradedResult(query contracts.RetrievalQuery, gap string) contracts.RetrievalResult {

@@ -45,15 +45,16 @@ type ProjectionWorker struct {
 	Embedder   Embedder
 	Sparse     SparseEncoder
 
-	ProjectorName string
-	WorkerID      string
-	Generation    string
-	BatchSize     int
-	ClaimTTL      time.Duration
-	MaxAttempts   int
-	RetryDelay    time.Duration
-	Now           func() time.Time
-	Observer      *observability.Observer
+	ProjectorName   string
+	WorkerID        string
+	Generation      string
+	BatchSize       int
+	ClaimTTL        time.Duration
+	MaxAttempts     int
+	RetryDelay      time.Duration
+	DeliveryTimeout time.Duration
+	Now             func() time.Time
+	Observer        *observability.Observer
 }
 
 func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionRun, err error) {
@@ -79,7 +80,9 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionR
 	}
 	run = ProjectionRun{Claimed: len(deliveries)}
 	for _, delivery := range deliveries {
-		skipped, projectErr := worker.projectDelivery(ctx, delivery)
+		deliveryContext, cancel := context.WithTimeout(ctx, worker.deliveryTimeout())
+		skipped, projectErr := worker.projectDelivery(deliveryContext, delivery)
+		cancel()
 		if projectErr == nil {
 			if err := worker.Deliveries.CompleteProjectionDelivery(
 				ctx, worker.projectorName(), delivery.OutboxID, worker.WorkerID, delivery.FencingToken,
@@ -198,13 +201,20 @@ func (worker ProjectionWorker) validate() error {
 	if worker.Deliveries == nil || worker.Source == nil || worker.Recorder == nil || worker.Writer == nil || worker.Embedder == nil || worker.Sparse == nil {
 		return fmt.Errorf("retrieval projection worker dependencies are required")
 	}
-	if worker.WorkerID == "" || worker.Generation == "" || worker.BatchSize < 1 || worker.BatchSize > 1000 || worker.ClaimTTL < time.Millisecond || worker.ClaimTTL > time.Hour || worker.MaxAttempts < 1 || worker.RetryDelay < 0 {
+	if worker.WorkerID == "" || worker.Generation == "" || worker.BatchSize < 1 || worker.BatchSize > 1000 || worker.ClaimTTL < time.Millisecond || worker.ClaimTTL > time.Hour || worker.MaxAttempts < 1 || worker.RetryDelay < 0 || worker.DeliveryTimeout < 0 || worker.DeliveryTimeout > 30*time.Second {
 		return fmt.Errorf("retrieval projection worker configuration is invalid")
 	}
 	if worker.Embedder.Descriptor().SparseEncoderVersion != worker.Sparse.Version() {
 		return fmt.Errorf("retrieval projection sparse encoder does not match embedding descriptor")
 	}
 	return nil
+}
+
+func (worker ProjectionWorker) deliveryTimeout() time.Duration {
+	if worker.DeliveryTimeout == 0 {
+		return 15 * time.Second
+	}
+	return worker.DeliveryTimeout
 }
 
 func (worker ProjectionWorker) projectorName() string {

@@ -157,9 +157,11 @@ documentation evidence.
   retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
 - [ ] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
-  deleting the derived collection. Fenced retry, dead-letter repair, and the
-  canonical fail-closed delivery-ledger reset/replay are covered by PostgreSQL
-  18 integration tests; a live Qdrant deletion/rebuild remains pending.
+  deleting the derived collection. Search and each projection delivery now have
+  bounded 5-second/15-second defaults (maximum 30 seconds) with timeout tests;
+  fenced retry, dead-letter repair, and canonical fail-closed ledger
+  reset/replay are covered by PostgreSQL 18 integration tests. A live Qdrant
+  deletion/rebuild and shutdown drill remain pending.
 
 ### 6. Evaluation and closure
 

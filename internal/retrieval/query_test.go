@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	qdrant "github.com/qdrant/go-client/qdrant"
 
@@ -61,6 +62,22 @@ func TestQueryServiceDegradesWhenQdrantIsUnavailable(t *testing.T) {
 	}
 }
 
+func TestQueryServiceBoundsAStalledQdrantCall(t *testing.T) {
+	t.Parallel()
+	query := governedQuery()
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion)
+	query.ExpectedGeneration = &generation
+	service := QueryService{Client: blockingQdrantQueryClient{}, CollectionName: "forja_retrieval_v1", Embedder: fixtureEmbedder{}, Sparse: HashingSparseEncoder{}, Resolver: staticResolver{}, QueryTimeout: time.Millisecond}
+	started := time.Now()
+	result, err := service.Search(context.Background(), query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != "degraded" || len(result.Gaps) != 1 || result.Gaps[0] != "qdrant_dense_unavailable" || time.Since(started) > time.Second {
+		t.Fatalf("result=%#v elapsed=%s", result, time.Since(started))
+	}
+}
+
 func TestQueryServiceRejectsPayloadIdentityDrift(t *testing.T) {
 	t.Parallel()
 	point, err := BuildPoint(t.Context(), validCardSource(), contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion), fixtureEmbedder{}, HashingSparseEncoder{})
@@ -93,6 +110,13 @@ type recordingQdrantQueryClient struct {
 	sparse   []*qdrant.ScoredPoint
 	err      error
 	requests []*qdrant.QueryPoints
+}
+
+type blockingQdrantQueryClient struct{}
+
+func (blockingQdrantQueryClient) Query(ctx context.Context, _ *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
 }
 
 func (client *recordingQdrantQueryClient) Query(_ context.Context, request *qdrant.QueryPoints) ([]*qdrant.ScoredPoint, error) {

@@ -55,6 +55,26 @@ func TestProjectionWorkerRetriesAndDoesNotCheckpointFailedWrite(t *testing.T) {
 	}
 }
 
+func TestProjectionWorkerBoundsStalledDeliveryAndLeavesItForRetry(t *testing.T) {
+	t.Parallel()
+	bundle := projectionFixture(t)
+	delivery := persistence.ProjectionDelivery{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 81, AggregateType: "index_snapshot", AggregateID: bundle.Snapshot.SnapshotID,
+		EventType: "index_snapshot.activated", Attempts: 1, FencingToken: 1,
+	}}
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{delivery}}
+	worker := projectionWorker(store, staticIndexSource{bundle: bundle, found: true}, &recordingPointRecorder{}, blockingPointWriter{})
+	worker.DeliveryTimeout = time.Millisecond
+	started := time.Now()
+	run, err := worker.ProcessOnce(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if run != (ProjectionRun{Claimed: 1, Retried: 1}) || len(store.completed) != 0 || len(store.failed) != 1 || !errors.Is(store.cause, context.DeadlineExceeded) || time.Since(started) > time.Second {
+		t.Fatalf("run=%#v completed=%v failed=%v cause=%v elapsed=%s", run, store.completed, store.failed, store.cause, time.Since(started))
+	}
+}
+
 func TestProjectionWorkerSkipsSupersededActivationWithoutWriting(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)
@@ -129,6 +149,13 @@ func (source staticIndexSource) GetActiveIndexBundle(context.Context) (indexing.
 type recordingPointWriter struct {
 	points []contracts.RetrievalPoint
 	err    error
+}
+
+type blockingPointWriter struct{}
+
+func (blockingPointWriter) UpsertPoint(ctx context.Context, _ contracts.RetrievalPoint) error {
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (writer *recordingPointWriter) UpsertPoint(_ context.Context, point contracts.RetrievalPoint) error {
