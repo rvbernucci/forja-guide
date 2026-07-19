@@ -546,7 +546,7 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 		Adapters:            []contracts.AdapterDescriptor{descriptor},
 		Status:              "active",
 		Version:             1,
-		Counts:              contracts.SnapshotCounts{Files: 1},
+		Counts:              contracts.SnapshotCounts{Files: 1, Symbols: 1},
 		ArtifactID:          &artifactID,
 		ArtifactContentHash: &artifactHash,
 		CreatedBy:           "integration-suite",
@@ -563,10 +563,22 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 	}
 	file.FileID = contracts.ComputeFileID(file)
 	file.LineageID = contracts.ComputeFileLineageID(file)
+	symbol := contracts.SymbolCard{
+		SchemaVersion: contracts.IndexSchemaVersion, SnapshotID: snapshot.SnapshotID,
+		FileID: file.FileID, FileLineageID: file.LineageID, Language: "python",
+		Kind: "function", Name: "main", QualifiedName: "main", Signature: "def main() -> None",
+		Declaration: contracts.SourceRange{
+			Start: contracts.SourcePosition{Line: 1, Column: 1, Offset: 0},
+			End:   contracts.SourcePosition{Line: 1, Column: 20, Offset: 19},
+		},
+	}
+	symbol.SymbolID = contracts.ComputeSymbolID(symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(symbol)
+	file.SymbolIDs = []string{symbol.SymbolID}
 	return persistence.IndexPublication{
 		Bundle: indexing.IndexBundle{
 			Snapshot: snapshot, Files: []contracts.FileCard{file},
-			Symbols: []contracts.SymbolCard{}, Relations: []contracts.RelationEvidence{},
+			Symbols: []contracts.SymbolCard{symbol}, Relations: []contracts.RelationEvidence{},
 		},
 		AdapterRuns:   []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
 		Deltas:        []persistence.IndexDelta{{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID}},
