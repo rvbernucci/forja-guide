@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/retrieval-evaluation-comparison-report.schema.json",
+  "title": "Forja Retrieval Evaluation Comparison Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus_id", "corpus_sha256", "split", "code_commit", "embedding", "k", "sample_count", "comparisons", "duration_milliseconds"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "corpus_id": {"type": "string", "pattern": "^retrieval_eval_[a-z0-9_-]{1,160}$"},
+    "corpus_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "split": {"enum": ["public", "tuning", "holdout", "ood", "adversarial", "regression"]},
+    "code_commit": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"},
+    "embedding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "version", "dimensions", "sparse_encoder_version"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1, "maxLength": 200},
+        "version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "dimensions": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "sparse_encoder_version": {"type": "string", "minLength": 1, "maxLength": 200}
+      }
+    },
+    "k": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "sample_count": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "comparisons": {
+      "type": "array", "minItems": 4, "maxItems": 4,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "policy_hash", "metrics"],
+        "properties": {
+          "name": {"enum": ["lexical_only", "dense_only", "rrf_unweighted", "rrf_weighted"]},
+          "policy_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+          "metrics": {
+            "type": "object", "additionalProperties": false,
+            "required": ["cases", "recall_at_k", "precision_at_k", "mean_reciprocal_rank", "ndcg_at_k", "expected_no_accepted_cases", "expected_no_accepted_pass"],
+            "properties": {
+              "cases": {"type": "integer", "minimum": 1},
+              "recall_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+              "precision_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+              "mean_reciprocal_rank": {"type": "number", "minimum": 0, "maximum": 1},
+              "ndcg_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+              "expected_no_accepted_cases": {"type": "integer", "minimum": 0},
+              "expected_no_accepted_pass": {"type": "integer", "minimum": 0}
+            }
+          }
+        }
+      }
+    },
+    "duration_milliseconds": {"type": "integer", "minimum": 0}
+  }
+}

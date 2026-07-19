@@ -19,6 +19,8 @@ The public synthetic corpus is
 [`internal/retrieval/testdata/retrieval_evaluation_public_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_v1.json).
 Its matching, deliberately perfect smoke-test outcomes are
 [`internal/retrieval/testdata/retrieval_evaluation_public_outcomes_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_outcomes_v1.json).
+Its separate four-baseline smoke-test capture is
+[`internal/retrieval/testdata/retrieval_evaluation_public_comparison_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_comparison_v1.json).
 It uses symbolic identities only and is not representative of production
 quality. Private corpus locations, query text, cards, expected answers, and
 source identifiers must not be committed to this public repository.
@@ -61,6 +63,29 @@ go run ./cmd/forja-retrieval-eval \
 
 The fixture is only a contract smoke test. Real evaluation must supply the
 actual, immutable policy hash and embedding descriptor from the run receipt.
+
+To preserve the mandatory baseline comparison rather than selectively
+reporting one ranking policy, capture the four complete outcome sequences in
+one private `comparison.json` artifact and run:
+
+```bash
+go run ./cmd/forja-retrieval-eval \
+  --corpus private-evaluations/tuning/corpus.json \
+  --comparison private-evaluations/tuning/comparison.json \
+  --output private-evaluations/tuning/comparison-report.json \
+  --k 10 \
+  --commit "$(git rev-parse HEAD)" \
+  --embedding-model amazon.titan-embed-text-v2:0 \
+  --embedding-version titan-v2-1024 \
+  --embedding-dimensions 1024 \
+  --sparse-encoder-version sparse-v1
+```
+
+`comparison.json` contains exactly `lexical_only`, `dense_only`,
+`rrf_unweighted`, and `rrf_weighted`; each records its own immutable policy
+hash. The CLI validates the whole set and writes a report in that fixed order.
+It reports evidence only: selecting a policy remains permitted exclusively on
+the controlled tuning split.
 
 ## Metrics
 

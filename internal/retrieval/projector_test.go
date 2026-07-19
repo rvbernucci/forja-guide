@@ -126,7 +126,9 @@ func TestProjectionWorkerProjectsOnlyCanonicalFailureIncidents(t *testing.T) {
 	}}}}
 	writer = &recordingPointWriter{}
 	worker = projectionWorker(store, staticIndexSource{}, &recordingPointRecorder{}, writer)
-	worker.Incidents = staticIncidentSource{found: false}
+	// The source deliberately has a current incident. A delayed non-terminal
+	// delivery must still not project it under the wrong outbox receipt.
+	worker.Incidents = staticIncidentSource{incident: incident, found: true}
 	run, err := worker.ProcessOnce(t.Context())
 	if err != nil || run != (ProjectionRun{Claimed: 1, Published: 1, Skipped: 1}) || len(writer.points) != 0 {
 		t.Fatalf("run=%#v points=%#v err=%v", run, writer.points, err)

@@ -67,6 +67,46 @@ func TestRunRejectsMismatchedCorpusAndInvalidRequiredMetadata(t *testing.T) {
 	}
 }
 
+func TestRunComparesEveryRequiredBaselineWithoutSelectingOne(t *testing.T) {
+	t.Parallel()
+	directory := t.TempDir()
+	corpusPath := filepath.Join(directory, "corpus.json")
+	comparisonPath := filepath.Join(directory, "comparison.json")
+	reportPath := filepath.Join(directory, "comparison-report.json")
+	writeEvaluationFixture(t, corpusPath, `{
+  "schema_version":"1.0","corpus_id":"retrieval_eval_fixture","split":"tuning",
+  "cases":[
+    {"case_id":"positive","required_entity_ids":["symbol_one"]},
+    {"case_id":"safety","expected_no_accepted":true}
+  ]
+}`)
+	writeEvaluationFixture(t, comparisonPath, `{
+  "schema_version":"1.0","corpus_id":"retrieval_eval_fixture",
+  "variants":[
+    {"name":"lexical_only","policy_hash":"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]},
+    {"name":"dense_only","policy_hash":"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","outcomes":[{"case_id":"positive","accepted_entity_ids":[]},{"case_id":"safety","accepted_entity_ids":["leak"]}]},
+    {"name":"rrf_unweighted","policy_hash":"sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]},
+    {"name":"rrf_weighted","policy_hash":"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","outcomes":[{"case_id":"positive","accepted_entity_ids":["symbol_one"]},{"case_id":"safety","accepted_entity_ids":[]}]}
+  ]
+}`)
+	arguments := comparisonArguments(corpusPath, comparisonPath, reportPath)
+	var stdout, stderr bytes.Buffer
+	if err := run(context.Background(), arguments, &stdout, &stderr); err != nil || stdout.Len() != 0 || stderr.Len() != 0 {
+		t.Fatalf("run err=%v stdout=%q stderr=%q", err, stdout.String(), stderr.String())
+	}
+	data, err := os.ReadFile(reportPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var report evaluationComparisonReport
+	if err := json.Unmarshal(data, &report); err != nil {
+		t.Fatal(err)
+	}
+	if len(report.Comparisons) != 4 || report.Comparisons[0].Name != "lexical_only" || report.Comparisons[1].Metrics.ExpectedNoAcceptedPass != 0 || report.Comparisons[3].Name != "rrf_weighted" {
+		t.Fatalf("report=%#v", report)
+	}
+}
+
 func evaluationArguments(corpusPath, outcomesPath, outputPath string) []string {
 	return []string{
 		"--corpus", corpusPath, "--outcomes", outcomesPath, "--output", outputPath,
@@ -74,6 +114,15 @@ func evaluationArguments(corpusPath, outcomesPath, outputPath string) []string {
 		"--embedding-model", "fixture", "--embedding-version", "v1",
 		"--embedding-dimensions", "3", "--sparse-encoder-version", "sparse-fixture-v1",
 		"--policy-hash", evaluationPolicyHash,
+	}
+}
+
+func comparisonArguments(corpusPath, comparisonPath, outputPath string) []string {
+	return []string{
+		"--corpus", corpusPath, "--comparison", comparisonPath, "--output", outputPath,
+		"--k", "10", "--commit", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"--embedding-model", "fixture", "--embedding-version", "v1",
+		"--embedding-dimensions", "3", "--sparse-encoder-version", "sparse-fixture-v1",
 	}
 }
 

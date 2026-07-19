@@ -199,6 +199,12 @@ func (worker ProjectionWorker) projectDelivery(ctx context.Context, delivery per
 }
 
 func (worker ProjectionWorker) projectIncident(ctx context.Context, delivery persistence.ProjectionDelivery) (bool, error) {
+	// An incident card is bound to a terminal immutable attempt event. Do not
+	// let delayed replay of an earlier attempt event project current failure
+	// state under the wrong outbox receipt.
+	if delivery.EventType != "attempt.finished" && delivery.EventType != "attempt.reconciled" {
+		return true, nil
+	}
 	if worker.Incidents == nil {
 		return false, fmt.Errorf("canonical incident source is required")
 	}

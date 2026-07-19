@@ -49,6 +49,20 @@ func TestScoreRankingsRejectsMissingDuplicateAndInvalidOutcomes(t *testing.T) {
 	}
 }
 
+func TestScoreRankingsReportsSafetyFailureWithoutDiscardingTheCase(t *testing.T) {
+	metrics, err := ScoreRankings(
+		[]EvaluationCase{{CaseID: "cross_tenant", ExpectedNoAccepted: true}},
+		[]EvaluationOutcome{{CaseID: "cross_tenant", AcceptedEntityIDs: []string{"leaked_entity"}}},
+		10,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if metrics.ExpectedNoAcceptedCases != 1 || metrics.ExpectedNoAcceptedPass != 0 {
+		t.Fatalf("metrics=%#v", metrics)
+	}
+}
+
 func TestCompareRequiredRankingsKeepsEveryBaselineInStableOrder(t *testing.T) {
 	cases := []EvaluationCase{
 		{CaseID: "positive", RequiredEntityIDs: []string{"symbol_one"}},
@@ -132,6 +146,36 @@ func TestPublicEvaluationCorpusIsScoreableAndContainsSafetyCases(t *testing.T) {
 	metrics, err := ScoreRankings(corpus.Cases, capture.Outcomes, 10)
 	if err != nil || metrics.ExpectedNoAcceptedPass != 2 || !approximately(metrics.RecallAtK, 1) {
 		t.Fatalf("metrics=%#v err=%v", metrics, err)
+	}
+}
+
+func TestPublicEvaluationComparisonKeepsRequiredBaselinesAndSafety(t *testing.T) {
+	corpusData, err := os.ReadFile("testdata/retrieval_evaluation_public_v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	comparisonData, err := os.ReadFile("testdata/retrieval_evaluation_public_comparison_v1.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var corpus struct {
+		Cases []EvaluationCase `json:"cases"`
+	}
+	var comparison struct {
+		Variants []EvaluationVariant `json:"variants"`
+	}
+	if err := json.Unmarshal(corpusData, &corpus); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(comparisonData, &comparison); err != nil {
+		t.Fatal(err)
+	}
+	results, err := CompareRequiredRankings(corpus.Cases, comparison.Variants, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != len(RequiredRetrievalBaselines) || results[0].Metrics.RecallAtK != 0.5 || results[1].Metrics.RecallAtK != 0.75 || results[2].Metrics.ExpectedNoAcceptedPass != 2 || results[3].Metrics.NDCGAtK != 1 {
+		t.Fatalf("results=%#v", results)
 	}
 }
 

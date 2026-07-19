@@ -41,6 +41,15 @@ type evaluationOutcomes struct {
 	Outcomes      []retrieval.EvaluationOutcome `json:"outcomes"`
 }
 
+// evaluationComparisons retains all mandatory ranking baselines from one
+// frozen corpus. It is deliberately an offline artifact: runtime retrieval
+// never receives expected entities or evaluation labels.
+type evaluationComparisons struct {
+	SchemaVersion string                        `json:"schema_version"`
+	CorpusID      string                        `json:"corpus_id"`
+	Variants      []retrieval.EvaluationVariant `json:"variants"`
+}
+
 type embeddingDescriptor struct {
 	Model                string `json:"model"`
 	Version              string `json:"version"`
@@ -62,6 +71,19 @@ type evaluationReport struct {
 	DurationMilliseconds int64                    `json:"duration_milliseconds"`
 }
 
+type evaluationComparisonReport struct {
+	SchemaVersion        string                        `json:"schema_version"`
+	CorpusID             string                        `json:"corpus_id"`
+	CorpusSHA256         string                        `json:"corpus_sha256"`
+	Split                string                        `json:"split"`
+	CodeCommit           string                        `json:"code_commit"`
+	Embedding            embeddingDescriptor           `json:"embedding"`
+	K                    int                           `json:"k"`
+	SampleCount          int                           `json:"sample_count"`
+	Comparisons          []retrieval.RankingComparison `json:"comparisons"`
+	DurationMilliseconds int64                         `json:"duration_milliseconds"`
+}
+
 func main() {
 	if err := run(context.Background(), os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		_, _ = fmt.Fprintf(os.Stderr, "forja-retrieval-eval: %v\n", err)
@@ -77,6 +99,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) erro
 	flags.SetOutput(stderr)
 	corpusPath := flags.String("corpus", "", "retrieval evaluation corpus JSON path")
 	outcomesPath := flags.String("outcomes", "", "retrieval evaluation outcomes JSON path")
+	comparisonPath := flags.String("comparison", "", "retrieval evaluation baseline-comparison JSON path")
 	outputPath := flags.String("output", "-", "report JSON path, or - for stdout")
 	k := flags.Int("k", 10, "bounded ranking cutoff")
 	commit := flags.String("commit", "", "immutable evaluated source commit")
@@ -91,7 +114,7 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) erro
 	if flags.NArg() != 0 {
 		return fmt.Errorf("positional arguments are not accepted")
 	}
-	if err := validateArguments(*corpusPath, *outcomesPath, *outputPath, *k, *commit, *model, *version, *dimensions, *sparseVersion, *policyHash); err != nil {
+	if err := validateArguments(*corpusPath, *outcomesPath, *comparisonPath, *outputPath, *k, *commit, *model, *version, *dimensions, *sparseVersion, *policyHash); err != nil {
 		return err
 	}
 	registry, err := contracts.NewRegistry()
@@ -106,51 +129,88 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer) erro
 	if err != nil {
 		return fmt.Errorf("decode corpus: %w", err)
 	}
-	outcomeData, err := readBounded(*outcomesPath)
-	if err != nil {
-		return fmt.Errorf("read outcomes: %w", err)
-	}
-	outcomes, err := contracts.DecodeStrict[evaluationOutcomes](registry, "retrieval-evaluation-outcomes.schema.json", outcomeData)
-	if err != nil {
-		return fmt.Errorf("decode outcomes: %w", err)
-	}
-	if outcomes.CorpusID != corpus.CorpusID {
-		return fmt.Errorf("outcomes corpus ID does not match corpus")
-	}
 	started := time.Now()
-	metrics, err := retrieval.ScoreRankings(corpus.Cases, outcomes.Outcomes, *k)
-	if err != nil {
-		return fmt.Errorf("score rankings: %w", err)
-	}
 	digest := sha256.Sum256(corpusData)
-	report := evaluationReport{
+	metadata := embeddingDescriptor{Model: *model, Version: *version, Dimensions: *dimensions, SparseEncoderVersion: *sparseVersion}
+	if *outcomesPath != "" {
+		outcomeData, err := readBounded(*outcomesPath)
+		if err != nil {
+			return fmt.Errorf("read outcomes: %w", err)
+		}
+		outcomes, err := contracts.DecodeStrict[evaluationOutcomes](registry, "retrieval-evaluation-outcomes.schema.json", outcomeData)
+		if err != nil {
+			return fmt.Errorf("decode outcomes: %w", err)
+		}
+		if outcomes.CorpusID != corpus.CorpusID {
+			return fmt.Errorf("outcomes corpus ID does not match corpus")
+		}
+		metrics, err := retrieval.ScoreRankings(corpus.Cases, outcomes.Outcomes, *k)
+		if err != nil {
+			return fmt.Errorf("score rankings: %w", err)
+		}
+		report := evaluationReport{
+			SchemaVersion: "1.0", CorpusID: corpus.CorpusID,
+			CorpusSHA256: "sha256:" + hex.EncodeToString(digest[:]), Split: corpus.Split,
+			CodeCommit: *commit, Embedding: metadata, PolicyHash: *policyHash,
+			K: *k, SampleCount: len(corpus.Cases), Metrics: metrics,
+			DurationMilliseconds: time.Since(started).Milliseconds(),
+		}
+		return writeValidatedReport(registry, "retrieval-evaluation-report.schema.json", report, *outputPath, stdout)
+	}
+	comparisonData, err := readBounded(*comparisonPath)
+	if err != nil {
+		return fmt.Errorf("read comparison: %w", err)
+	}
+	comparison, err := contracts.DecodeStrict[evaluationComparisons](registry, "retrieval-evaluation-comparison.schema.json", comparisonData)
+	if err != nil {
+		return fmt.Errorf("decode comparison: %w", err)
+	}
+	if comparison.CorpusID != corpus.CorpusID {
+		return fmt.Errorf("comparison corpus ID does not match corpus")
+	}
+	comparisons, err := retrieval.CompareRequiredRankings(corpus.Cases, comparison.Variants, *k)
+	if err != nil {
+		return fmt.Errorf("compare rankings: %w", err)
+	}
+	report := evaluationComparisonReport{
 		SchemaVersion: "1.0", CorpusID: corpus.CorpusID,
 		CorpusSHA256: "sha256:" + hex.EncodeToString(digest[:]), Split: corpus.Split,
-		CodeCommit: *commit,
-		Embedding:  embeddingDescriptor{Model: *model, Version: *version, Dimensions: *dimensions, SparseEncoderVersion: *sparseVersion},
-		PolicyHash: *policyHash, K: *k, SampleCount: len(corpus.Cases), Metrics: metrics,
-		DurationMilliseconds: time.Since(started).Milliseconds(),
+		CodeCommit: *commit, Embedding: metadata, K: *k, SampleCount: len(corpus.Cases),
+		Comparisons: comparisons, DurationMilliseconds: time.Since(started).Milliseconds(),
 	}
+	return writeValidatedReport(registry, "retrieval-evaluation-comparison-report.schema.json", report, *outputPath, stdout)
+}
+
+func validateArguments(corpusPath, outcomesPath, comparisonPath, outputPath string, k int, commit, model, version string, dimensions int, sparseVersion, policyHash string) error {
+	if corpusPath == "" || outputPath == "" || k < 1 || k > 1000 || !commitPattern.MatchString(commit) || model == "" || version == "" || dimensions < 1 || dimensions > 65536 || sparseVersion == "" {
+		return fmt.Errorf("corpus, output, bounded k, lowercase commit, and embedding descriptor are required")
+	}
+	if (outcomesPath == "") == (comparisonPath == "") {
+		return fmt.Errorf("exactly one of outcomes or comparison is required")
+	}
+	if outcomesPath != "" && !contentHashPattern.MatchString(policyHash) {
+		return fmt.Errorf("sha256 policy hash is required with outcomes")
+	}
+	if comparisonPath != "" && policyHash != "" {
+		return fmt.Errorf("policy hash belongs to each comparison variant, not the comparison command")
+	}
+	return nil
+}
+
+func writeValidatedReport(registry *contracts.Registry, schema string, report any, outputPath string, stdout io.Writer) error {
 	encoded, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return fmt.Errorf("encode report: %w", err)
 	}
 	encoded = append(encoded, '\n')
-	if err := registry.ValidateJSON("retrieval-evaluation-report.schema.json", encoded); err != nil {
+	if err := registry.ValidateJSON(schema, encoded); err != nil {
 		return fmt.Errorf("validate report: %w", err)
 	}
-	if *outputPath == "-" {
+	if outputPath == "-" {
 		_, err = stdout.Write(encoded)
 		return err
 	}
-	return writeAtomic(*outputPath, encoded)
-}
-
-func validateArguments(corpusPath, outcomesPath, outputPath string, k int, commit, model, version string, dimensions int, sparseVersion, policyHash string) error {
-	if corpusPath == "" || outcomesPath == "" || outputPath == "" || k < 1 || k > 1000 || !commitPattern.MatchString(commit) || model == "" || version == "" || dimensions < 1 || dimensions > 65536 || sparseVersion == "" || !contentHashPattern.MatchString(policyHash) {
-		return fmt.Errorf("corpus, outcomes, output, bounded k, lowercase commit, embedding descriptor, and sha256 policy hash are required")
-	}
-	return nil
+	return writeAtomic(outputPath, encoded)
 }
 
 func readBounded(path string) ([]byte, error) {
