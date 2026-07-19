@@ -154,6 +154,44 @@ func (s *Store) Verify(
 	return s.verify(ctx, key, descriptor)
 }
 
+// ReadVerified returns one bounded, content-addressed body only after the
+// provider metadata and bytes match the canonical descriptor. Callers must
+// provide the smaller retrieval policy limit; this method never streams an
+// unbounded object into a model-facing path.
+func (s *Store) ReadVerified(ctx context.Context, authority Authority, descriptor Descriptor, maximumBytes int64) ([]byte, Evidence, error) {
+	key, err := validateAndKey(authority, descriptor)
+	if err != nil {
+		return nil, Evidence{}, err
+	}
+	if maximumBytes < 1 || descriptor.SizeBytes > maximumBytes {
+		return nil, Evidence{}, fmt.Errorf("verified read exceeds caller byte limit")
+	}
+	output, err := s.client.GetObject(ctx, &s3.GetObjectInput{Bucket: aws.String(s.bucket), Key: aws.String(key), ChecksumMode: types.ChecksumModeEnabled})
+	if err != nil {
+		if isNotFound(err) {
+			return nil, Evidence{}, ErrNotFound
+		}
+		return nil, Evidence{}, fmt.Errorf("%w: read content-addressed object", ErrUnavailable)
+	}
+	if output.Body == nil {
+		return nil, Evidence{}, fmt.Errorf("%w: provider returned no body", ErrIntegrity)
+	}
+	defer output.Body.Close()
+	digestHex := hex.EncodeToString(descriptor.SHA256[:])
+	if output.ContentLength == nil || *output.ContentLength != descriptor.SizeBytes || output.ContentType == nil || *output.ContentType != descriptor.MediaType || output.Metadata["forja-sha256"] != digestHex || output.Metadata["forja-size"] != strconv.FormatInt(descriptor.SizeBytes, 10) || output.Metadata["forja-media-type"] != descriptor.MediaType {
+		return nil, Evidence{}, fmt.Errorf("%w: provider metadata mismatch", ErrIntegrity)
+	}
+	body, err := io.ReadAll(io.LimitReader(output.Body, maximumBytes+1))
+	if err != nil || int64(len(body)) != descriptor.SizeBytes || int64(len(body)) > maximumBytes {
+		return nil, Evidence{}, fmt.Errorf("%w: downloaded bytes mismatch", ErrIntegrity)
+	}
+	digest := sha256.Sum256(body)
+	if !equalDigest(digest[:], descriptor.SHA256) {
+		return nil, Evidence{}, fmt.Errorf("%w: downloaded bytes mismatch", ErrIntegrity)
+	}
+	return body, Evidence{ObjectKey: key, ETag: aws.ToString(output.ETag), VersionID: aws.ToString(output.VersionId), ProviderChecksumSHA256: aws.ToString(output.ChecksumSHA256)}, nil
+}
+
 func (s *Store) Delete(
 	ctx context.Context,
 	authority Authority,
