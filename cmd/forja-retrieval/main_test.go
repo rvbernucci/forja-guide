@@ -160,6 +160,16 @@ func TestRuntimeConfigRequiresEnvironmentBoundariesAndRejectsUnsafeRemoteQdrant(
 	if _, err := runtimeConfigFromEnv(lookup); err == nil || strings.Contains(err.Error(), "secret-not-printed") {
 		t.Fatalf("unsafe remote Qdrant error=%v", err)
 	}
+	valid["FORJA_QDRANT_API_KEY"] = "secret-not-printed"
+	valid["CHAVE_API_AWS_BEDROCK"] = "legacy-secret-not-printed"
+	if _, err := runtimeConfigFromEnv(lookup); err == nil || strings.Contains(err.Error(), "legacy-secret-not-printed") {
+		t.Fatalf("legacy Bedrock credential error=%v", err)
+	}
+	delete(valid, "CHAVE_API_AWS_BEDROCK")
+	valid["AWS_BEARER_TOKEN_BEDROCK"] = "legacy-bearer-not-printed"
+	if _, err := runtimeConfigFromEnv(lookup); err == nil || strings.Contains(err.Error(), "legacy-bearer-not-printed") {
+		t.Fatalf("legacy Bedrock bearer error=%v", err)
+	}
 }
 
 func TestReadQueryAndPrivateWriterEnforceContractAndPermissions(t *testing.T) {

@@ -355,6 +355,12 @@ func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, er
 		return runtimeConfig{}, errors.New("environment lookup is required")
 	}
 	get := func(name string) string { value, _ := lookup(name); return strings.TrimSpace(value) }
+	// The provider adapter uses only the AWS SDK credential chain. Refuse the
+	// legacy application bearer boundary instead of silently coexisting with it
+	// in a process that is intended to demonstrate workload identity.
+	if get("CHAVE_API_AWS_BEDROCK") != "" || get("AWS_BEARER_TOKEN_BEDROCK") != "" {
+		return runtimeConfig{}, errors.New("legacy Bedrock application credentials are not accepted")
+	}
 	config := runtimeConfig{
 		databaseURL: get("FORJA_DATABASE_URL"), tenantID: get("FORJA_TENANT_ID"), repositoryID: get("FORJA_REPOSITORY_ID"),
 		qdrantHost: get("FORJA_QDRANT_HOST"), qdrantAPIKey: get("FORJA_QDRANT_API_KEY"),

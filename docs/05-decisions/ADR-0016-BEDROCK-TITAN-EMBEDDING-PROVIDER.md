@@ -76,6 +76,9 @@ They may inform the future allowlisted operation/grant protocol, but the
 Forja process must never read, forward, persist, or log an application bearer
 key. No deployment script or runtime flag may carry `CHAVE_API_AWS_BEDROCK`,
 `AWS_BEARER_TOKEN_BEDROCK`, an `Authorization` header, or a secret value.
+The retrieval runtime rejects the two legacy environment-variable names before
+opening PostgreSQL, Qdrant, S3, or Bedrock, and its error intentionally omits
+the supplied value.
 
 Before enabling re-embedding or private evaluation, the deployment operator
 must retain private evidence that the workload role can invoke exactly
