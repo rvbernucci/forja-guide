@@ -99,6 +99,43 @@ func TestProjectionWorkerBoundsStalledDeliveryAndLeavesItForRetry(t *testing.T) 
 	}
 }
 
+func TestProjectionWorkerShutdownLeavesInFlightDeliveryUnacknowledged(t *testing.T) {
+	t.Parallel()
+	bundle := projectionFixture(t)
+	delivery := persistence.ProjectionDelivery{ProjectorName: DefaultQdrantProjectorName, OutboxMessage: persistence.OutboxMessage{
+		OutboxID: 82, AggregateType: "index_snapshot", AggregateID: bundle.Snapshot.SnapshotID,
+		EventType: "index_snapshot.activated", Attempts: 1, FencingToken: 1,
+	}}
+	store := &recordingDeliveries{claimed: []persistence.ProjectionDelivery{delivery}}
+	writer := &cancellationPointWriter{started: make(chan struct{})}
+	worker := projectionWorker(store, staticIndexSource{bundle: bundle, found: true}, &recordingPointRecorder{}, writer)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	type result struct {
+		run ProjectionRun
+		err error
+	}
+	finished := make(chan result, 1)
+	go func() {
+		run, err := worker.ProcessOnce(ctx)
+		finished <- result{run: run, err: err}
+	}()
+	select {
+	case <-writer.started:
+	case <-time.After(time.Second):
+		t.Fatal("projection did not reach its cancellable derived write")
+	}
+	cancel()
+	select {
+	case result := <-finished:
+		if !errors.Is(result.err, context.Canceled) || result.run != (ProjectionRun{Claimed: 1}) || len(store.completed) != 0 || len(store.failed) != 0 {
+			t.Fatalf("run=%#v err=%v completed=%v failed=%v", result.run, result.err, store.completed, store.failed)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("projection did not stop after cancellation")
+	}
+}
+
 func TestProjectionWorkerSkipsSupersededActivationWithoutWriting(t *testing.T) {
 	t.Parallel()
 	bundle := projectionFixture(t)
@@ -178,6 +215,16 @@ type recordingPointWriter struct {
 type blockingPointWriter struct{}
 
 func (blockingPointWriter) UpsertPoint(ctx context.Context, _ contracts.RetrievalPoint) error {
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+type cancellationPointWriter struct {
+	started chan struct{}
+}
+
+func (writer *cancellationPointWriter) UpsertPoint(ctx context.Context, _ contracts.RetrievalPoint) error {
+	close(writer.started)
 	<-ctx.Done()
 	return ctx.Err()
 }

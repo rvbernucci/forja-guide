@@ -80,6 +80,12 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionR
 	}
 	run = ProjectionRun{Claimed: len(deliveries)}
 	for _, delivery := range deliveries {
+		// A shutdown leaves the fenced delivery unacknowledged for its lease to
+		// expire. It must not try to write a retry receipt through a cancelled
+		// database context and accidentally claim progress.
+		if err := ctx.Err(); err != nil {
+			return run, err
+		}
 		deliveryContext, cancel := context.WithTimeout(ctx, worker.deliveryTimeout())
 		skipped, projectErr := worker.projectDelivery(deliveryContext, delivery)
 		cancel()
@@ -94,6 +100,9 @@ func (worker ProjectionWorker) ProcessOnce(ctx context.Context) (run ProjectionR
 				run.Skipped++
 			}
 			continue
+		}
+		if err := ctx.Err(); err != nil {
+			return run, err
 		}
 		retryAt := worker.now().Add(worker.RetryDelay)
 		if err := worker.Deliveries.FailProjectionDelivery(
