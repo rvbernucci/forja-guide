@@ -104,9 +104,10 @@ and residual risk.
 **Outcome:** create canonical repository, symbol, type, schema, and behavior
 metadata before semantic indexing.
 
-**Status:** Implementation complete and independently reviewed; protocol-v2
-closure remains pending and Sprint 09 is not yet authorized. See the
-[Sprint 08 execution plan](SPRINT_08_DETERMINISTIC_INDEXING_PLAN.md).
+**Status:** Closed by the authoritative
+[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json). See the
+[Sprint 08 execution plan](SPRINT_08_DETERMINISTIC_INDEXING_PLAN.md) for
+boundaries and residual risk. Sprint 09 is authorized.
 
 ### Scope
 
@@ -135,6 +136,9 @@ closure remains pending and Sprint 09 is not yet authorized. See the
 
 **Outcome:** discover relevant artifacts and symbols with hybrid search while
 preserving authority and access boundaries.
+
+**Status:** Authorized by the authoritative
+[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json).
 
 ### Scope
 
