@@ -16,6 +16,16 @@ OBS = ROOT / "deploy" / "observability"
 
 
 class ObservabilityAssetsTests(unittest.TestCase):
+    @staticmethod
+    def _service_block(compose: str, service: str) -> str:
+        match = re.search(
+            rf"(?ms)^  {re.escape(service)}:\n(?P<body>.*?)(?=^  [a-zA-Z0-9_-]+:\n|\Z)",
+            compose,
+        )
+        if match is None:
+            raise AssertionError(f"service {service!r} is missing")
+        return match.group("body")
+
     def test_compose_uses_exact_images_and_loopback_ports(self) -> None:
         expected = {
             "otel/opentelemetry-collector-contrib:0.153.0",
@@ -46,9 +56,12 @@ class ObservabilityAssetsTests(unittest.TestCase):
             self.assertGreaterEqual(compose.count("network_mode: host"), 2)
             self.assertIn("--web.listen-address=127.0.0.1:9090", compose)
             self.assertIn("GF_SERVER_HTTP_ADDR: 127.0.0.1", compose)
+            alloy = self._service_block(compose, "alloy")
             self.assertIn(
-                "--server.http.listen-addr=0.0.0.0:12345", compose
+                "--server.http.listen-addr=0.0.0.0:12345", alloy
             )
+            self.assertIn("--storage.path=/var/lib/alloy/data", alloy)
+            self.assertIn("alloy-data:/var/lib/alloy/data", alloy)
             self.assertIn('targets: ["127.0.0.1:8080"]', prometheus)
             self.assertIn('targets: ["127.0.0.1:9464"]', prometheus)
             self.assertNotIn("host.docker.internal", compose + prometheus)
@@ -98,6 +111,9 @@ class ObservabilityAssetsTests(unittest.TestCase):
         self.assertGreaterEqual(len(match.group(1).encode("utf-8")), 32)
         self.assertIn("observability stack diagnostics", script)
         self.assertIn("http://127.0.0.1:12345/-/ready", script)
+        self.assertIn('metrics_payload="$(curl ', script)
+        self.assertIn("<<<\"$metrics_payload\"", script)
+        self.assertNotRegex(script, r"curl[^\n]*?/metrics\s*\|\s*grep -q")
 
     def test_unstructured_stderr_is_not_ingested_as_json_logs(self) -> None:
         script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(

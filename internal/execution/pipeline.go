@@ -319,7 +319,7 @@ func (p *Pipeline) Execute(
 		if !attemptTerminal {
 			return nil
 		}
-		return p.failRun(request, runID, run, target, stage)
+		return p.failRun(ctx, request, runID, run, target, stage)
 	}
 	defer func() {
 		if resultErr == nil || publicationStarted || cleanupManaged {
@@ -996,13 +996,14 @@ func (p *Pipeline) finishAttempt(
 }
 
 func (p *Pipeline) failRun(
+	ctx context.Context,
 	request contracts.DeliveryRequest,
 	runID identity.RunID,
 	run contracts.Run,
 	target runstate.State,
 	stage string,
 ) error {
-	cleanupCtx, cancel := context.WithTimeout(context.Background(), cleanupTimeout)
+	cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cleanupTimeout)
 	defer cancel()
 	_, err := p.transition(cleanupCtx, request, runID, run, target, stage)
 	return err

@@ -85,8 +85,8 @@ daemon_pid="$!"
 
 wait_for_url http://127.0.0.1:8080/healthz
 curl --fail --silent --show-error http://127.0.0.1:8080/readyz >/dev/null
-curl --fail --silent --show-error http://127.0.0.1:8080/metrics |
-  grep -q '^forja_operations_total'
+metrics_payload="$(curl --fail --silent --show-error http://127.0.0.1:8080/metrics)"
+grep -q '^forja_operations_total' <<<"$metrics_payload"
 
 prometheus_url='http://127.0.0.1:9090/api/v1/query?query=up%7Bjob%3D%22forjad%22%7D'
 wait_for_json_count \

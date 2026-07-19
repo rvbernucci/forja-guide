@@ -34,6 +34,11 @@ non-authoritative operational views:
    artifact retention, deletion, and content-addressed evidence storage belong
    to Sprint 07. Until then, unbounded bodies fail closed rather than entering
    PostgreSQL or telemetry.
+7. Both local Compose profiles give Alloy an explicit
+   `--storage.path=/var/lib/alloy/data` backed by the `alloy-data` named volume.
+   This persists file-tail positions across collector restarts to avoid
+   accidental replay or omission. The checkpoint remains disposable telemetry
+   metadata: it is neither durable log evidence nor canonical runtime state.
 
 ## Consequences
 
@@ -50,6 +55,8 @@ Negative:
 - traces cannot answer content-level debugging questions;
 - hashed identifiers require an authorized local value for correlation;
 - separated stderr needs an explicit local handling and deletion policy;
+- the local stack retains Alloy read positions until its named volume is
+  explicitly removed;
 - durable log retention waits for the Sprint 07 artifact boundary.
 
 ## Guardrail
