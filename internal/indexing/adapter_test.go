@@ -117,6 +117,40 @@ export const result = balance([{ amount: 2 }])
 	assertBundleKinds(t, bundle, []string{"function", "interface", "variable"}, []string{"imports", "calls", "references"})
 }
 
+func TestTypeScriptCompilerAdapterPreservesVariableExportModifiers(t *testing.T) {
+	documents := []SourceDocument{sourceDocument("src/exports.ts", `export const publicConst = 1, publicConstSibling = 2
+export let publicLet = 3
+export var publicVar = 4
+const privateConst = 5
+export function publicFunction(): number { return publicConst }
+`, "typescript")}
+	bundle := runProcessFixture(t, NewTypeScriptAdapter(toolRoot(t)), documents)
+	want := map[string]bool{
+		"publicConst":        true,
+		"publicConstSibling": true,
+		"publicLet":          true,
+		"publicVar":          true,
+		"privateConst":       false,
+		"publicFunction":     true,
+	}
+	found := make(map[string]bool, len(want))
+	for _, symbol := range bundle.Symbols {
+		exported, exists := want[symbol.Name]
+		if !exists {
+			continue
+		}
+		found[symbol.Name] = true
+		if symbol.Exported != exported {
+			t.Errorf("symbol %s exported=%v, want %v", symbol.Name, symbol.Exported, exported)
+		}
+	}
+	for name := range want {
+		if !found[name] {
+			t.Errorf("missing symbol %s", name)
+		}
+	}
+}
+
 func TestPythonASTAdapterPreservesDynamicCallsAsCandidates(t *testing.T) {
 	documents := []SourceDocument{
 		sourceDocument("app/models.py", `from dataclasses import dataclass

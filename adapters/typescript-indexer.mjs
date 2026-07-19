@@ -76,7 +76,11 @@ function declarationName(node) {
 }
 
 function isExported(node) {
-  return Boolean(node.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword || modifier.kind === ts.SyntaxKind.DefaultKeyword));
+  let modifierOwner = node;
+  if (ts.isVariableDeclaration(node) && ts.isVariableDeclarationList(node.parent) && ts.isVariableStatement(node.parent.parent)) {
+    modifierOwner = node.parent.parent;
+  }
+  return Boolean(modifierOwner.modifiers?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword || modifier.kind === ts.SyntaxKind.DefaultKeyword));
 }
 
 function qualifiedName(symbol, fallback) {
