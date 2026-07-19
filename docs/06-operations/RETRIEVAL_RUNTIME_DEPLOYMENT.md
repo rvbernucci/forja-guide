@@ -4,6 +4,11 @@ Status: Sprint 09 pre-closure operator procedure. This document prepares a
 workload for the bounded retrieval preflight and private baseline capture; it
 does not activate a collection, choose a policy, or authorize a re-embedding.
 
+The current sanitized infrastructure observation is recorded in the
+[VPS retrieval runtime receipt](VPS_RETRIEVAL_RUNTIME_RECEIPT.md). It confirms
+that Qdrant and Neo4j are available behind local-only boundaries, but it does
+not replace the workload configuration or a successful preflight.
+
 ## Environment Boundary
 
 Start from

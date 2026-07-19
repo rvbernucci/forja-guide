@@ -279,6 +279,11 @@ It cannot authorize Sprint 10.
 - The remaining live evidence must use a deployment workload role and the
   access-controlled private evaluation boundary, not copied runtime
   credentials. Those results are still required before closure.
+- The Hostinger Builder Plane dependencies were later checked through governed
+  role wrappers: Qdrant and Neo4j are ready and loopback-only, while no Forja
+  workload configuration exists yet. The sanitised receipt records the
+  verified boundary and the remaining activation prerequisites in
+  [`VPS_RETRIEVAL_RUNTIME_RECEIPT.md`](../06-operations/VPS_RETRIEVAL_RUNTIME_RECEIPT.md).
 
 ## Acceptance Evidence
 
