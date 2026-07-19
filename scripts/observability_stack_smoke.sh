@@ -4,6 +4,8 @@ set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compose="$root/deploy/observability/compose.linux.yaml"
 work="$(mktemp -d)"
+compose_project="forja-observability-smoke-$$-$RANDOM"
+compose_command=(docker compose --project-name "$compose_project" -f "$compose")
 daemon_pid=""
 cd "$root"
 
@@ -20,15 +22,15 @@ cleanup() {
 			wc -c <"$work/forjad.stderr" >&2
 		fi
 		echo "--- compose ps ---" >&2
-		FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" ps >&2 || true
+		FORJA_LOG_DIR="$work/logs" "${compose_command[@]}" ps >&2 || true
 		echo "--- compose logs ---" >&2
-		FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" logs --no-color --tail=100 >&2 || true
+		FORJA_LOG_DIR="$work/logs" "${compose_command[@]}" logs --no-color --tail=100 >&2 || true
 	fi
 	if [[ -n "$daemon_pid" ]]; then
     kill -TERM "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
   fi
-  FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" down --volumes --remove-orphans >/dev/null 2>&1 || true
+  FORJA_LOG_DIR="$work/logs" "${compose_command[@]}" down --volumes --remove-orphans >/dev/null 2>&1 || true
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -63,8 +65,8 @@ wait_for_json_count() {
 
 mkdir -p "$work/logs"
 go build -trimpath -o "$work/forjad" ./cmd/forjad
-FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" config --quiet
-FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" up -d
+FORJA_LOG_DIR="$work/logs" "${compose_command[@]}" config --quiet
+FORJA_LOG_DIR="$work/logs" "${compose_command[@]}" up -d
 
 wait_for_url http://127.0.0.1:9090/-/ready
 wait_for_url http://127.0.0.1:3100/ready

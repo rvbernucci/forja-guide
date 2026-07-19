@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	envOTelEnabled     = "FORJA_OTEL_ENABLED"
-	envTraceSampleRate = "FORJA_TRACE_SAMPLE_RATIO"
-	envTraceParent     = "FORJA_TRACEPARENT"
+	envOTelEnabled      = "FORJA_OTEL_ENABLED"
+	envTraceSampleRate  = "FORJA_TRACE_SAMPLE_RATIO"
+	envTraceParent      = "FORJA_TRACEPARENT"
+	maxTraceParentBytes = 128
 )
 
 // RuntimeConfig configures one process-wide telemetry runtime.
@@ -50,13 +51,22 @@ func ExtractTraceContextFromEnv(
 		return ctx
 	}
 	value, ok := lookup(envTraceParent)
-	value = strings.TrimSpace(value)
-	if !ok || value == "" || len(value) > 128 {
+	if !ok {
 		return ctx
 	}
-	return otel.GetTextMapPropagator().Extract(
-		ctx,
-		propagation.MapCarrier{"traceparent": value},
+	return extractTraceParent(ctx, value)
+}
+
+func extractTraceParent(ctx context.Context, value string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	value = strings.TrimSpace(value)
+	if value == "" || len(value) > maxTraceParentBytes {
+		return ctx
+	}
+	return propagation.TraceContext{}.Extract(
+		ctx, propagation.MapCarrier{"traceparent": value},
 	)
 }
 

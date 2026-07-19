@@ -9,10 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 	"go.opentelemetry.io/otel/trace/noop"
 )
@@ -126,9 +124,7 @@ func (o *Observer) HTTPHandler(next http.Handler) http.Handler {
 		next = http.NotFoundHandler()
 	}
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		ctx := otel.GetTextMapPropagator().Extract(
-			request.Context(), propagation.HeaderCarrier(request.Header),
-		)
+		ctx := extractTraceParent(request.Context(), request.Header.Get("traceparent"))
 		ctx, handle := o.Start(ctx, BoundaryHTTP, httpOperation(request))
 		capture := &statusCapture{ResponseWriter: writer, status: http.StatusOK}
 		defer func() {

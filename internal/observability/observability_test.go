@@ -110,6 +110,44 @@ forja_operations_total{boundary="http",failure_class="conflict",operation="trans
 	}
 }
 
+func TestHTTPHandlerAcceptsOnlyBoundedTraceParent(t *testing.T) {
+	previousPropagator := otel.GetTextMapPropagator()
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{}, propagation.Baggage{},
+	))
+	t.Cleanup(func() { otel.SetTextMapPropagator(previousPropagator) })
+
+	recorder := tracetest.NewSpanRecorder()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSpanProcessor(recorder))
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+	handler := NewObserver(provider, nil).HTTPHandler(http.HandlerFunc(
+		func(http.ResponseWriter, *http.Request) {},
+	))
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	request.Header.Set(
+		"traceparent",
+		"00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	)
+	request.Header.Set("tracestate", "vendor=private-customer-data")
+	request.Header.Set("baggage", "private-content=must-not-propagate")
+	handler.ServeHTTP(httptest.NewRecorder(), request)
+
+	spans := recorder.Ended()
+	if len(spans) != 1 {
+		t.Fatalf("spans = %d, want 1", len(spans))
+	}
+	wantTraceID, err := trace.TraceIDFromHex("4bf92f3577b34da6a3ce929d0e0e4736")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := spans[0].SpanContext().TraceID(); got != wantTraceID {
+		t.Fatalf("trace ID = %s, want %s", got, wantTraceID)
+	}
+	if got := spans[0].SpanContext().TraceState().String(); got != "" {
+		t.Fatalf("caller-controlled tracestate propagated: %q", got)
+	}
+}
+
 func TestHTTPHandlerRecordsAndRepanicsHandlerPanic(t *testing.T) {
 	t.Parallel()
 	registry := prometheus.NewPedanticRegistry()
