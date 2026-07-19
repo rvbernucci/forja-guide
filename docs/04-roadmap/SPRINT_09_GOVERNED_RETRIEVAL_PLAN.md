@@ -211,6 +211,30 @@ documentation evidence.
   independent full-range reviews.
 - [ ] Publish a fail-closed Sprint 09 closure candidate for immutable review.
 
+### Current Pre-Closure Evidence
+
+This section is non-authoritative progress evidence, not a closure candidate.
+It cannot authorize Sprint 10.
+
+- On implementation commit `ecc0fcd`, `make validate` passed locally: Go module
+  verification, `go vet`, the full Go unit and race suites, reproducible
+  `linux/amd64` and `linux/arm64` builds, kernel/MCP/worker smoke tests, 55
+  Python tests, and repository validation.
+- `go run ./cmd/forja-retrieval-eval` scores both a single frozen ranking
+  capture and an immutable four-baseline comparison. The public synthetic
+  comparison verifies that lexical-only and dense-only can retain distinct
+  quality profiles while every public stale and cross-tenant case is rejected.
+- `govulncheck@v1.6.0 ./...` found no reachable Go vulnerabilities in the
+  local implementation tree.
+- The public fixture remains a contract smoke test only. No tuning, holdout,
+  OOD, adversarial, production corpus, private label, or provider result is
+  represented by these results.
+- A sanitized staging probe reached the VPS but its environment checker is
+  intentionally `sudo`-gated. No privileged operation, Coolify bearer
+  extraction, or Bedrock provider call was attempted from this workstation.
+  The remaining live evidence must use a deployment workload role and the
+  access-controlled evaluation boundary, not copied runtime credentials.
+
 ## Acceptance Evidence
 
 - JSON Schema fixtures plus semantic cross-field and finite-number tests.
