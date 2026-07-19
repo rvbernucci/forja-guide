@@ -86,6 +86,15 @@ class ObservabilityAssetsTests(unittest.TestCase):
             self.assertNotIn("\t", data, path)
             self.assertNotRegex(data, r"(?i)(password|api_key|bearer_token):\s*\S+")
 
+    def test_stack_smoke_uses_valid_synthetic_bearer_fixture(self) -> None:
+        script = (ROOT / "scripts/observability_stack_smoke.sh").read_text(
+            encoding="utf-8"
+        )
+        match = re.search(r'FORJA_HTTP_BEARER_TOKEN="([^"]+)"', script)
+        self.assertIsNotNone(match)
+        self.assertGreaterEqual(len(match.group(1).encode("utf-8")), 32)
+        self.assertIn("observability stack diagnostics", script)
+
     def test_compose_parser_when_available(self) -> None:
         if shutil.which("docker") is None:
             self.skipTest("Docker CLI is not available")

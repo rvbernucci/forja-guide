@@ -8,7 +8,19 @@ daemon_pid=""
 cd "$root"
 
 cleanup() {
-  if [[ -n "$daemon_pid" ]]; then
+	local status="$?"
+	if [[ "$status" -ne 0 ]]; then
+		echo "observability stack diagnostics" >&2
+		if [[ -f "$work/logs/forjad.jsonl" ]]; then
+			echo "--- forjad ---" >&2
+			cat "$work/logs/forjad.jsonl" >&2
+		fi
+		echo "--- compose ps ---" >&2
+		FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" ps >&2 || true
+		echo "--- compose logs ---" >&2
+		FORJA_LOG_DIR="$work/logs" docker compose -f "$compose" logs --no-color --tail=100 >&2 || true
+	fi
+	if [[ -n "$daemon_pid" ]]; then
     kill -TERM "$daemon_pid" 2>/dev/null || true
     wait "$daemon_pid" 2>/dev/null || true
   fi
@@ -55,7 +67,7 @@ wait_for_url http://127.0.0.1:3100/ready
 wait_for_url http://127.0.0.1:3200/ready
 wait_for_url http://127.0.0.1:3000/api/health
 
-export FORJA_HTTP_BEARER_TOKEN="observability-smoke-token"
+export FORJA_HTTP_BEARER_TOKEN="observability-smoke-token-0000000000000001"
 export FORJA_HTTP_ACTOR_TYPE="system"
 export FORJA_HTTP_ACTOR_ID="observability-smoke"
 export FORJA_OTEL_ENABLED="true"
