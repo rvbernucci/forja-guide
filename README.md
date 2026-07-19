@@ -157,6 +157,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja-index`](cmd/forja-index/) | Committed-source deterministic indexing publisher |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
+| [`cmd/forja-retrieval-eval`](cmd/forja-retrieval-eval/) | Offline, schema-validated retrieval evaluation reporter |
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 | [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |

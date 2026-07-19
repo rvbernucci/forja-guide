@@ -17,6 +17,8 @@ retrieval request, Qdrant payload, trace, metric, or context pack.
 
 The public synthetic corpus is
 [`internal/retrieval/testdata/retrieval_evaluation_public_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_v1.json).
+Its matching, deliberately perfect smoke-test outcomes are
+[`internal/retrieval/testdata/retrieval_evaluation_public_outcomes_v1.json`](../../internal/retrieval/testdata/retrieval_evaluation_public_outcomes_v1.json).
 It uses symbolic identities only and is not representative of production
 quality. Private corpus locations, query text, cards, expected answers, and
 source identifiers must not be committed to this public repository.
@@ -31,6 +33,27 @@ A positive case has one or more `required_entity_ids`; a safety case has only
 Capture each evaluated run separately as `EvaluationOutcome` values: only the
 ordered, canonically accepted entity IDs are scored. Rejected Qdrant payloads
 are never credited as retrieved context.
+
+`forja-retrieval-eval` is a bounded offline CLI for that scoring step. It has
+no network, database, environment-secret, or model-provider configuration.
+It validates the corpus, outcome capture, and generated report against the
+versioned schemas before writing the report atomically. For a public smoke run:
+
+```bash
+go run ./cmd/forja-retrieval-eval \
+  --corpus internal/retrieval/testdata/retrieval_evaluation_public_v1.json \
+  --outcomes internal/retrieval/testdata/retrieval_evaluation_public_outcomes_v1.json \
+  --output /tmp/forja-retrieval-public-report.json \
+  --k 10 \
+  --commit "$(git rev-parse HEAD)" \
+  --embedding-model fixture --embedding-version v1 \
+  --embedding-dimensions 3 \
+  --sparse-encoder-version sparse-fixture-v1 \
+  --policy-hash sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+```
+
+The fixture is only a contract smoke test. Real evaluation must supply the
+actual, immutable policy hash and embedding descriptor from the run receipt.
 
 ## Metrics
 

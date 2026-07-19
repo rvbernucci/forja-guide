@@ -6,6 +6,8 @@ import (
 	"os"
 	"slices"
 	"testing"
+
+	"github.com/rvbernucci/forja-guide/internal/contracts"
 )
 
 func TestScoreRankingsComputesMacroQualityAndSafetyCases(t *testing.T) {
@@ -70,12 +72,28 @@ func TestPublicEvaluationCorpusIsScoreableAndContainsSafetyCases(t *testing.T) {
 	if corpus.SchemaVersion != "1.0" || corpus.CorpusID != "retrieval_eval_public_synthetic_v1" || corpus.Split != "public" || len(corpus.Cases) < 4 {
 		t.Fatalf("corpus=%#v", corpus)
 	}
-	outcomes := make([]EvaluationOutcome, 0, len(corpus.Cases))
-	for _, evaluationCase := range corpus.Cases {
-		outcome := EvaluationOutcome{CaseID: evaluationCase.CaseID, AcceptedEntityIDs: append([]string(nil), evaluationCase.RequiredEntityIDs...)}
-		outcomes = append(outcomes, outcome)
+	outcomeData, err := os.ReadFile("testdata/retrieval_evaluation_public_outcomes_v1.json")
+	if err != nil {
+		t.Fatal(err)
 	}
-	metrics, err := ScoreRankings(corpus.Cases, outcomes, 10)
+	registry, err := contracts.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var capture struct {
+		CorpusID string              `json:"corpus_id"`
+		Outcomes []EvaluationOutcome `json:"outcomes"`
+	}
+	if err := registry.ValidateJSON("retrieval-evaluation-outcomes.schema.json", outcomeData); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(outcomeData, &capture); err != nil {
+		t.Fatal(err)
+	}
+	if capture.CorpusID != corpus.CorpusID {
+		t.Fatalf("outcome corpus=%q, want %q", capture.CorpusID, corpus.CorpusID)
+	}
+	metrics, err := ScoreRankings(corpus.Cases, capture.Outcomes, 10)
 	if err != nil || metrics.ExpectedNoAcceptedPass != 2 || !approximately(metrics.RecallAtK, 1) {
 		t.Fatalf("metrics=%#v err=%v", metrics, err)
 	}
