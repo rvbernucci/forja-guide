@@ -2,10 +2,10 @@
   "evidence_version": "1.0",
   "sprint_id": "10",
   "status": "partial",
-  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "basis_commit": "0a7b7bb1a15e96d309ab2a9aab44897b207b0a73",
   "metrics": {
-    "python_tests": 79,
-    "markdown_files_validated": 91,
+    "python_tests": 106,
+    "markdown_files_validated": 92,
     "json_schemas_validated": 38,
     "radeon_model_candidate_examples": 2,
     "public_embedding_smoke_inputs": 4,
@@ -14,5 +14,5 @@
     "real_radeon_embedding_benchmarks": 0,
     "real_destroy_recreate_recovery_reports": 0
   },
-  "recorded_at": "2026-07-20T18:06:00Z"
+  "recorded_at": "2026-07-20T18:55:00Z"
 }
