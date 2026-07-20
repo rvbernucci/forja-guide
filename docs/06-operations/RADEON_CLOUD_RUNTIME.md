@@ -64,6 +64,39 @@ report outside Git beside the runtime receipt. A sanitized summary can be
 published only after model names, private paths, and operational details are
 reviewed.
 
+## Local Model Candidate Benchmark
+
+Use the public task set only as a contract smoke test:
+
+```bash
+python3 scripts/benchmark_radeon_model_candidates.py \
+  --task-set internal/alpha/testdata/radeon_model_selection_public_v1.json \
+  --candidates /secure/forja/radeon-model-candidates.json \
+  --output /workspace/forja-radeon-model-candidate-report.json
+```
+
+The candidate config is private and contains loopback OpenAI-compatible model
+endpoints:
+
+```json
+{
+  "schema_version": "1.0",
+  "candidates": [
+    {
+      "candidate_id": "qwen-or-gemma-local",
+      "base_url": "http://127.0.0.1:8000",
+      "model": "local-model-id"
+    }
+  ]
+}
+```
+
+The benchmark rejects non-loopback endpoints and records only response hashes,
+latency, finish reason, response length, and token usage when the local server
+returns it. It does not store response bodies. Real model selection must run on
+a private tuning task set outside Git and then be confirmed on an untouched
+holdout before Sprint 10 can select an instruction model for the demo profile.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
