@@ -180,10 +180,11 @@ unit count, fact count, forms, fiscal years, currencies, and canonical metric
 hints.
 
 This step deliberately stops before choosing authoritative accounting metrics.
-The raw fact rows preserve lexical and numeric values, units, period end,
-filing accession, concept identity, context hash, and source-object lineage.
-Metric mapping, dimensional validation, unit/scale normalization, amendment
-priority, and `alpha_metric_observations` remain reviewed Sprint 10 work.
+The raw fact rows preserve lexical and numeric values, SEC `decimals`, units,
+currency, period start, period end, fiscal frame, filing accession, concept
+identity, context hash, and source-object lineage. Metric mapping, dimensional
+validation, unit/scale normalization, amendment priority, and
+`alpha_metric_observations` remain reviewed Sprint 10 work.
 
 ## Canonical Metric Registry Seed
 
@@ -226,8 +227,9 @@ go run ./cmd/forja-alpha seed-metric-observations \
 
 The command selects only numeric USD raw facts whose concept IDs match reviewed
 metric mappings. Each observation keeps the source fact, filing, issuer,
-period end, value, unit, currency, and a lineage object that states the
-selection remains `mapped_raw_fact_only_no_amendment_or_ytd_resolution`.
+period start, period end, value, unit, currency, fiscal frame, and a lineage
+object that states the selection remains
+`mapped_raw_fact_only_no_amendment_or_ytd_resolution`.
 
 This is intentionally a first-pass reported observation layer. It does not
 deduplicate multiple reported candidates, resolve amendments, infer quarterly

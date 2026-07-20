@@ -47,6 +47,8 @@ type SECCompanyFact struct {
 	Currency     string
 	LexicalValue string
 	NumericValue string
+	Decimals     string
+	PeriodStart  string
 	PeriodEnd    string
 	FormType     string
 	FiscalYear   int
@@ -68,14 +70,16 @@ type secFactConcept struct {
 }
 
 type secFactRow struct {
-	End   string          `json:"end"`
-	Val   json.RawMessage `json:"val"`
-	Accn  string          `json:"accn"`
-	FY    int             `json:"fy"`
-	FP    string          `json:"fp"`
-	Form  string          `json:"form"`
-	Filed string          `json:"filed"`
-	Frame string          `json:"frame"`
+	Start    string          `json:"start"`
+	End      string          `json:"end"`
+	Val      json.RawMessage `json:"val"`
+	Accn     string          `json:"accn"`
+	FY       int             `json:"fy"`
+	FP       string          `json:"fp"`
+	Form     string          `json:"form"`
+	Filed    string          `json:"filed"`
+	Frame    string          `json:"frame"`
+	Decimals string          `json:"decimals"`
 }
 
 func ParseSECCompanyFactsSnapshot(content []byte, company SECCompany, availableAt time.Time) (SECCompanyFactsSnapshot, error) {
@@ -177,6 +181,14 @@ func companyFactFromRow(company SECCompany, taxonomy, conceptName string, concep
 	if _, err := parseSECFilingDate(periodEnd); err != nil {
 		return SECCompanyFact{}, fmt.Errorf("SEC Company Facts row for %s:%s accession %s has invalid end date: %w", taxonomy, conceptName, accession, err)
 	}
+	periodStart := strings.TrimSpace(row.Start)
+	if periodStart != "" {
+		if _, err := parseSECFilingDate(periodStart); err != nil {
+			return SECCompanyFact{}, fmt.Errorf("SEC Company Facts row for %s:%s accession %s has invalid start date: %w", taxonomy, conceptName, accession, err)
+		}
+	} else {
+		periodStart = periodEnd
+	}
 	filedAt := strings.TrimSpace(row.Filed)
 	if filedAt != "" {
 		if _, err := parseSECFilingDate(filedAt); err != nil {
@@ -191,10 +203,11 @@ func companyFactFromRow(company SECCompany, taxonomy, conceptName string, concep
 	if form == "other" {
 		form = strings.ToUpper(strings.TrimSpace(row.Form))
 	}
-	contextHashInput := strings.Join([]string{company.CIK, accession, taxonomy, conceptName, unit, periodEnd, row.Frame}, "|")
+	contextHashInput := strings.Join([]string{company.CIK, accession, taxonomy, conceptName, unit, periodStart, periodEnd, row.Frame}, "|")
 	contextDigest := sha256.Sum256([]byte(contextHashInput))
 	contextHash := hex.EncodeToString(contextDigest[:])
-	factHashInput := strings.Join([]string{contextHashInput, lexical}, "|")
+	decimals := strings.TrimSpace(row.Decimals)
+	factHashInput := strings.Join([]string{contextHashInput, lexical, decimals}, "|")
 	factDigest := sha256.Sum256([]byte(factHashInput))
 	return SECCompanyFact{
 		FactID:       "alpha_fact_" + hex.EncodeToString(factDigest[:16]),
@@ -211,6 +224,8 @@ func companyFactFromRow(company SECCompany, taxonomy, conceptName string, concep
 		Currency:     currencyFromUnit(unit),
 		LexicalValue: lexical,
 		NumericValue: numeric,
+		Decimals:     decimals,
+		PeriodStart:  periodStart,
 		PeriodEnd:    periodEnd,
 		FormType:     form,
 		FiscalYear:   row.FY,
@@ -471,16 +486,17 @@ INSERT INTO forja.alpha_xbrl_contexts (
     period_start, period_end, instant, dimensions, context_sha256
 ) VALUES (
     %s::uuid, %s::uuid, %s, %s, %s,
-    NULL, %s::date, %s::date, %s::jsonb, decode(%s, 'hex')
+    %s::date, %s::date, NULL, %s::jsonb, decode(%s, 'hex')
 ) ON CONFLICT (tenant_id, repository_id, filing_id, context_sha256) DO UPDATE SET
     context_id=EXCLUDED.context_id,
     entity_identifier=EXCLUDED.entity_identifier,
+    period_start=EXCLUDED.period_start,
     period_end=EXCLUDED.period_end,
     instant=EXCLUDED.instant,
     dimensions=EXCLUDED.dimensions;
 `,
 		sqlString(tenantID), sqlString(repositoryID), sqlString(fact.ContextID), sqlString(fact.FilingID), sqlString(company.CIK),
-		sqlString(fact.PeriodEnd), sqlString(fact.PeriodEnd), sqlString(contextDimensionsJSON(fact)), sqlString(fact.ContextHash))
+		sqlString(fact.PeriodStart), sqlString(fact.PeriodEnd), sqlString(contextDimensionsJSON(fact)), sqlString(fact.ContextHash))
 	return err
 }
 
@@ -493,6 +509,10 @@ func writeRawFactSQL(writer io.Writer, tenantID, repositoryID, sourceObjectID st
 	if fact.Currency != "" {
 		currency = sqlString(fact.Currency)
 	}
+	decimals := "NULL"
+	if fact.Decimals != "" {
+		decimals = sqlString(fact.Decimals)
+	}
 	_, err := fmt.Fprintf(writer, `
 INSERT INTO forja.alpha_xbrl_facts (
     tenant_id, repository_id, fact_id, filing_id, concept_id, context_id,
@@ -500,7 +520,7 @@ INSERT INTO forja.alpha_xbrl_facts (
     scale, quality_state
 ) VALUES (
     %s::uuid, %s::uuid, %s, %s, %s, %s,
-    %s, %s, NULL, %s, %s, %s,
+    %s, %s, %s, %s, %s, %s,
     0, 'accepted'
 ) ON CONFLICT (tenant_id, repository_id, fact_id) DO UPDATE SET
     filing_id=EXCLUDED.filing_id,
@@ -508,13 +528,14 @@ INSERT INTO forja.alpha_xbrl_facts (
     context_id=EXCLUDED.context_id,
     source_object_id=EXCLUDED.source_object_id,
     unit=EXCLUDED.unit,
+    decimals=EXCLUDED.decimals,
     lexical_value=EXCLUDED.lexical_value,
     numeric_value=EXCLUDED.numeric_value,
     currency=EXCLUDED.currency,
     quality_state=EXCLUDED.quality_state;
 `,
 		sqlString(tenantID), sqlString(repositoryID), sqlString(fact.FactID), sqlString(fact.FilingID), sqlString(fact.ConceptID), sqlString(fact.ContextID),
-		sqlString(sourceObjectID), sqlString(fact.Unit), sqlString(fact.LexicalValue), numericValue, currency)
+		sqlString(sourceObjectID), sqlString(fact.Unit), decimals, sqlString(fact.LexicalValue), numericValue, currency)
 	return err
 }
 

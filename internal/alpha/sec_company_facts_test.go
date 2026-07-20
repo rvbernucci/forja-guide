@@ -42,6 +42,9 @@ func TestParseSECCompanyFactsSnapshotSummarizesCoverage(t *testing.T) {
 		if fact.LexicalValue == "" {
 			t.Fatalf("raw fact missing lexical value: %#v", fact)
 		}
+		if fact.PeriodStart == "" || fact.PeriodEnd == "" {
+			t.Fatalf("raw fact missing explicit period: %#v", fact)
+		}
 	}
 	if strings.Join(coverage.Forms, ",") != "10-K,10-Q" {
 		t.Fatalf("forms = %#v", coverage.Forms)
@@ -109,6 +112,8 @@ func TestWriteSECCompanyFactsSeedSQLRecordsSourceObjectAndCoverage(t *testing.T)
 		"alpha/sec/companyfacts/CIK0001045810/" + snapshot.ContentSHA256 + ".json",
 		"SEC Company Facts is a structured fact snapshot",
 		"canonical_hints",
+		"-6",
+		"2023-01-30",
 		"60922000000",
 		"alpha_filing_",
 	}
@@ -136,8 +141,8 @@ func secCompanyFactsFixture() string {
         "description": "Revenue from contracts with customers",
         "units": {
           "USD": [
-            {"end": "2024-01-28", "val": 60922000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023"},
-            {"end": "2024-07-28", "val": 30040000000, "accn": "0001045810-24-000227", "fy": 2025, "fp": "Q2", "form": "10-Q", "filed": "2024-08-28", "frame": "CY2024Q2"}
+            {"start": "2023-01-30", "end": "2024-01-28", "val": 60922000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "-6"},
+            {"start": "2024-04-29", "end": "2024-07-28", "val": 30040000000, "accn": "0001045810-24-000227", "fy": 2025, "fp": "Q2", "form": "10-Q", "filed": "2024-08-28", "frame": "CY2024Q2", "decimals": "-6"}
           ]
         }
       },
@@ -146,7 +151,7 @@ func secCompanyFactsFixture() string {
         "description": "Operating income or loss",
         "units": {
           "USD": [
-            {"end": "2024-01-28", "val": 32972000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023"}
+            {"start": "2023-01-30", "end": "2024-01-28", "val": 32972000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "-6"}
           ]
         }
       },
@@ -155,7 +160,7 @@ func secCompanyFactsFixture() string {
         "description": "Net income or loss",
         "units": {
           "USD": [
-            {"end": "2024-01-28", "val": 29760000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023"}
+            {"start": "2023-01-30", "end": "2024-01-28", "val": 29760000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "-6"}
           ]
         }
       }

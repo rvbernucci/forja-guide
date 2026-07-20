@@ -25,6 +25,9 @@ func TestMetricObservationsFromCompanyFactsSelectsMappedNumericFacts(t *testing.
 		if observation.ValueNumeric == "" || observation.Unit != "USD" || observation.Currency != "USD" {
 			t.Fatalf("observation value/unit invalid: %#v", observation)
 		}
+		if observation.PeriodStart == "" || observation.PeriodEnd == "" {
+			t.Fatalf("observation period invalid: %#v", observation)
+		}
 		if observation.Lineage["selection"] != "mapped_raw_fact_only_no_amendment_or_ytd_resolution" {
 			t.Fatalf("lineage selection missing: %#v", observation.Lineage)
 		}
@@ -52,6 +55,8 @@ func TestWriteAlphaMetricObservationsSeedSQL(t *testing.T) {
 		"alpha_metric_operating_income",
 		"alpha_metric_net_income",
 		"mapped_raw_fact_only_no_amendment_or_ytd_resolution",
+		"2023-01-30",
+		"period_start",
 		"60922000000",
 	}
 	for _, fragment := range required {

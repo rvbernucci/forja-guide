@@ -17,6 +17,7 @@ type AlphaMetricObservation struct {
 	FilingID      string
 	SourceFactID  string
 	ObservedAt    string
+	PeriodStart   string
 	PeriodEnd     string
 	ValueNumeric  string
 	Unit          string
@@ -56,6 +57,7 @@ func MetricObservationsFromCompanyFacts(snapshot SECCompanyFactsSnapshot) ([]Alp
 			FilingID:      fact.FilingID,
 			SourceFactID:  fact.FactID,
 			ObservedAt:    fact.PeriodEnd,
+			PeriodStart:   fact.PeriodStart,
 			PeriodEnd:     fact.PeriodEnd,
 			ValueNumeric:  fact.NumericValue,
 			Unit:          fact.Unit,
@@ -70,6 +72,8 @@ func MetricObservationsFromCompanyFacts(snapshot SECCompanyFactsSnapshot) ([]Alp
 				"form":            fact.FormType,
 				"fiscal_year":     fact.FiscalYear,
 				"fiscal_period":   fact.FiscalPeriod,
+				"period_start":    fact.PeriodStart,
+				"period_end":      fact.PeriodEnd,
 				"mapping_version": metricRegistryVersion,
 				"selection":       "mapped_raw_fact_only_no_amendment_or_ytd_resolution",
 			},
@@ -125,7 +129,7 @@ INSERT INTO forja.alpha_metric_observations (
 ) VALUES (
     %s::uuid, %s::uuid, %s, %s, %s,
     NULL, %s, %s, 'reported', %s::timestamptz,
-    NULL, %s::date, %s::timestamptz, %s, %s, %s,
+    %s::date, %s::date, %s::timestamptz, %s, %s, %s,
     %s::jsonb, 'accepted'
 ) ON CONFLICT (tenant_id, repository_id, metric_observation_id) DO UPDATE SET
     metric_id=EXCLUDED.metric_id,
@@ -134,6 +138,7 @@ INSERT INTO forja.alpha_metric_observations (
     source_fact_id=EXCLUDED.source_fact_id,
     observation_kind=EXCLUDED.observation_kind,
     observed_at=EXCLUDED.observed_at,
+    period_start=EXCLUDED.period_start,
     period_end=EXCLUDED.period_end,
     available_at=EXCLUDED.available_at,
     value_numeric=EXCLUDED.value_numeric,
@@ -144,7 +149,7 @@ INSERT INTO forja.alpha_metric_observations (
 `,
 		sqlString(tenantID), sqlString(repositoryID), sqlString(observation.ObservationID), sqlString(observation.MetricID), sqlString(observation.IssuerID),
 		sqlString(observation.FilingID), sqlString(observation.SourceFactID), sqlString(observation.ObservedAt),
-		sqlString(observation.PeriodEnd), sqlString(observation.ObservedAt), observation.ValueNumeric, sqlString(observation.Unit), currency,
+		sqlString(observation.PeriodStart), sqlString(observation.PeriodEnd), sqlString(observation.ObservedAt), observation.ValueNumeric, sqlString(observation.Unit), currency,
 		sqlString(string(lineage)))
 	return err
 }
