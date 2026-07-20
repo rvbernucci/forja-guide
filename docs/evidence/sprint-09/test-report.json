@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
+  "basis_commit": "a9a971cff16ee50ab4fafca3a475f117a47f438d",
   "tests": [
     {
       "name": "complete local quality-gate component set",
@@ -17,12 +17,12 @@
     {
       "name": "public exact-basis CI",
       "result": "passed",
-      "summary": "Public GitHub Actions run 29722787449 on basis commit 8602b2175be98ea4a8cc68ccf2b7f4804378c31f passed repository validation, PostgreSQL durability, the pinned live-Qdrant lifecycle, and the clean-host observability rehearsal."
+      "summary": "Public GitHub Actions run 29726147010 on basis commit a9a971cff16ee50ab4fafca3a475f117a47f438d passed repository validation, PostgreSQL durability, the pinned live-Qdrant lifecycle, and the clean-host observability rehearsal."
     },
     {
       "name": "PostgreSQL retrieval integration suite",
       "result": "passed",
-      "summary": "The public CI PostgreSQL durability gate covered migration 009, projector registration and fan-out, claims and fencing, contiguous checkpoints, replay, generation activation, point receipts, canonical symbol/test/memory/incident resolution, and rollback refusal after canonical history."
+      "summary": "The public CI PostgreSQL durability gate covered migration 009, projector registration and fan-out, claims and fencing, contiguous checkpoints, replay, generation activation, point receipts, canonical symbol/test/memory/incident resolution, rollback refusal after canonical history, and cross-store alias-mutation serialization with a bounded guard context."
     },
     {
       "name": "historical rollback compatibility after migration 009",
@@ -32,8 +32,8 @@
     {
       "name": "live Qdrant lifecycle",
       "result": "passed",
-      "summary": "Public CI ran the integration lifecycle against digest-pinned Qdrant v1.18.2: physical collection creation, first alias creation, atomic delete-and-create replacement, blue-green cutover, readback, guarded rollback, dense and sparse query paths, deletion, and cleanup all passed."
+      "summary": "Public CI ran the integration lifecycle against digest-pinned Qdrant v1.18.2: physical collection creation, first alias creation, PostgreSQL-serialized atomic delete-and-create replacement, blue-green cutover, readback, guarded rollback, dense and sparse query paths, deletion, and cleanup all passed."
     }
   ],
-  "recorded_at": "2026-07-20T06:59:12Z"
+  "recorded_at": "2026-07-20T08:04:21Z"
 }

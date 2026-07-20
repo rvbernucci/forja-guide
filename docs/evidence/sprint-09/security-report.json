@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed_with_deferred_activation",
-  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
+  "basis_commit": "a9a971cff16ee50ab4fafca3a475f117a47f438d",
   "checks": [
     {
       "name": "canonical authority and tenant isolation",
@@ -13,6 +13,11 @@
       "name": "derived-store distrust",
       "result": "passed",
       "summary": "Malformed, duplicate, ambiguous, stale, cross-scope, hash-mismatched, missing, and tombstoned Qdrant payloads cannot become accepted context."
+    },
+    {
+      "name": "distributed alias mutation serialization",
+      "result": "passed",
+      "summary": "Cutover and rollback require the canonical PostgreSQL guard, which serializes alias observation, mutation, and readback across store instances under a bounded transaction-scoped advisory lock."
     },
     {
       "name": "provider and credential boundary",
@@ -38,5 +43,5 @@
     "The installed Qdrant validation wrapper depends on caller working directory and must be repaired before it can become Sprint 10 evidence.",
     "Sprint 09 records no separate reachable-vulnerability count without a committed scanner receipt."
   ],
-  "recorded_at": "2026-07-20T06:59:12Z"
+  "recorded_at": "2026-07-20T08:04:21Z"
 }
