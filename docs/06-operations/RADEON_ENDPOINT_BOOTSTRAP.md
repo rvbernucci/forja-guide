@@ -41,6 +41,22 @@ python3 scripts/prepare_radeon_sprint10_operator_bundle.py
 
 The generator writes a private env template, two-candidate config template, and
 ordered evidence script under `/workspace/forja-alpha-sprint10-operator-bundle`.
+Fresh templates contain placeholders. Validate the generated shape before
+editing with:
+
+```bash
+python3 scripts/verify_radeon_operator_bundle.py \
+  --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle \
+  --allow-placeholders
+```
+
+After replacing local model IDs, embedding model ID, and quantization notes,
+run the strict pre-flight:
+
+```bash
+python3 scripts/verify_radeon_operator_bundle.py \
+  --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle
+```
 
 Before opening an SSH session from a workstation, classify the endpoint:
 
