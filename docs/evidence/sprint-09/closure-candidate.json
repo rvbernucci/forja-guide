@@ -5,7 +5,7 @@
   "status": "candidate",
   "closure_protocol_version": "2.0",
   "authoritative": false,
-  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
@@ -42,5 +42,5 @@
     "docs/07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md"
   ],
   "next_sprint_authorized": null,
-  "recorded_at": "2026-07-20T02:34:05Z"
+  "recorded_at": "2026-07-20T04:10:28Z"
 }

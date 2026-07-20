@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed_with_deferred_activation",
-  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
   "checks": [
     {
       "name": "canonical authority and tenant isolation",
@@ -38,5 +38,5 @@
     "The installed Qdrant validation wrapper depends on caller working directory and must be repaired before it can become Sprint 10 evidence."
   ],
   "known_reachable_vulnerabilities": 0,
-  "recorded_at": "2026-07-20T02:34:05Z"
+  "recorded_at": "2026-07-20T04:10:28Z"
 }

@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
   "tests": [
     {
       "name": "complete local quality-gate component set",
@@ -20,6 +20,11 @@
       "summary": "The recorded disposable PostgreSQL drills covered migration 009, projector registration and fan-out, claims and fencing, contiguous checkpoints, replay, generation activation, point receipts, canonical symbol/test/memory/incident resolution, and rollback refusal after canonical history."
     },
     {
+      "name": "historical rollback compatibility after migration 009",
+      "result": "passed",
+      "summary": "Sprint 08-to-07, Sprint 07-to-06, and Sprint 05-to-04 binary compatibility rehearsals dynamically rolled a disposable PostgreSQL 18.4 schema from migration 009 to each historical target and passed."
+    },
+    {
       "name": "live disposable Qdrant lifecycle drills",
       "result": "passed",
       "summary": "Loopback Qdrant v1.18.2 drills covered physical collection creation, payload indexes, dense and sparse query paths, upsert, deletion, blue-green alias cutover, guarded rollback, derived-store deletion, canonical reset, and replay."
@@ -30,5 +35,5 @@
       "summary": "Qdrant and Neo4j were running, ready, and loopback-only through scoped wrappers. The staged linux/amd64 CLI failed closed without runtime configuration. The installed Qdrant validator has a caller-working-directory defect transferred to Sprint 10."
     }
   ],
-  "recorded_at": "2026-07-20T02:34:05Z"
+  "recorded_at": "2026-07-20T04:10:28Z"
 }

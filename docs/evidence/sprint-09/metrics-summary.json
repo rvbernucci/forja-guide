@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "recorded",
-  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
   "metrics": {
     "tracked_files_before_evidence": 463,
     "sprint_changed_files": 104,
@@ -19,5 +19,5 @@
     "undocumented_blockers": 0
   },
   "quality_activation_state": "deferred_to_sprint_10",
-  "recorded_at": "2026-07-20T02:34:05Z"
+  "recorded_at": "2026-07-20T04:10:28Z"
 }

@@ -2,13 +2,13 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "candidate_pending_immutable_review",
-  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
   "validators": [
     {
       "name": "local repository quality gate",
       "type": "mechanical",
       "result": "passed",
-      "summary": "Unit, race, reproducible build, process smoke, Python, JSON, link, private-evaluation tracking, and sensitive-content checks passed."
+      "summary": "Unit, race, reproducible build, process smoke, Python, JSON, link, private-evaluation tracking, sensitive-content, and migration-aware historical rollback checks passed."
     },
     {
       "name": "public synthetic retrieval comparison",
@@ -56,5 +56,5 @@
     "protected exact-main GitHub workflow",
     "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
   ],
-  "recorded_at": "2026-07-20T02:34:05Z"
+  "recorded_at": "2026-07-20T04:10:28Z"
 }
