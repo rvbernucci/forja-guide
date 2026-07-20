@@ -57,6 +57,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "seed-market-series" {
+		if err := seedMarketSeries(os.Args[2:]); err != nil {
+			log.Fatalf("forja-alpha seed-market-series: %v", err)
+		}
+		return
+	}
 	config, err := alpha.LoadConfig()
 	if err != nil {
 		log.Fatalf("forja-alpha configuration: %v", err)
@@ -343,4 +349,47 @@ func seedFREDSeries(arguments []string) error {
 		return err
 	}
 	return alpha.WriteFREDSeriesSeedSQL(os.Stdout, *tenantID, *repositoryID, snapshot)
+}
+
+func seedMarketSeries(arguments []string) error {
+	flags := flag.NewFlagSet("forja-alpha seed-market-series", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	tenantID := flags.String("tenant-id", "", "target tenant UUID")
+	repositoryID := flags.String("repository-id", "", "target repository UUID")
+	ticker := flags.String("ticker", "", "covered ticker symbol")
+	provider := flags.String("provider", "licensed-csv", "reviewed market data provider or user-supplied CSV label")
+	csvPath := flags.String("csv", "", "local hash-pinned market adjusted-price CSV snapshot")
+	availableAtRaw := flags.String("available-at", "", "snapshot availability timestamp in RFC3339 format")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	if *ticker == "" {
+		return errors.New("--ticker is required")
+	}
+	if *csvPath == "" {
+		return errors.New("--csv is required")
+	}
+	if *availableAtRaw == "" {
+		return errors.New("--available-at is required")
+	}
+	company, ok := alpha.ResolveSECCompany(*ticker)
+	if !ok {
+		return errors.New("--ticker is outside the bounded Alpha universe")
+	}
+	availableAt, err := time.Parse(time.RFC3339, *availableAtRaw)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(*csvPath)
+	if err != nil {
+		return err
+	}
+	snapshot, err := alpha.ParseMarketSeriesCSVSnapshot(content, company, *provider, availableAt)
+	if err != nil {
+		return err
+	}
+	return alpha.WriteMarketSeriesSeedSQL(os.Stdout, *tenantID, *repositoryID, snapshot)
 }

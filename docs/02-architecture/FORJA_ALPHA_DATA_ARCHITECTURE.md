@@ -5,8 +5,8 @@ implemented in migration `000010_forja_alpha_financial_data`; the Magnificent
 Seven SEC identity registry and idempotent SQL seed are implemented in
 `forja-alpha seed-identities`, including an optional versioned SEC
 `company_tickers.json` snapshot path with source-object lineage. Filing,
-Treasury, and first FRED/ALFRED snapshot adapters now preserve source lineage
-and point-in-time clocks. Market-data adapters, populated snapshots, and
+Treasury, first FRED/ALFRED, and first market-data snapshot adapters now
+preserve source lineage and point-in-time clocks. Populated snapshots and
 recovery gates remain Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
@@ -291,6 +291,34 @@ skipped-row counts in source metadata. Accepted rows create the FRED source
 system, source object, ingestion run, series registry row, and
 `alpha_series_observations` with observed, published, available, and vintage
 clocks.
+
+## Market Series Snapshot Seed
+
+The first market adapter ingests a hash-pinned local adjusted-price CSV
+snapshot for one covered security at a time:
+
+```bash
+go run ./cmd/forja-alpha seed-market-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --provider licensed-csv \
+  --csv /secure/forja/market/NVDA-adjusted.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-market-nvda.sql
+```
+
+The CSV must include a `date` column and an adjusted close column named
+`adjusted_close`, `adj_close`, `adjclose`, or `close_adjusted`. Optional
+`published_at` and `vintage_at` columns preserve availability and revision
+clocks. The adapter records the market source system, source object, ingestion
+run, adjusted-close series, and a derived daily-return series.
+
+Daily returns are simple returns calculated mechanically from adjacent accepted
+adjusted close observations. This lets factor tools use a deterministic return
+panel while preserving the provider adjustment policy and license boundary in
+source metadata. Rows with missing, non-numeric, or non-positive adjusted close
+values are skipped and counted; they do not become canonical prices or returns.
 
 ## Point-in-Time Query Views
 
