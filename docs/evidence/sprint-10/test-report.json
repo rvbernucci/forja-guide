@@ -2,17 +2,22 @@
   "evidence_version": "1.0",
   "sprint_id": "10",
   "status": "partial_pass",
-  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "basis_commit": "c9c6a535bf41a862eb40c32b6fccd8f44182bb97",
   "tests": [
     {
       "name": "local repository quality gate",
       "result": "passed",
-      "summary": "make validate passed on the public branch after adding the Radeon candidate contract. It covered npm dependency installation, Go module verification, go vet, Go unit tests, go test -race, reproducible linux/amd64 and linux/arm64 builds, kernel smoke, MCP smoke, worker smoke, alpha test, 79 Python tests, and repository validation."
+      "summary": "make validate passed on the public branch after adding the Sprint 10 closure promoter. It covered npm dependency installation, Go module verification, go vet, Go unit tests, go test -race, reproducible linux/amd64 and linux/arm64 builds, kernel smoke, MCP smoke, worker smoke, alpha test, 98 Python tests, and repository validation."
     },
     {
       "name": "Sprint 10 Python evidence tooling",
       "result": "passed",
-      "summary": "Unit tests cover Radeon runtime receipt capture, runtime readiness verification, source snapshot manifest verification, model candidate benchmarking, embedding benchmarking, competition-profile recovery binding, and the one-shot Sprint 10 evidence runner."
+      "summary": "Unit tests cover Radeon runtime receipt capture, runtime readiness verification, source snapshot manifest verification, model candidate benchmarking, embedding benchmarking, competition-profile recovery binding, the one-shot Sprint 10 evidence runner, public-summary application, independent-review readiness, and fail-closed close-receipt promotion."
+    },
+    {
+      "name": "Sprint 10 closure promoter",
+      "result": "passed",
+      "summary": "The promoter refuses to close Sprint 10 unless rollback is demonstrated, all real Radeon acceptance gates are true, the review artifact lives under docs/evidence/sprint-10/reviews, and the candidate remains non-authoritative before promotion."
     },
     {
       "name": "Radeon model candidate contract",
@@ -25,5 +30,5 @@
       "summary": "The known Radeon instance refused SSH on 36.150.116.206:31200, so no real runtime receipt, real model benchmark, real embedding benchmark, or instance-destruction recovery evidence is claimed yet."
     }
   ],
-  "recorded_at": "2026-07-20T18:06:00Z"
+  "recorded_at": "2026-07-20T18:40:00Z"
 }

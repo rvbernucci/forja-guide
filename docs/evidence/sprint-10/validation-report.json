@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "10",
   "status": "partial_pass",
-  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "basis_commit": "c9c6a535bf41a862eb40c32b6fccd8f44182bb97",
   "validation": [
     {
       "gate": "data spine implementation",
@@ -23,7 +23,12 @@
       "gate": "next Sprint authorization",
       "result": "not_authorized",
       "summary": "Sprint 11 must not start until independent validation records the real Radeon runtime artifacts and this closure candidate is promoted to a review-bound close receipt."
+    },
+    {
+      "gate": "closure promotion guard",
+      "result": "passed_for_public_code",
+      "summary": "The close-receipt promoter is fail-closed and rejects missing rollback, missing real Radeon gates, pre-authorized candidates, and review artifacts outside the Sprint 10 review folder."
     }
   ],
-  "recorded_at": "2026-07-20T18:06:00Z"
+  "recorded_at": "2026-07-20T18:40:00Z"
 }
