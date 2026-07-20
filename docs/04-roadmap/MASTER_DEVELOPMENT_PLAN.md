@@ -1,9 +1,9 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-08 are closed. The non-authoritative Sprint 09
-protocol-v2 closure candidate is published for immutable review. Sprint 10
-remains unauthorized until the authoritative Sprint 09 close receipt exists.
-Gates A and B are achieved.
+Status: Active. Sprints 00-09 are closed by authoritative receipts. Sprint 10
+is authorized and owns Radeon runtime activation, local embedding replacement,
+and the private retrieval quality debt transferred from Sprint 09. Gates A and
+B are achieved.
 
 ## Objective
 

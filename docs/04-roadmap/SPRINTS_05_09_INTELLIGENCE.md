@@ -137,10 +137,11 @@ boundaries and residual risk. Sprint 09 is authorized.
 **Outcome:** discover relevant artifacts and symbols with hybrid search while
 preserving authority and access boundaries.
 
-**Status:** Implementation complete; the protocol-v2 closure candidate is
-published for immutable review. Private quality evaluation and competition-profile activation are
-transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
-[Sprint 09 execution plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
+**Status:** Closed by the authoritative
+[Sprint 09 receipt](../evidence/sprint-09/close-receipt.json). Private quality
+evaluation and competition-profile activation are transferred to Sprint 10 and
+do not become implied Sprint 09 evidence. See the [Sprint 09 execution
+plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
 
 ### Scope
 
@@ -181,8 +182,8 @@ transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
   freshness and leakage fixtures, and transfer execution of the private
   tuning/holdout/OOD corpus to Sprint 10. Production activation remains
   disabled until that evidence passes.
-- [x] Publish the complete fail-closed Sprint 09 evidence candidate without
-  authorizing Sprint 10.
+- [x] Publish the complete Sprint 09 evidence candidate and authoritative
+  close receipt authorizing Sprint 10.
 
 ### Acceptance
 
