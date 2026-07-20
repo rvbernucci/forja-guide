@@ -156,6 +156,31 @@ This is a filing-timeline adapter, not a full document or XBRL parser. The
 primary filing document, inline XBRL instance, Company Facts payload, and
 parsed accounting facts remain separate Sprint 10 ingestion work.
 
+## SEC Company Facts Snapshot Seed
+
+SEC Company Facts snapshots are recorded before Forja attempts canonical metric
+mapping:
+
+```bash
+go run ./cmd/forja-alpha seed-company-facts \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --company-facts-json /secure/forja/sec/companyfacts/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-companyfacts-nvda.sql
+```
+
+The command validates the CIK, records the snapshot SHA-256 and source object,
+stores an ingestion receipt, and writes a sanitized coverage summary into
+source-object metadata: taxonomy count, concept count, unit count, fact count,
+forms, fiscal years, currencies, and canonical metric hints.
+
+This step deliberately stops before choosing authoritative accounting values.
+Metric mapping, context construction, dimensional validation, unit/scale
+normalization, amendment priority, and `alpha_metric_observations` remain
+reviewed Sprint 10 work.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must
