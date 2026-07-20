@@ -5,7 +5,7 @@
   "status": "candidate",
   "closure_protocol_version": "2.0",
   "authoritative": false,
-  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
+  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
@@ -42,5 +42,5 @@
     "docs/evidence/sprint-09/ci-receipt.md"
   ],
   "next_sprint_authorized": null,
-  "recorded_at": "2026-07-20T05:41:35Z"
+  "recorded_at": "2026-07-20T06:59:12Z"
 }
