@@ -22,12 +22,13 @@ language.
 15. [Evaluation strategy](07-evaluations/EVALUATION_STRATEGY.md)
 16. [Retrieval evaluation protocol](07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md)
 17. [Forja Alpha local experience](06-operations/FORJA_ALPHA_LOCAL.md)
-18. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
-19. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
-20. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
-21. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
-22. [Qdrant recovery runbook](06-operations/QDRANT_RECOVERY_RUNBOOK.md)
-23. [Sprint evidence](evidence/)
+18. [Radeon Cloud runtime](06-operations/RADEON_CLOUD_RUNTIME.md)
+19. [PostgreSQL recovery](06-operations/POSTGRESQL_RECOVERY.md)
+20. [Observability operations](06-operations/OBSERVABILITY_OPERATIONS.md)
+21. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
+22. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
+23. [Qdrant recovery runbook](06-operations/QDRANT_RECOVERY_RUNBOOK.md)
+24. [Sprint evidence](evidence/)
 
 ## Documentation States
 

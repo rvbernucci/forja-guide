@@ -1,6 +1,6 @@
 # Sprints 10-14: Forja Alpha Production Plan
 
-Status: Planned. Sprint 09 is closed. These Sprints complete Forja Alpha as a
+Status: Active. Sprint 09 is closed. These Sprints complete Forja Alpha as a
 private, evidence-grounded investment-research agent for AMD AI DevMaster
 Hackathon Track 2 without weakening the neutral Forja kernel.
 
@@ -97,6 +97,22 @@ filing and macro timelines without generating an analytical conclusion.
   explicit disabled-remote-provider test.
 - [ ] Prove source, configuration, and evaluation metadata recovery after
   instance destruction without committing model weights or secrets to Git.
+
+### Implementation Progress
+
+- [x] Defined the Radeon Cloud template procedure with persistent PVC, SSH, the
+  recommended `GH-proxy-stable` base image, public Git checkout, and no model
+  directory until model selection is pinned.
+- [x] Added `schemas/radeon-runtime-receipt.schema.json` for sanitized Radeon
+  runtime evidence.
+- [x] Added `scripts/capture_radeon_runtime_receipt.py` to collect bounded GPU,
+  ROCm, PyTorch, vLLM, Git, host, and secret-presence evidence without storing
+  credential values.
+- [x] Added `docs/06-operations/RADEON_CLOUD_RUNTIME.md` for Radeon Cloud
+  template, first-boot receipt capture, local inference boundary, and no-Git
+  artifact rules.
+- [ ] Capture the first real Radeon Cloud receipt and keep the raw artifact
+  outside Git.
 
 ### Source Ingestion
 
