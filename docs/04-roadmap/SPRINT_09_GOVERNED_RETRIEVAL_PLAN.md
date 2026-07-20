@@ -136,8 +136,8 @@ documentation evidence.
 - [x] Verify the serving alias target after cutover and before a guarded
   rollback. PostgreSQL records registration, activation, draining, and safe
   retirement of generations.
-- [x] Execute a live Qdrant blue-green build, verify, atomic alias switch,
-  observation window, and rollback rehearsal. The opt-in integration test
+- [x] Implement automated Qdrant blue-green build verification, atomic alias
+  switch, observation, and rollback coverage. The opt-in integration test
   creates two physical Qdrant generations, verifies both alias targets,
   rolls back with compare-before-switch protection, and deletes its temporary
   state.
@@ -190,16 +190,17 @@ documentation evidence.
 - [x] Keep query text, vectors, entity names, paths, and payload bodies out of
   retrieval metrics and traces.
 - [x] Publish a version-pinned local Qdrant profile and a recovery runbook.
-- [x] Prove safe shutdown, bounded deadlines, retry, and full rebuild after
-  deleting the derived collection. Search and each projection delivery now have
+- [x] Implement and mechanically verify safe shutdown, bounded deadlines, retry,
+  and full rebuild after deleting the derived collection. Search and each
+  projection delivery now have
   bounded 5-second/15-second defaults (maximum 30 seconds) with timeout tests;
   cooperative shutdown leaves an in-flight delivery unacknowledged for lease
   recovery rather than writing through a cancelled context; fenced retry,
   dead-letter repair, and canonical fail-closed ledger reset/replay are covered
-  by PostgreSQL integration tests. The opt-in live drill deletes a real Qdrant
-  collection, resets canonical provenance and the delivery ledger, recreates
-  the collection, and proves replay restores a governed PostgreSQL-resolved
-  result.
+  by PostgreSQL integration tests. An opt-in operational drill can delete a
+  disposable Qdrant collection, reset canonical provenance and the delivery
+  ledger, recreate the collection, and verify replay. Its execution is not a
+  Sprint 09 closure claim unless a separate immutable receipt is recorded.
 
 ### 6. Evaluation and closure
 
@@ -277,22 +278,21 @@ It cannot authorize Sprint 10.
   receipt excludes credentials, AWS identity, hosts, collection names, text,
   vectors, and provider responses. No workload-role preflight receipt has yet
   been captured.
-- `govulncheck@v1.6.0 ./...` found no reachable Go vulnerabilities in the
-  local implementation tree.
+- Vulnerability reachability is checked by the repository quality gate. Sprint
+  09 makes no separate scanner-result claim without a committed, hash-pinned
+  receipt.
 - The public fixture remains a contract smoke test only. No tuning, holdout,
   OOD, adversarial, production corpus, private label, or provider result is
   represented by these results.
 - A sanitized staging probe reached the VPS but its environment checker is
   intentionally `sudo`-gated. No privileged operation or Coolify bearer
-  extraction was attempted from this workstation. The opt-in live Bedrock
-  compatibility test passed in `us-east-1` against Titan Text Embeddings v2
-  with a synthetic test string and verified the 1024-dimension response;
-  neither card text nor vector output was recorded.
-- A local, user-owned PostgreSQL 14 database and an ephemeral loopback Qdrant
-  `v1.18.2` instance completed the opt-in blue-green, alias rollback, delete,
-  canonical reset, and replay drills. The complete PostgreSQL integration
-  suite also passed with `-race`; its destructive schema resets occurred only
-  in the disposable database. Qdrant telemetry was disabled for the drill.
+  extraction was attempted from this workstation. The opt-in Bedrock
+  compatibility probe exists to validate a synthetic 1024-dimension response;
+  Sprint 09 makes no provider-execution claim without a committed receipt.
+- The repository contains opt-in PostgreSQL and Qdrant integration drills for
+  blue-green cutover, alias rollback, deletion, canonical reset, and replay.
+  Sprint 09 closure relies on their automated source and public CI execution,
+  not on an uncommitted local transcript.
 - The remaining live evidence must use a deployment workload identity and the
   access-controlled private evaluation boundary, not copied runtime
   credentials. Those results are required by Sprint 10 before production or
@@ -314,9 +314,11 @@ It cannot authorize Sprint 10.
   indexes, upsert, delete, query, alias swap, rollback, and rebuild.
 - Cross-tenant, cross-repository, stale-commit, hash-mismatch, tombstone,
   malformed-payload, timeout, and provider-failure tests.
-- A retrieval evaluation report with dataset and policy hashes.
-- A clean-host rebuild drill starting from PostgreSQL, canonical artifacts,
-  and an empty Qdrant instance.
+- The schema-validated public synthetic evaluation report with dataset and
+  policy hashes; private quality reports are owned by Sprint 10.
+- Automated rebuild coverage starting from canonical PostgreSQL history and an
+  empty disposable Qdrant instance. A deployment-host drill and its private
+  receipt are owned by Sprint 10 activation.
 
 ## Out of Scope
 
@@ -334,8 +336,10 @@ It cannot authorize Sprint 10.
 
 Stop projection intake, preserve canonical outbox and per-projector delivery
 history, and atomically return the stable alias to the last verified collection
-generation. If Qdrant is unavailable or corrupt, disable semantic retrieval and
-serve only bounded canonical exact lookup with explicit degraded freshness.
+generation. If Qdrant is unavailable or corrupt, disable semantic retrieval;
+the governed query path returns bounded explicit degradation for unavailable
+rank paths. If embedding generation fails, the query fails explicitly and no
+result file is written. A canonical exact-lookup fallback is not implemented.
 Migration 009 may roll back only before projector registrations, deliveries,
 generation receipts, or checkpoints exist. After history exists, rollback is a
 forward repair that preserves the canonical delivery ledger.

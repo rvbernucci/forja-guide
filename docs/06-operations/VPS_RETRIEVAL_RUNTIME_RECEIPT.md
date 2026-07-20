@@ -71,5 +71,6 @@ Before preflight or private baseline capture:
    the staged CLI, the static binary avoids a Go installation on the VPS.
 6. Run the bounded preflight and write its mode-`0600` receipt outside Git.
 
-Only a successful workload preflight followed by the private four-baseline
-capture can satisfy the remaining Sprint 09 acceptance evidence.
+A successful workload preflight and private four-baseline capture are Sprint 10
+activation and quality evidence. They are deliberately not Sprint 09 closure
+requirements and cannot be inferred from this infrastructure observation.

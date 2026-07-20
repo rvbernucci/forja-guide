@@ -1,12 +1,16 @@
 # Data Architecture
 
-Status: Canonical PostgreSQL and object-storage layers implemented; derived intelligence stores planned
+Status: Canonical PostgreSQL and object storage implemented; governed Qdrant
+retrieval foundation implemented; Neo4j serving layer planned
 
 The PostgreSQL authority, transactional event/outbox boundary, idempotency,
 leases, checkpoints, dead letters, run projection replay, governed
 conversation/memory model, and content-addressed S3-compatible object layer
-are implemented. Qdrant and Neo4j remain derived layers planned for later
-Sprints.
+are implemented. Sprint 09 adds independent Qdrant delivery, generation and
+point provenance, deterministic card projection, governed dense/sparse
+candidate retrieval, and mandatory canonical PostgreSQL resolution. Private
+quality acceptance and provider activation remain Sprint 10 work. Neo4j
+projection remains planned for a later Sprint.
 
 Applied migrations are checksum-pinned. Canonical events are protected from
 `UPDATE` and `DELETE` by the database, not only by repository convention.
@@ -160,12 +164,12 @@ payload identity, immutable fields, timestamps, versions, every FSM transition,
 and exact equality with canonical aggregate state before publishing a read
 model.
 
-The Sprint 02 outbox claim API is deliberately a **single dispatcher group**:
-multiple workers may compete for throughput, but they are not independent
-projectors. Direct Qdrant/Neo4j fan-out is not yet enabled. Later projection
-adapters must durably create per-projector delivery/checkpoint state before the
-dispatcher marks an event globally published; using the current global state
-as multiple independent consumer cursors is forbidden.
+The Sprint 02 outbox claim API remains a **single dispatcher group**: multiple
+workers may compete for throughput, but they are not independent projectors.
+Sprint 09 therefore adds a separate, durable per-projector delivery and
+checkpoint ledger for Qdrant fan-out; it does not reinterpret the legacy global
+published state as multiple consumer cursors. Neo4j fan-out is not yet enabled
+and must use the same independent-delivery rule when implemented.
 
 Command idempotency keys are scoped by tenant, repository, and command scope.
 Reusing a key for the same command replays its receipt; using it for different
