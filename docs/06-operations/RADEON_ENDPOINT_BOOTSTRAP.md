@@ -111,7 +111,10 @@ python3 scripts/wait_radeon_ssh.py <host> <port> \
 ```
 
 `connected_no_banner` means the TCP proxy accepted the connection but SSH is
-not ready yet. Treat `ready` as the only signal that SSH work may proceed.
+not ready yet. Treat `ready` as the only signal that SSH work may proceed. The
+wait report also includes `next_action` and `operator_hints`; use those hints
+to decide whether to start `sshd` from the Radeon web terminal, recreate the
+template with SSH enabled, or replace a stale host/port before copying files.
 
 ## Private Candidate File
 

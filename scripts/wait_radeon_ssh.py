@@ -71,12 +71,15 @@ def wait_for_ssh(
         sleep(min(interval_seconds, remaining))
 
     last = attempts[-1]["result"] if attempts else None
+    status = last.get("status") if isinstance(last, dict) else None
     report = {
         "schema_version": "1.0",
         "report_kind": "radeon_ssh_wait",
         "host": host,
         "port": port,
         "ready": exit_code == 0,
+        "next_action": next_action_for_status(status),
+        "operator_hints": operator_hints_for_status(status),
         "attempt_count": len(attempts),
         "timeout_seconds": timeout_seconds,
         "interval_seconds": interval_seconds,
@@ -85,6 +88,76 @@ def wait_for_ssh(
         "attempts": attempts,
     }
     return report, exit_code
+
+
+def next_action_for_status(status: object) -> str:
+    if status == "ready":
+        return "Open SSH and run the Sprint 10 Radeon operator command sheet."
+    if status == "connected_no_banner":
+        return (
+            "TCP is reachable but SSH did not send a banner. Open the Radeon "
+            "web terminal, start or install sshd, then rerun this wait command."
+        )
+    if status == "refused":
+        return (
+            "The port refused TCP. Verify the Radeon SSH toggle, public key, "
+            "host, and forwarded port before retrying."
+        )
+    if status == "timeout":
+        return (
+            "The endpoint timed out. Confirm the instance is running, the host "
+            "and port are current, and the platform proxy is healthy."
+        )
+    if status == "unreachable":
+        return (
+            "The workstation could not reach the endpoint. Check local network, "
+            "VPN/firewall policy, and whether the Radeon instance was destroyed."
+        )
+    if status == "unexpected_banner":
+        return (
+            "The endpoint returned a non-SSH banner. Confirm the port maps to "
+            "the SSH service, not Jupyter, HTTP, or another process."
+        )
+    return "Inspect the latest probe result and rerun the SSH wait after fixing the endpoint."
+
+
+def operator_hints_for_status(status: object) -> list[str]:
+    if status == "ready":
+        return [
+            "Use key-based SSH only; do not paste secrets into command output.",
+            "Run the Sprint 10 command sheet from a clean repository checkout.",
+        ]
+    if status == "connected_no_banner":
+        return [
+            "In the Radeon Jupyter/OpenCode terminal, run: ps -ef | grep '[s]shd'",
+            "If sshd is missing, install/start OpenSSH server according to the Radeon user guide.",
+            "Confirm the instance SSH toggle and public key were enabled on the template before launch.",
+            "Rerun wait_radeon_ssh.py; proceed only when ready=true.",
+        ]
+    if status == "refused":
+        return [
+            "Regenerate the template with SSH access enabled if the toggle was off.",
+            "Confirm the displayed host and port are from the current instance, not a destroyed one.",
+            "Confirm the registered public key matches the private key used by the workstation.",
+        ]
+    if status == "timeout":
+        return [
+            "Wait for the Radeon instance to finish booting.",
+            "Confirm the cloud platform did not kill the instance during a stress test.",
+            "Retry with a longer timeout only after confirming the host and port are current.",
+        ]
+    if status == "unreachable":
+        return [
+            "Check whether local sandbox/network policy blocked the probe.",
+            "Retry from the workstation network used to create the instance.",
+            "If the instance was recreated, replace both host and port.",
+        ]
+    if status == "unexpected_banner":
+        return [
+            "Do not run evidence commands against this port.",
+            "Open the Radeon dashboard and copy the SSH port, not the Jupyter or HTTP port.",
+        ]
+    return ["Rerun probe_radeon_ssh.py and inspect the raw status detail."]
 
 
 def parse_args() -> argparse.Namespace:

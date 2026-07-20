@@ -42,7 +42,10 @@ python3 scripts/wait_radeon_ssh.py {host} {port} \\
   --output /tmp/forja-radeon-ssh-wait.json
 ```
 
-Proceed only when the report says `"ready": true`.
+Proceed only when the report says `"ready": true`. If it returns
+`"connected_no_banner"`, `"refused"`, `"timeout"`, `"unreachable"`, or
+`"unexpected_banner"`, follow the report's `next_action` and `operator_hints`
+before attempting `ssh`, `scp`, or evidence collection.
 
 ## 2. Prepare Repository On Radeon
 

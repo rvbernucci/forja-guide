@@ -81,6 +81,8 @@ class RadeonSSHWaitTests(unittest.TestCase):
         self.assertTrue(report["ready"])
         self.assertEqual(2, report["attempt_count"])
         self.assertEqual("ready", report["last_result"]["status"])
+        self.assertIn("operator command sheet", report["next_action"])
+        self.assertTrue(report["operator_hints"])
 
     def test_wait_times_out_without_ready_banner(self) -> None:
         clock = FakeClock()
@@ -110,6 +112,39 @@ class RadeonSSHWaitTests(unittest.TestCase):
         self.assertFalse(report["ready"])
         self.assertEqual(4, report["attempt_count"])
         self.assertEqual("connected_no_banner", report["last_result"]["status"])
+        self.assertIn("start or install sshd", report["next_action"])
+        self.assertTrue(
+            any("ps -ef" in hint for hint in report["operator_hints"]),
+            report["operator_hints"],
+        )
+
+    def test_refused_endpoint_reports_template_hint(self) -> None:
+        clock = FakeClock()
+
+        def fake_probe(host: str, port: int, timeout: float):
+            return WAIT.PROBE.ProbeResult(
+                host=host,
+                port=port,
+                status="refused",
+                ssh_banner_seen=False,
+                detail="tcp_connection_refused",
+            )
+
+        WAIT.PROBE.probe = fake_probe
+
+        report, exit_code = WAIT.wait_for_ssh(
+            host="example.test",
+            port=22,
+            timeout_seconds=1,
+            interval_seconds=5,
+            probe_timeout_seconds=2,
+            now=clock.now,
+            sleep=clock.sleep,
+        )
+
+        self.assertEqual(2, exit_code)
+        self.assertIn("SSH toggle", report["next_action"])
+        self.assertTrue(any("public key" in hint for hint in report["operator_hints"]))
 
     def test_rejects_invalid_timing(self) -> None:
         with self.assertRaisesRegex(ValueError, "timeout_seconds"):
