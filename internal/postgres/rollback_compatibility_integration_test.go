@@ -25,20 +25,7 @@ func TestSprint05RollbackRunsSprint04BinaryAgainstDowngradedSchema(t *testing.T)
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate current schema before rollback: %v", err)
 	}
-	for _, version := range []int{8, 7, 6, 5, 4} {
-		if err := RollbackLast(t.Context(), pool); err != nil {
-			t.Fatalf("rollback migration %03d: %v", version, err)
-		}
-	}
-	var migrationCount int
-	if err := pool.QueryRow(
-		t.Context(), "SELECT count(*) FROM forja.schema_migrations",
-	).Scan(&migrationCount); err != nil {
-		t.Fatalf("count downgraded migrations: %v", err)
-	}
-	if migrationCount != 3 {
-		t.Fatalf("downgraded migration count = %d, want 3", migrationCount)
-	}
+	rollbackToMigrationVersion(t, pool, 3)
 	schemaDowngraded := true
 	t.Cleanup(func() {
 		if !schemaDowngraded {
@@ -143,21 +130,7 @@ func TestSprint07RollbackRunsSprint06BinaryAgainstDowngradedSchema(t *testing.T)
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate current schema before Sprint 07 rollback: %v", err)
 	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback unused migration 008: %v", err)
-	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback unused migration 007: %v", err)
-	}
-	var migrationCount int
-	if err := pool.QueryRow(
-		t.Context(), "SELECT count(*) FROM forja.schema_migrations",
-	).Scan(&migrationCount); err != nil {
-		t.Fatal(err)
-	}
-	if migrationCount != 6 {
-		t.Fatalf("downgraded migration count = %d, want 6", migrationCount)
-	}
+	rollbackToMigrationVersion(t, pool, 6)
 	schemaDowngraded := true
 	t.Cleanup(func() {
 		if !schemaDowngraded {
@@ -262,18 +235,7 @@ func TestSprint08RollbackRunsSprint07BinaryAgainstDowngradedSchema(t *testing.T)
 	if err := Migrate(t.Context(), pool); err != nil {
 		t.Fatalf("migrate current schema before Sprint 08 rollback: %v", err)
 	}
-	if err := RollbackLast(t.Context(), pool); err != nil {
-		t.Fatalf("rollback unused migration 008: %v", err)
-	}
-	var migrationCount int
-	if err := pool.QueryRow(
-		t.Context(), "SELECT count(*) FROM forja.schema_migrations",
-	).Scan(&migrationCount); err != nil {
-		t.Fatal(err)
-	}
-	if migrationCount != 7 {
-		t.Fatalf("downgraded migration count = %d, want 7", migrationCount)
-	}
+	rollbackToMigrationVersion(t, pool, 7)
 	schemaDowngraded := true
 	t.Cleanup(func() {
 		if !schemaDowngraded {
