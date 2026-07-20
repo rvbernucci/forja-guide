@@ -224,6 +224,14 @@ The verifier passes only when the public summary, metrics, validation report,
 and closure candidate agree that the real Radeon gates are ready for review
 while still refusing to authorize Sprint 11.
 
+To inspect the full gate state and next operator commands without mutating any
+evidence, run:
+
+```bash
+python3 scripts/report_sprint10_gate_status.py \
+  --evidence-dir docs/evidence/sprint-10
+```
+
 After an immutable review is recorded under
 `docs/evidence/sprint-10/reviews/`, generate the final close receipt with the
 fail-closed promoter:
