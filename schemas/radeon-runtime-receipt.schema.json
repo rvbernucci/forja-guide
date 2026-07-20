@@ -1,0 +1,94 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/radeon-runtime-receipt.schema.json",
+  "title": "Forja Radeon Runtime Receipt",
+  "description": "Sanitized, machine-readable evidence for the AMD Radeon Cloud runtime used by the Sprint 10 competition profile.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_kind",
+    "recorded_at",
+    "competition_profile",
+    "host",
+    "git",
+    "environment_presence",
+    "commands",
+    "checks"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "receipt_kind": {"const": "radeon_runtime_environment"},
+    "recorded_at": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"},
+    "competition_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "event",
+        "track",
+        "core_remote_inference_allowed",
+        "recommended_base_image",
+        "storage_profile",
+        "ssh_profile"
+      ],
+      "properties": {
+        "event": {"const": "AMD AI DevMaster Hackathon 2026-07"},
+        "track": {"const": "Track 2: Agentic AI"},
+        "core_remote_inference_allowed": {"const": false},
+        "recommended_base_image": {"type": "string", "minLength": 1},
+        "storage_profile": {"enum": ["persistent_pvc", "local_ssd_ephemeral", "unknown"]},
+        "ssh_profile": {"enum": ["enabled", "disabled", "unknown"]}
+      }
+    },
+    "host": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["system", "machine", "python_version"],
+      "properties": {
+        "system": {"type": "string"},
+        "machine": {"type": "string"},
+        "python_version": {"type": "string"}
+      }
+    },
+    "git": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["commit", "dirty"],
+      "properties": {
+        "commit": {"type": ["string", "null"], "pattern": "^[a-f0-9]{40}$"},
+        "dirty": {"type": ["boolean", "null"]}
+      }
+    },
+    "environment_presence": {
+      "type": "object",
+      "additionalProperties": {"type": "boolean"}
+    },
+    "commands": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["available", "exit_code", "timed_out", "stdout_sha256", "stderr_sha256", "stdout_excerpt"],
+        "properties": {
+          "available": {"type": "boolean"},
+          "exit_code": {"type": ["integer", "null"]},
+          "timed_out": {"type": "boolean"},
+          "stdout_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "stderr_sha256": {"type": ["string", "null"], "pattern": "^[a-f0-9]{64}$"},
+          "stdout_excerpt": {"type": "string", "maxLength": 1200}
+        }
+      }
+    },
+    "checks": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rocm_command_available", "gpu_probe_available", "torch_rocm_probe_available", "vllm_probe_available"],
+      "properties": {
+        "rocm_command_available": {"type": "boolean"},
+        "gpu_probe_available": {"type": "boolean"},
+        "torch_rocm_probe_available": {"type": "boolean"},
+        "vllm_probe_available": {"type": "boolean"}
+      }
+    }
+  }
+}

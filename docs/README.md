@@ -23,7 +23,8 @@ language.
 16. [Artifact storage operations](06-operations/ARTIFACT_STORAGE_OPERATIONS.md)
 17. [Deterministic indexing operations](06-operations/DETERMINISTIC_INDEXING_OPERATIONS.md)
 18. [Qdrant recovery runbook](06-operations/QDRANT_RECOVERY_RUNBOOK.md)
-19. [Sprint evidence](evidence/)
+19. [Radeon Cloud runtime](06-operations/RADEON_CLOUD_RUNTIME.md)
+20. [Sprint evidence](evidence/)
 
 ## Documentation States
 

@@ -1,7 +1,7 @@
 # Sprints 10-14: AMD Track 2 and Forja 1.0
 
-Status: Planned. Sprint 10 begins only after the authoritative Sprint 09 close
-receipt exists. These Sprints align the Forja 1.0 critical path with the AMD AI
+Status: Active. Sprint 10 is authorized by the authoritative Sprint 09 close
+receipt. These Sprints align the Forja 1.0 critical path with the AMD AI
 DevMaster Hackathon Track 2, Development and Local Deployment of Private AI
 Agents, without weakening the production governance model.
 
@@ -33,9 +33,13 @@ quality debt transferred from Sprint 09.
 - [ ] Create the competition branch and fork/PR staging layout without placing
   private corpora, credentials, generated vectors, or model weights in Git.
 - [ ] Create the Radeon Cloud development template using the recommended base
-  image, persistent PVC storage, and SSH access.
+  image, persistent PVC storage, and SSH access. The public operator procedure
+  is defined in `docs/06-operations/RADEON_CLOUD_RUNTIME.md`; the real platform
+  template remains to be verified by receipt.
 - [ ] Record GPU, ROCm, driver, operating-system, Python, PyTorch, vLLM, and
-  model compatibility in a machine-readable environment receipt.
+  model compatibility in a machine-readable environment receipt. The receipt
+  schema and collector are implemented; the Radeon instance receipt remains to
+  be captured outside Git.
 - [ ] Prove persistence and recovery across instance destruction using PVC,
   GitHub, and an independent local backup.
 - [ ] Deploy an open-weight instruction model through the dedicated Radeon
@@ -56,6 +60,19 @@ quality debt transferred from Sprint 09.
   independent of the caller's working directory.
 - [ ] Publish a sanitized Sprint 10 runtime and evaluation receipt while
   keeping private cases, labels, queries, and vectors outside Git.
+
+### Implementation Progress
+
+- [x] Defined the Radeon Cloud template procedure with persistent PVC, SSH, the
+  recommended `GH-proxy-stable` base image, public Git checkout, and no model
+  directory until model selection is pinned.
+- [x] Added `schemas/radeon-runtime-receipt.schema.json` for sanitized runtime
+  evidence.
+- [x] Added `scripts/capture_radeon_runtime_receipt.py` to collect bounded GPU,
+  ROCm, PyTorch, vLLM, Git, host, and secret-presence evidence without storing
+  credential values.
+- [ ] Capture the first real receipt from the Radeon Cloud instance and keep
+  the raw artifact outside Git.
 
 ### Acceptance
 
