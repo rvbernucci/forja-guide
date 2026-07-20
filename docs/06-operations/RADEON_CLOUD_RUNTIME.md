@@ -282,6 +282,20 @@ python3 scripts/report_sprint10_gate_status.py \
   --evidence-dir docs/evidence/sprint-10
 ```
 
+For an operator handoff, generate the public-safe packet first:
+
+```bash
+python3 scripts/prepare_radeon_sprint10_handoff_packet.py \
+  --host <radeon-host> \
+  --port <radeon-port> \
+  --output-dir /tmp/forja-radeon-sprint10-handoff
+```
+
+Start with `/tmp/forja-radeon-sprint10-handoff/quick-start.md`. It indexes
+the SSH path, web-terminal fallback, public-summary export boundary, immutable
+review, and final promotion checklist without collecting evidence or closing
+Sprint 10.
+
 After an immutable review is recorded under
 `docs/evidence/sprint-10/reviews/`, generate the final close receipt with the
 fail-closed promoter. First render the final promotion checklist:
