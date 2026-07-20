@@ -320,6 +320,30 @@ panel while preserving the provider adjustment policy and license boundary in
 source metadata. Rows with missing, non-numeric, or non-positive adjusted close
 values are skipped and counted; they do not become canonical prices or returns.
 
+## Source Snapshot Restore Manifest
+
+Radeon Cloud instances are disposable. Sprint 10 therefore treats source
+snapshots as recoverable only when their restored bytes match a manifest:
+
+```bash
+python3 scripts/verify_alpha_snapshot_manifest.py \
+  --manifest /secure/forja/alpha-source-manifest.json \
+  --snapshot-root /secure/forja \
+  --output /workspace/forja-alpha-source-restore-report.json
+```
+
+The manifest is a JSON object with `schema_version: "1.0"`,
+`manifest_kind: "forja_alpha_source_snapshots"`, and a `snapshots` array. Each
+entry must include `source_family`, `logical_path`, `sha256`, `size_bytes`,
+`media_type`, and `required`. Paths are relative to `--snapshot-root` and may
+not escape it.
+
+The verifier fails closed unless required SEC identity, SEC submissions, SEC
+Company Facts, Treasury, FRED, and market families are present and every listed
+file matches its expected SHA-256 and size. The generated report is sanitized:
+it records paths, hashes, sizes, source families, and mismatch classes, but not
+source bodies or credentials. Raw reports stay outside Git until reviewed.
+
 ## Point-in-Time Query Views
 
 Sprint 10 now publishes three read-only query surfaces above the raw Alpha

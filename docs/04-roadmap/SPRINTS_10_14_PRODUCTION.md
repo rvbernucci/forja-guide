@@ -171,7 +171,7 @@ analytical memo.
 - [x] Add the first market-data snapshot adapter for adjusted prices, returns,
   corporate-action policy, source license, and availability semantics.
 - [x] Add the first FRED/ALFRED vintage adapter for the approved macro registry.
-- [ ] Add object-manifest restore tests for SEC, Treasury, FRED, and market
+- [x] Add object-manifest restore tests for SEC, Treasury, FRED, and market
   source snapshots.
 
 ### Runtime Work
