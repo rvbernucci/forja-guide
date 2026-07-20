@@ -137,6 +137,8 @@ filing and macro timelines. It does not yet generate an analytical memo.
   before metric mapping.
 - [x] Persist initial Company Facts raw rows into taxonomy, concept, context,
   and fact tables with deterministic IDs and source-object lineage.
+- [x] Add the initial reported metric registry and issuer-scoped reviewed
+  US-GAAP concept mappings for the bounded accounting metrics.
 - [ ] Store accounting values as exact decimals with explicit units, scales,
   currencies, periods, fiscal frames, dimensions, and filing identities.
 - [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,

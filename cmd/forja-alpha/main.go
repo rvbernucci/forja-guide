@@ -33,6 +33,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "seed-metrics" {
+		if err := seedMetrics(os.Args[2:]); err != nil {
+			log.Fatalf("forja-alpha seed-metrics: %v", err)
+		}
+		return
+	}
 	config, err := alpha.LoadConfig()
 	if err != nil {
 		log.Fatalf("forja-alpha configuration: %v", err)
@@ -187,4 +193,26 @@ func seedCompanyFacts(arguments []string) error {
 		return err
 	}
 	return alpha.WriteSECCompanyFactsSeedSQL(os.Stdout, *tenantID, *repositoryID, snapshot)
+}
+
+func seedMetrics(arguments []string) error {
+	flags := flag.NewFlagSet("forja-alpha seed-metrics", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	tenantID := flags.String("tenant-id", "", "target tenant UUID")
+	repositoryID := flags.String("repository-id", "", "target repository UUID")
+	ticker := flags.String("ticker", "", "covered ticker symbol for issuer-scoped reviewed mappings")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	if *ticker == "" {
+		return errors.New("--ticker is required")
+	}
+	company, ok := alpha.ResolveSECCompany(*ticker)
+	if !ok {
+		return errors.New("--ticker is outside the bounded Alpha universe")
+	}
+	return alpha.WriteAlphaMetricRegistrySeedSQL(os.Stdout, *tenantID, *repositoryID, company.IssuerID)
 }

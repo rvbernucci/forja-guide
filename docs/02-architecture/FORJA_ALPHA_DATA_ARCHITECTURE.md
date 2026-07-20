@@ -185,6 +185,29 @@ filing accession, concept identity, context hash, and source-object lineage.
 Metric mapping, dimensional validation, unit/scale normalization, amendment
 priority, and `alpha_metric_observations` remain reviewed Sprint 10 work.
 
+## Canonical Metric Registry Seed
+
+The initial metric registry is seeded after raw facts exist:
+
+```bash
+go run ./cmd/forja-alpha seed-metrics \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  > /secure/forja/alpha-metrics-nvda.sql
+```
+
+The command creates versioned reported metric definitions for revenue,
+operating income, net income, operating cash flow, and capital expenditure. It
+also creates issuer-scoped, reviewed US-GAAP concept mappings for the bounded
+demo universe. The mappings reference deterministic concept IDs produced by the
+Company Facts raw-fact adapter and include the reviewed concept name in the
+context filter for auditability.
+
+This registry authorizes candidate normalizations; it still does not select
+periods, resolve amendments, derive quarterly values from YTD facts, or create
+`alpha_metric_observations`.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must
