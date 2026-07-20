@@ -58,6 +58,9 @@ implementation releases.
 
 ### Added
 
+- Forja Alpha local web experience foundation with an embedded three-pane
+  research interface, strict local-inference endpoint policy, bounded
+  research-plan API, and explicit capability readiness.
 - Experimental `forjad` daemon and `forja` CLI.
 - Embedded JSON Schema validation at runtime boundaries.
 - Typed run IDs, deterministic clocks, stable error codes, and in-memory FSM.

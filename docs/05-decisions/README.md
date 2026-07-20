@@ -21,6 +21,7 @@
 | [0017](ADR-0017-GOVERNED-MEMORY-RETRIEVAL-BODIES.md) | Retrieve memory through authorized derived bodies | Accepted for Sprint 09 implementation |
 | [0018](ADR-0018-GOVERNED-INCIDENT-RETRIEVAL.md) | Derive safe incident cards from immutable attempt failures | Accepted for Sprint 09 implementation |
 | [0019](ADR-0019-AMD-TRACK2-LOCAL-INFERENCE.md) | Keep AMD Track 2 core inference local on Radeon/ROCm | Accepted for Sprints 10-14 |
+| [0020](ADR-0020-BOUNDED-ALPHA-VERTICAL.md) | Bound Forja Alpha as a local-first domain vertical | Accepted for Sprints 10-14 |
 
 Use zero-padded sequential identifiers. Accepted ADRs are not edited to reverse
 their decision; a new ADR supersedes them.

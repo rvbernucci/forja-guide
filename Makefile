@@ -1,7 +1,17 @@
-.PHONY: adapters build check-format smoke smoke-mcp smoke-worker test test-integration test-race validate
+.PHONY: adapters alpha-build alpha-run alpha-test build check-format smoke smoke-mcp smoke-worker test test-integration test-race validate
 
 adapters:
 	npm ci --ignore-scripts --no-audit --no-fund
+
+alpha-build:
+	mkdir -p bin
+	CGO_ENABLED=0 go build -trimpath -o bin/forja-alpha ./cmd/forja-alpha
+
+alpha-run:
+	go run ./cmd/forja-alpha
+
+alpha-test:
+	go test -count=1 ./internal/alpha ./cmd/forja-alpha
 
 check-format:
 	@test -z "$$(gofmt -l cmd internal schemas)" || \
@@ -51,5 +61,6 @@ validate: adapters check-format
 	./scripts/smoke_kernel.sh
 	$(MAKE) smoke-mcp
 	$(MAKE) smoke-worker
+	$(MAKE) alpha-test
 	python3 -m unittest discover -s tests -p 'test_*.py'
 	python3 scripts/validate_repository.py

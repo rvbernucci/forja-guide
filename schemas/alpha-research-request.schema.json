@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/alpha-research-request.schema.json",
+  "title": "Forja Alpha Research Request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "prompt"
+  ],
+  "properties": {
+    "prompt": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    }
+  }
+}
