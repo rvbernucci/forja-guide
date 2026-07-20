@@ -49,6 +49,16 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
             "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
             report["next_commands"][1],
         )
+        self.assertEqual(
+            "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --output /tmp/forja-radeon-ssh-recovery.md",
+            report["next_commands"][2],
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --output /tmp/forja-radeon-ssh-recovery.md"
+            ),
+            report["next_commands"].index("python3 scripts/prepare_radeon_sprint10_operator_bundle.py"),
+        )
         self.assertIn(
             "python3 scripts/check_radeon_sprint10_private_inputs.py --snapshot-root /secure/forja --model-candidates /secure/forja/radeon-model-candidates.json ...",
             report["next_commands"],
