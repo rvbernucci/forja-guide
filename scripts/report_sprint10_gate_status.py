@@ -156,6 +156,7 @@ def gate_status(evidence_dir: Path) -> tuple[dict[str, Any], int]:
             "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json --dry-run",
             "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json",
             "python3 scripts/verify_sprint10_review_readiness.py --evidence-dir docs/evidence/sprint-10",
+            "python3 scripts/render_sprint10_immutable_review_request.py --reviewer <reviewer-id> --output docs/evidence/sprint-10/reviews/immutable-candidate-review.md",
         ],
     }
     return report, 0 if ready_for_review else 2

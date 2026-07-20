@@ -262,6 +262,18 @@ The verifier passes only when the public summary, metrics, validation report,
 and closure candidate agree that the real Radeon gates are ready for review
 while still refusing to authorize Sprint 11.
 
+Then render a review request template for the independent reviewer:
+
+```bash
+python3 scripts/render_sprint10_immutable_review_request.py \
+  --reviewer <reviewer-id> \
+  --output docs/evidence/sprint-10/reviews/immutable-candidate-review.md
+```
+
+The generated file is a template, not a verdict. The reviewer must fill the
+findings, blocking findings, deferred risks, and verdict sections before it can
+be used by the close-receipt promoter.
+
 To inspect the full gate state and next operator commands without mutating any
 evidence, run:
 
