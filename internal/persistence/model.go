@@ -345,6 +345,77 @@ type OutboxRepository interface {
 	) error
 }
 
+// ProjectionDelivery is one independently leased downstream view of a
+// canonical event. It intentionally has its own attempts and fencing token:
+// completing another projector must never advance this projector's cursor.
+type ProjectionDelivery struct {
+	OutboxMessage
+	ProjectorName string
+}
+
+// ProjectionDeliveryRepository gives derived stores independent, replayable
+// fan-out. Registering a consumer atomically backfills the existing outbox;
+// subsequent outbox inserts fan out through the database trigger.
+type ProjectionDeliveryRepository interface {
+	EnsureProjectionConsumer(context.Context, string, [32]byte) error
+	ClaimProjectionDeliveries(context.Context, string, string, int, time.Duration) ([]ProjectionDelivery, error)
+	CompleteProjectionDelivery(context.Context, string, int64, string, int64) error
+	FailProjectionDelivery(context.Context, string, int64, string, int64, error, time.Time, int) error
+	RequeueProjectionDelivery(context.Context, string, int64) error
+}
+
+// RetrievalPointRepository records the canonical provenance of a successfully
+// written derived point. The record is deliberately separate from the vector
+// write: a failed canonical receipt leaves the vector untrusted and therefore
+// unavailable to governed retrieval until the projector retries it.
+type RetrievalPointRepository interface {
+	RecordRetrievalProjectionPoint(context.Context, contracts.RetrievalPoint, int64) error
+	TombstoneRetrievalProjectionPoints(context.Context, string, string, int64) ([]string, error)
+}
+
+// RetrievalRebuildRepository is the explicit operator path for rebuilding a
+// deleted or replaced Qdrant generation from canonical outbox history. It
+// clears canonical point authority before reopening the independent delivery
+// ledger, so stale vectors cannot remain resolvable during replay.
+type RetrievalRebuildRepository interface {
+	ResetRetrievalProjection(context.Context, string, [32]byte, string) error
+}
+
+// RetrievalGenerationConfig is the immutable vector contract for one physical
+// Qdrant collection generation. Registering it does not make it serve traffic:
+// the operator must first verify and observe the Qdrant alias cutover.
+type RetrievalGenerationConfig struct {
+	GenerationID         string
+	CollectionAlias      string
+	CollectionName       string
+	EmbeddingModel       string
+	EmbeddingVersion     string
+	Dimensions           int
+	SparseEncoderVersion string
+}
+
+// RetrievalGeneration is the canonical lifecycle receipt for a derived vector
+// generation. A generation may be active only after a verified external alias
+// cutover; a subsequent activation drains the prior active generation.
+type RetrievalGeneration struct {
+	RetrievalGenerationConfig
+	Status      string
+	CreatedAt   time.Time
+	ActivatedAt *time.Time
+	RetiredAt   *time.Time
+}
+
+// RetrievalGenerationRepository serializes the PostgreSQL side of blue-green
+// retrieval transitions. It intentionally does not own Qdrant mutation: the
+// caller must perform the guarded Qdrant cutover first, then durably record
+// the matching active generation here.
+type RetrievalGenerationRepository interface {
+	RegisterRetrievalGeneration(context.Context, RetrievalGenerationConfig) error
+	GetRetrievalGeneration(context.Context, string) (RetrievalGeneration, bool, error)
+	ActivateRetrievalGeneration(context.Context, string) (*RetrievalGeneration, error)
+	RetireRetrievalGeneration(context.Context, string) error
+}
+
 // ProjectionRepository rebuilds derived state from immutable canonical events.
 type ProjectionRepository interface {
 	RebuildRunProjection(context.Context, string) error

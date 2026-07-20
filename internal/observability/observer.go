@@ -31,6 +31,22 @@ type IndexStats struct {
 	Invalidations map[string]int
 }
 
+// RetrievalStats carries only bounded numerical telemetry. It deliberately
+// excludes query text, vectors, paths, names, source hashes, and payloads.
+type RetrievalStats struct {
+	DenseCandidates     int
+	SparseCandidates    int
+	FusedCandidates     int
+	Accepted            int
+	Rejected            int
+	Degraded            bool
+	ProjectionClaimed   int
+	ProjectionPublished int
+	ProjectionSkipped   int
+	ProjectionRetried   int
+	ProjectionDead      int
+}
+
 // RecordIndexStats adds only bounded counts and reason classes to telemetry.
 func (o *Observer) RecordIndexStats(ctx context.Context, stats IndexStats) {
 	if o == nil {
@@ -45,6 +61,28 @@ func (o *Observer) RecordIndexStats(ctx context.Context, stats IndexStats) {
 			attribute.Int("forja.index.relations", stats.Relations),
 			attribute.Int("forja.index.diagnostics", stats.Diagnostics),
 			attribute.Int("forja.index.reused", stats.Reused),
+		)
+	}
+}
+
+// RecordRetrievalStats writes bounded counts to metrics and the current span.
+func (o *Observer) RecordRetrievalStats(ctx context.Context, stats RetrievalStats) {
+	if o == nil {
+		return
+	}
+	o.metrics.retrieved(stats)
+	span := trace.SpanFromContext(ctx)
+	if span.IsRecording() {
+		span.SetAttributes(
+			attribute.Int("forja.retrieval.dense_candidates", stats.DenseCandidates),
+			attribute.Int("forja.retrieval.sparse_candidates", stats.SparseCandidates),
+			attribute.Int("forja.retrieval.fused_candidates", stats.FusedCandidates),
+			attribute.Int("forja.retrieval.accepted", stats.Accepted),
+			attribute.Int("forja.retrieval.rejected", stats.Rejected),
+			attribute.Bool("forja.retrieval.degraded", stats.Degraded),
+			attribute.Int("forja.retrieval.projection_claimed", stats.ProjectionClaimed),
+			attribute.Int("forja.retrieval.projection_published", stats.ProjectionPublished),
+			attribute.Int("forja.retrieval.projection_retried", stats.ProjectionRetried),
 		)
 	}
 }

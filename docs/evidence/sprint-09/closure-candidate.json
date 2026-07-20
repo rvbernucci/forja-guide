@@ -1,0 +1,46 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "09",
+  "name": "Governed Retrieval Foundation",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": true,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "strict_contracts_and_deterministic_cards_verified": true,
+    "independent_projection_delivery_verified": true,
+    "qdrant_lifecycle_cutover_rollback_and_rebuild_verified": true,
+    "hybrid_candidate_execution_and_canonical_resolution_verified": true,
+    "tenant_freshness_and_source_authority_verified": true,
+    "runtime_observability_and_failure_degradation_verified": true,
+    "public_evaluation_and_private_capture_tooling_verified": true,
+    "production_quality_activation_deferred_to_sprint_10": true
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "docs/04-roadmap/SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md",
+    "docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md",
+    "docs/06-operations/RETRIEVAL_RUNTIME_DEPLOYMENT.md",
+    "docs/06-operations/VPS_RETRIEVAL_RUNTIME_RECEIPT.md",
+    "docs/07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-20T04:10:28Z"
+}

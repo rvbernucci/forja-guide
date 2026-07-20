@@ -169,9 +169,17 @@ func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
 					forja.memory_records
 				IN ACCESS EXCLUSIVE MODE NOWAIT';
 			END IF;
+			IF to_regclass('forja.projection_consumers') IS NOT NULL THEN
+				EXECUTE 'LOCK TABLE
+					forja.projection_consumers,
+					forja.projection_deliveries,
+					forja.retrieval_generations,
+					forja.retrieval_projection_points
+				IN ACCESS EXCLUSIVE MODE NOWAIT';
+			END IF;
 		END
 		$$`); err != nil {
-		return fmt.Errorf("lock Sprint 07 migration writers: %w", err)
+		return fmt.Errorf("lock governed migration writers: %w", err)
 	}
 	return nil
 }
@@ -249,7 +257,7 @@ func RollbackLast(ctx context.Context, pool *pgxpool.Pool) error {
 			)
 		}
 	}
-	if selected.version == 7 || selected.version == 8 {
+	if selected.version >= 7 {
 		if err := lockIncrementalMigrationWriters(ctx, tx); err != nil {
 			return fmt.Errorf("serialize governed rollback compatibility check: %w", err)
 		}

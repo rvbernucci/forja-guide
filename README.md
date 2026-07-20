@@ -10,10 +10,12 @@ It is designed around one principle:
 
 ## Status
 
-This repository includes the authoritatively closed **Sprint 07 artifacts and
-governed memory plane** and the in-progress **Sprint 08 deterministic indexing
-candidate** alongside the public
-architecture and roadmap. Sprint state is recorded by the mutually exclusive
+This repository includes the authoritatively closed **Sprint 08 deterministic
+indexing plane** and the implementation-complete **Sprint 09 governed retrieval
+foundation** alongside the public architecture and roadmap. Sprint 09 private
+quality activation is explicitly transferred to the Radeon Runtime and
+Retrieval Evidence Sprint; production retrieval remains disabled until those
+gates pass. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
 production-ready multi-agent runtime.
@@ -78,15 +80,53 @@ canonical final message inventory, and policy memory promotion requires an expli
 configured principal with dedicated permission.
 Its protocol-v2 close receipt is published under `docs/evidence/sprint-07`.
 
-The Sprint 08 candidate adds committed-Git extraction for Go, TypeScript,
+The closed Sprint 08 plane adds committed-Git extraction for Go, TypeScript,
 JavaScript, and Python; strict file, symbol, relation, and lineage contracts;
 deterministic incremental invalidation; immutable snapshot artifacts; and an
 atomic PostgreSQL event/outbox publication boundary. `forja-index` composes the
 complete Git-to-object-store-to-PostgreSQL path, loads its active baseline, and
 reuses an adapter only when its descriptor and every owned source file remain
 exact. A two-commit command drill proves selective adapter reuse and validates
-the resulting events, outbox records, and receipts. Qdrant and Neo4j remain
-outside this write path and are not yet implemented.
+the resulting events, outbox records, and receipts. Sprint 09 now adds strict
+retrieval contracts, deterministic symbol cards and sparse lexical vectors,
+independent fenced projection delivery, a Qdrant point writer with mandatory
+pre-ranking filters, a live hybrid candidate query path, and a fail-closed canonical-resolution boundary. The
+symbol projector writes Qdrant first, records canonical point provenance in
+PostgreSQL, and only then acknowledges its fenced delivery. The operator
+adapter can create physical collections, apply required payload indexes, and
+verify physical generation, vector dimensions, strict filtering and payload
+indexes, then atomically switch a verified alias. Live blue-green cutover,
+guarded rollback, derived-store deletion/replay, and a schema-validated offline
+evaluation harness are implemented. The retrieval plane now also includes a
+Bedrock Titan v2 adapter using the AWS SDK for Go v2 and the standard AWS
+credential chain, plus bounded `forja-retrieval project-once` and
+`forja-retrieval query` commands. A bounded `forja-retrieval capture` command
+can execute the four required hybrid-search baselines from a private,
+label-free plan and produce a schema-validated comparison for offline scoring;
+private labels remain outside the runtime. Decision cards are re-derived from their
+canonical rows. Memory cards require an active canonical memory, an active
+exact artifact/object binding, a verified object version, and a bounded,
+redacted derived body before they can be projected or resolved. Runtime
+operations require PostgreSQL readiness, a verified Qdrant endpoint, the
+governed S3 configuration, and standard AWS credential configuration; they
+never accept secrets as flags or write query text to receipts. Production
+activation still requires a workload-role deployment, region/model-access
+evidence, and private evaluation results. Incident cards now derive only from
+the matching immutable terminal attempt event and retain classification,
+severity, identifiers, and evidence hashes, never worker output. Neo4j
+traversal remains pending for the graph-grounded context work in Sprint 11.
+Sprints 10-14 now form the Forja Radeon path for AMD AI DevMaster Track 2:
+local ROCm model and embedding inference, graph-grounded RAG, governed tools,
+multi-step planning, local memory, permission controls, measurable
+optimization, and a reproducible public submission.
+
+When a canonical snapshot is superseded, the projector first tombstones every
+affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the
+corresponding stable point IDs. A failed derived delete remains fail-closed:
+the still-present vector cannot resolve through canonical authority.
+
+The pinned local Qdrant profile and canonical rebuild procedure are documented
+in [`docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md`](docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md).
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
@@ -141,6 +181,8 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja-index`](cmd/forja-index/) | Committed-source deterministic indexing publisher |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
+| [`cmd/forja-retrieval-eval`](cmd/forja-retrieval-eval/) | Offline, schema-validated retrieval evaluation reporter |
+| [`cmd/forja-retrieval`](cmd/forja-retrieval/) | Bounded governed projection, query, and private baseline-capture operations |
 | [`internal/execution`](internal/execution/) | Approved Run-to-worker-to-publication orchestration |
 | [`internal/delivery`](internal/delivery/) | Isolated worktrees, deterministic commits, validation, evidence, and controlled publication |
 | [`internal/observability`](internal/observability/) | Fail-soft traces, bounded metrics, stable failure taxonomy, and operational state collector |

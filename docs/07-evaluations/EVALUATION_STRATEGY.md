@@ -47,11 +47,18 @@ This isolates the real value of each layer.
 
 ## Retrieval Evaluation
 
+The implemented retrieval corpus boundary and deterministic ranking metrics are
+defined in the [governed retrieval evaluation protocol](RETRIEVAL_EVALUATION_PROTOCOL.md).
+The broader strategy remains proposed until its private corpus and release
+gates are independently operated.
+
 Measure:
 
 - recall of required files, symbols, tests, and documents;
 - precision of selected context;
 - entity resolution accuracy;
+- stale, cross-tenant, and unauthorized rejection separately;
+- p95 retrieval latency and projection freshness;
 - graph path validity;
 - citation and source-hash correctness;
 - stale projection detection;
@@ -86,4 +93,3 @@ Measure:
 
 No release may improve cost while regressing correctness or safety below its
 declared gate.
-

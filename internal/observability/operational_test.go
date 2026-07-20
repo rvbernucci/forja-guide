@@ -28,6 +28,8 @@ func TestOperationalCollectorExportsOnlyClosedConditions(t *testing.T) {
 		snapshot: OperationalSnapshot{
 			StuckRuns: 2, ExpiredLeases: 3, PendingOutbox: 5,
 			InflightOutbox: 7, DeadOutbox: 11, ProjectionLag: 13,
+			RetrievalGenerationsBuild: 43, RetrievalGenerationsLive: 47,
+			RetrievalGenerationsDrain: 53, RetrievalGenerationsFail: 59,
 			PendingApprovals: 17, WorkerCrashLoops: 19,
 			ArtifactReconciliation: 23, ArtifactIntegrityFailures: 29,
 			TombstonedArtifactObjects: 31, ProposedMemoryCandidates: 37,
@@ -57,6 +59,10 @@ forja_operational_condition_items{condition="pending_approvals"} 17
 forja_operational_condition_items{condition="pending_outbox"} 5
 forja_operational_condition_items{condition="projection_lag"} 13
 forja_operational_condition_items{condition="proposed_memory_candidates"} 37
+forja_operational_condition_items{condition="retrieval_generations_active"} 47
+forja_operational_condition_items{condition="retrieval_generations_building"} 43
+forja_operational_condition_items{condition="retrieval_generations_draining"} 53
+forja_operational_condition_items{condition="retrieval_generations_failed"} 59
 forja_operational_condition_items{condition="stuck_runs"} 2
 forja_operational_condition_items{condition="tombstoned_artifact_objects"} 31
 forja_operational_condition_items{condition="worker_crash_loops"} 19

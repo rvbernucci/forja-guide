@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/incident.schema.json",
+  "title": "Forja Retrieval Incident",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["incident_id", "schema_version", "tenant_id", "repository_id", "run_id", "attempt_id", "attempt_version", "event_id", "event_type", "status", "severity", "classification", "retryable", "occurred_at", "evidence_refs", "source_hash"],
+  "properties": {
+    "incident_id": {"type": "string", "pattern": "^incident_attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "schema_version": {"const": "1.0"},
+    "tenant_id": {"type": "string", "pattern": "^tenant_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "repository_id": {"type": "string", "pattern": "^repo_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "run_id": {"type": "string", "pattern": "^run_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "attempt_id": {"type": "string", "pattern": "^attempt_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"},
+    "attempt_version": {"type": "integer", "minimum": 1},
+    "event_id": {"type": "string", "pattern": "^event_[A-Za-z0-9_-]+$"},
+    "event_type": {"enum": ["attempt.finished", "attempt.reconciled"]},
+    "status": {"const": "open"},
+    "severity": {"enum": ["warning", "critical"]},
+    "classification": {"type": "string", "minLength": 1, "maxLength": 120},
+    "retryable": {"type": "boolean"},
+    "occurred_at": {"type": "string", "format": "date-time"},
+    "evidence_refs": {"type": "array", "maxItems": 2051, "uniqueItems": true, "items": {"type": "string", "minLength": 1, "maxLength": 4096}},
+    "source_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+  },
+  "allOf": [
+    {"if": {"properties": {"severity": {"const": "warning"}}}, "then": {"properties": {"retryable": {"const": true}}}},
+    {"if": {"properties": {"severity": {"const": "critical"}}}, "then": {"properties": {"retryable": {"const": false}}}}
+  ]
+}

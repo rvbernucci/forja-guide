@@ -1,142 +1,231 @@
-# Sprints 10-14: Governance and Production
+# Sprints 10-14: AMD Track 2 and Forja 1.0
 
-## Sprint 10: Graph Projection
+Status: Planned. Sprint 10 begins only after the authoritative Sprint 09 close
+receipt exists. These Sprints align the Forja 1.0 critical path with the AMD AI
+DevMaster Hackathon Track 2, Development and Local Deployment of Private AI
+Agents, without weakening the production governance model.
 
-**Outcome:** serve proven lineage and impact paths through Neo4j without making
-the graph a competing source of truth.
+## Competition Boundary
+
+- Final submission deadline: 2026-08-06 12:59 America/Sao_Paulo.
+- Core language-model and embedding inference must run locally on an AMD Radeon
+  GPU through ROCm. Remote APIs are not core-function fallbacks.
+- The competition profile is open source and reproducible. It must demonstrate
+  local RAG, tool invocation, multi-step planning, multi-turn memory, and clear
+  permission and privacy controls.
+- The Radeon Cloud development template uses persistent PVC storage, SSH, and
+  continuous Git publication. A dedicated vLLM deployment exposes the selected
+  local model through an OpenAI-compatible endpoint.
+- All submission material and the final pull request are written in English.
+- The final pull request title follows `Track 2, <Team Name>, Forja Radeon`.
+- The required demo video is three to five minutes. The project specification
+  PDF, complete source and README are mandatory; a presentation or poster is
+  also produced even where described as supplementary.
+
+## Sprint 10: Radeon Runtime and Retrieval Evidence
+
+**Outcome:** establish a reproducible AMD Radeon/ROCm runtime, replace remote
+core inference in the competition profile, and close the private retrieval
+quality debt transferred from Sprint 09.
 
 ### Scope
 
-- [ ] Define node labels, relation types, evidence classes, and uniqueness
-  constraints.
+- [ ] Create the competition branch and fork/PR staging layout without placing
+  private corpora, credentials, generated vectors, or model weights in Git.
+- [ ] Create the Radeon Cloud development template using the recommended base
+  image, persistent PVC storage, and SSH access.
+- [ ] Record GPU, ROCm, driver, operating-system, Python, PyTorch, vLLM, and
+  model compatibility in a machine-readable environment receipt.
+- [ ] Prove persistence and recovery across instance destruction using PVC,
+  GitHub, and an independent local backup.
+- [ ] Deploy an open-weight instruction model through the dedicated Radeon
+  Cloud vLLM API and verify that inference executes on the Radeon GPU.
+- [ ] Benchmark at least two model/precision candidates against a frozen public
+  task set before selecting the default.
+- [ ] Implement a local ROCm embedding provider for the competition profile;
+  keep the Bedrock adapter disabled for every core hackathon workflow.
+- [ ] Create or import the access-controlled tuning, holdout, OOD, leakage,
+  stale, and adversarial retrieval corpus planned in Sprint 09.
+- [ ] Execute lexical-only, dense-only, unweighted RRF, and weighted RRF through
+  the exact governed runtime and score them offline.
+- [ ] Measure Recall@K, Precision@K, MRR, nDCG, entity-resolution accuracy,
+  stale rejection, cross-tenant leakage, latency, and projection freshness.
+- [ ] Demonstrate that identifier-heavy and conceptual query cohorts select
+  appropriate retrieval paths without tuning on holdout labels.
+- [ ] Repair and rerun the installed Qdrant system validator so its result is
+  independent of the caller's working directory.
+- [ ] Publish a sanitized Sprint 10 runtime and evaluation receipt while
+  keeping private cases, labels, queries, and vectors outside Git.
+
+### Acceptance
+
+- A clean Radeon Cloud instance reproduces the local model endpoint and local
+  embedding path from documented commands.
+- The core workflow makes zero remote inference calls.
+- GPU identity, ROCm execution, latency, throughput, VRAM, and restart evidence
+  are recorded without secrets or prompt bodies.
+- The four retrieval baselines are measured on tuning and untouched holdout
+  partitions, and every stale, unauthorized, and cross-tenant case is rejected.
+- Stress-test or instance destruction loses no committed source or required
+  evaluation metadata.
+
+## Sprint 11: Graph-Grounded Context Broker
+
+**Outcome:** combine Qdrant discovery, Neo4j proven paths, deterministic lineage,
+and canonical resolution into minimal local context packs.
+
+### Scope
+
+- [ ] Define Neo4j node labels, relation types, evidence classes, uniqueness
+  constraints, source versions, and relation hashes.
 - [ ] Project repository, symbol, type, schema, test, document, artifact,
-  Sprint, run, and evidence entities.
-- [ ] Implement idempotent outbox-driven graph delta application.
-- [ ] Store projection source version and hashes on nodes and relations.
-- [ ] Implement allowlisted path templates for common engineering questions.
-- [ ] Implement bounded read-only exploratory queries behind validation.
-- [ ] Add graph projection checkpoints and drift detection.
-- [ ] Add full rebuild and rollback procedures.
-- [ ] Benchmark traversal depth, fan-out, and path ranking.
-- [ ] Test false-edge prevention and candidate-semantic isolation.
+  Sprint, run, and evidence entities through idempotent outbox deltas.
+- [ ] Implement projection checkpoints, drift detection, full rebuild, guarded
+  rollback, and false-edge prevention.
+- [ ] Implement allowlisted path templates and bounded read-only exploration.
+- [ ] Implement context request and context pack contracts with tenant,
+  repository, source-commit, lifecycle, and permission checks before retrieval.
+- [ ] Combine exact lookup, local-embedding Qdrant candidates, and allowlisted
+  Neo4j paths without allowing either derived store to establish authority.
+- [ ] Resolve ambiguity through canonical PostgreSQL state and expose bounded
+  alternatives instead of invented certainty.
+- [ ] Enforce source, hop, latency, and token budgets with deterministic pruning
+  and explicit gap reporting.
+- [ ] Add source-only, no-Qdrant, no-Neo4j, stale-projection, and local-model
+  unavailable fallbacks.
+- [ ] Emit content-free retrieval receipts with candidate, resolution,
+  selection, rejection, freshness, and token counts.
+- [ ] Benchmark graph depth, fan-out, path validity, required-source recall,
+  context size, and end-to-end local inference latency on the Radeon runtime.
 
 ### Acceptance
 
-- Graph paths cite relation evidence and canonical sources.
-- Missing or stale relations become explicit gaps.
-- Projection rebuild reaches parity with expected counts and hashes.
-- Semantic similarity alone cannot create a confirmed edge.
+- Every context excerpt cites a current canonical source.
+- Semantic similarity alone cannot create a confirmed graph edge or authority.
+- Context packs reduce tokens versus naive repository search without crossing
+  the agreed required-source recall gate.
+- Derived-store outages degrade to bounded source-backed behavior.
+- The complete retrieval-to-context path uses local Radeon inference.
 
-## Sprint 11: Context Broker
+## Sprint 12: Governed Local Agent Product
 
-**Outcome:** assemble minimal, cited, authority-aware context packs for agents.
+**Outcome:** deliver a private software-engineering co-architect that plans,
+retrieves, invokes tools, remembers, and executes bounded work locally.
 
 ### Scope
 
-- [ ] Implement context request and context pack contracts.
-- [ ] Enforce access and repository scope before retrieval.
-- [ ] Combine exact lookup and Qdrant hybrid candidates.
-- [ ] Resolve stable entities and reject ambiguity.
-- [ ] Traverse allowlisted Neo4j paths.
-- [ ] Verify source commit, hash, lifecycle, and projection freshness.
-- [ ] Implement explainable path and source ranking.
-- [ ] Enforce source, hop, latency, and token budgets.
-- [ ] Implement deterministic context pruning and gap reporting.
-- [ ] Emit retrieval receipts with candidate and selection counts.
-- [ ] Add no-Qdrant, no-Neo4j, stale-projection, and source-only fallbacks.
+- [ ] Define one judge-visible scenario: turn an approved software objective
+  into a cited plan, bounded tool calls, validated changes, and evidence.
+- [ ] Implement local multi-step planning with explicit budgets, stop
+  conditions, retries, and deterministic plan validation.
+- [ ] Route model-requested tools through the existing MCP capability,
+  identity, scope, approval, lease, and audit boundaries.
+- [ ] Integrate the Sprint 11 context broker as the only governed RAG entry
+  point for the competition workflow.
+- [ ] Integrate local multi-turn conversation and promoted memory with source
+  citations, retention, redaction, and deletion behavior.
+- [ ] Prevent model output from approving its own privileged operation or
+  expanding filesystem, repository, tenant, tool, or credential authority.
+- [ ] Run workers under a separate identity or isolation boundary and broker
+  model access without exposing host or deployment credentials.
+- [ ] Add prompt-injection, indirect-injection, tool-abuse, path-traversal,
+  memory-poisoning, and approval-bypass tests.
+- [ ] Provide a polished CLI or lightweight local interface that shows the
+  plan, citations, tool activity, approvals, progress, final result, and gaps.
+- [ ] Add graceful model, tool, retrieval, cancellation, restart, and timeout
+  behavior suitable for a live three-to-five-minute demonstration.
+- [ ] Record a full local interaction receipt without storing private prompt or
+  model-response bodies in public telemetry.
 
 ### Acceptance
 
-- Context packs contain fewer tokens than naive repository search on the eval
-  corpus without reducing required-source recall below the agreed gate.
-- Every excerpt has a canonical citation.
-- Projection outages degrade to source-backed retrieval.
-- Ambiguous requests expose alternatives rather than invented certainty.
+- The product visibly demonstrates all five Track 2 capability categories:
+  RAG, tools, planning, memory, and permission/privacy controls.
+- A complete scenario succeeds with core inference on the Radeon GPU and no
+  remote core dependency.
+- A compromised or injected worker cannot broaden its authority or read
+  unrelated credentials and files.
+- Multi-turn interaction remains smooth, interruptible, restart-safe, and
+  understandable to a judge unfamiliar with the codebase.
 
-## Sprint 12: Governance and Resilience
+## Sprint 13: ROCm Optimization and Evaluation
 
-**Outcome:** withstand privileged actions, dependency failures, restarts, and
-adversarial inputs safely.
+**Outcome:** improve local inference performance without sacrificing agent task
+success, safety, or reproducibility.
 
 ### Scope
 
-- [ ] Implement capability and role policy evaluation.
-- [ ] Implement expiring, scoped, and revocable approvals.
-- [ ] Add secret manager adapter and credential rotation procedures.
-- [ ] Run workers under a separate OS identity or container filesystem and
-  broker model credentials without exposing a same-user readable auth root.
-- [ ] Add tenant isolation to PostgreSQL, Qdrant, Neo4j, object storage, logs,
-  and context packs.
-- [ ] Add leader election or scheduler ownership rules.
-- [ ] Add recovery reconciliation for workers, leases, worktrees, and outbox
-  projections.
-- [ ] Add prompt-injection and tool-abuse test suites.
-- [ ] Add chaos tests for PostgreSQL, Qdrant, Neo4j, object storage, and worker
-  failure.
-- [ ] Add backup and restore drills.
-- [ ] Add dependency provenance, image signing, and vulnerability scanning.
-- [ ] Produce a formal threat model and incident runbook.
+- [ ] Freeze public, private holdout, OOD, adversarial, and regression suites
+  for planning, RAG, tools, memory, permissions, and end-to-end task success.
+- [ ] Establish FP16 or BF16 baseline latency, throughput, VRAM, startup time,
+  context limits, tool-call validity, and task success.
+- [ ] Evaluate a Radeon-compatible quantized or distilled configuration and
+  record its exact model, revision, runtime flags, and artifact hashes.
+- [ ] Tune bounded batching, concurrency, prefix caching, context length,
+  prefill, decoding, and memory utilization using evidence rather than defaults.
+- [ ] Measure time to first token, inter-token latency, tokens per second, GPU
+  utilization, peak VRAM, p50/p95 latency, and end-to-end task duration.
+- [ ] Compare optimized and baseline profiles with confidence intervals and
+  explicit quality and safety non-regression gates.
+- [ ] Measure context token reduction against required-source recall and final
+  task success.
+- [ ] Run load, soak, cancellation, restart, malformed-output, and dependency
+  failure tests on the exact Radeon deployment.
+- [ ] Produce sanitized benchmark tables and charts from machine-readable raw
+  receipts.
+- [ ] Pin dependencies, model revisions, images, prompts, datasets, and runtime
+  flags needed for independent reproduction.
 
 ### Acceptance
 
-- A compromised worker cannot expand its authority.
-- A compromised worker cannot read deployment credentials or unrelated host
-  files through its execution identity.
-- Cross-tenant test suites pass at every store boundary.
-- Restart and partial-outage drills preserve canonical state.
-- Privileged actions are traceable to a valid approval.
+- The selected profile materially improves at least one GPU performance metric
+  without crossing the agreed task-success or safety regression gate.
+- Results distinguish model latency from retrieval, orchestration, and tool
+  latency.
+- Holdout cases remain unavailable to runtime agents and tuning prompts.
+- Every published benchmark is reproducible from versioned configuration and
+  sanitized evidence.
 
-## Sprint 13: Evaluation Harness
+## Sprint 14: Pilot, Release, and AMD Submission
 
-**Outcome:** make routing, retrieval, execution, safety, and cost improvements
-measurable and resistant to overfitting.
+**Outcome:** complete a real governed local-agent pilot and submit a polished,
+reproducible Track 2 entry before the official deadline.
 
 ### Scope
 
-- [ ] Create public synthetic and private holdout evaluation corpora.
-- [ ] Separate in-distribution, out-of-distribution, adversarial, and regression
-  cases.
-- [ ] Evaluate Sprint planning completeness and dependency correctness.
-- [ ] Evaluate worker contract adherence and write-scope safety.
-- [ ] Measure deterministic lineage precision, recall, and stale detection.
-- [ ] Measure Qdrant candidate recall and entity resolution precision.
-- [ ] Measure graph path validity and required-source coverage.
-- [ ] Measure context token reduction against task success.
-- [ ] Measure cancellation, retry, restart, and recovery reliability.
-- [ ] Measure model, infrastructure, and operator cost.
-- [ ] Add release gates and statistically justified confidence intervals.
+- [ ] Run one representative software Sprint from objective through planning,
+  approval, local retrieval, local inference, tool execution, validation, and
+  evidence publication.
+- [ ] Record human intervention, degraded paths, retries, recovery, queue time,
+  runtime, context size, token use, GPU metrics, task quality, and cost.
+- [ ] Reproduce the release from a clean Radeon Cloud template and a clean
+  source checkout without undocumented files or manual state repair.
+- [ ] Establish demonstration SLOs and verify startup, interaction, timeout,
+  cancellation, restart, PVC recovery, and no-remote-core behavior.
+- [ ] Publish an English project specification PDF with scenario, architecture,
+  capabilities, model, local deployment, privacy, and ROCm optimization.
+- [ ] Publish an English README with environment, dependencies, setup, model
+  acquisition, startup, usage, evaluation, limitations, and exact reproduction.
+- [ ] Record a three-to-five-minute English demo showing the real Radeon GPU,
+  complete workflow, local inference metrics, result, and recovery behavior.
+- [ ] Publish an English presentation or poster focused on practical value,
+  architecture, governance, local privacy, benchmarks, and open-source impact.
+- [ ] Audit repository history and submission artifacts for credentials,
+  private corpora, personal paths, copyrighted data, and unsupported claims.
+- [ ] Fork the official AMD repository and open the final pull request titled
+  `Track 2, <Team Name>, Forja Radeon` with every required link accessible.
+- [ ] Tag the public release only after the exact submission commit passes all
+  mandatory quality, security, reproducibility, and documentation gates.
+- [ ] Preserve source and evidence in Git/PVC/local backup, then destroy idle
+  Radeon instances to stop credit consumption.
 
 ### Acceptance
 
-- Every critical capability has a metric, dataset, and failure taxonomy.
-- Holdout cases are not available to runtime agents.
-- Improvements must beat the current baseline without regressing safety gates.
-- Evaluation artifacts are reproducible and versioned.
-
-## Sprint 14: Production Pilot
-
-**Outcome:** complete a real governed software Sprint and establish Forja 1.0
-release readiness.
-
-### Scope
-
-- [ ] Select one representative repository and bounded pilot objective.
-- [ ] Run discovery, planning, approval, execution, validation, and evidence
-  end-to-end.
-- [ ] Record human intervention and failure recovery.
-- [ ] Measure queue time, runtime, token use, context size, validation quality,
-  and operational cost.
-- [ ] Run a second clean-clone reproduction.
-- [ ] Complete load, soak, cancellation, and restart tests.
-- [ ] Establish initial SLOs and alert thresholds.
-- [ ] Complete backup, restore, and disaster recovery evidence.
-- [ ] Review security findings and dependency provenance.
-- [ ] Publish accurate architecture, limitations, and operating instructions.
-- [ ] Tag the 1.0 release only after every mandatory gate closes.
-
-### Acceptance
-
-- A real Sprint completes without manual state repair.
-- Evidence independently proves the published result.
-- A clean environment reproduces the release.
-- Documentation distinguishes validated capabilities from future work.
+- A clean Radeon environment reproduces the submitted workflow.
+- The video proves core inference and optimization on AMD Radeon/ROCm.
+- Source, README, PDF, video, and presentation links are public and written in
+  English.
+- The final submission contains no secret, private evaluation body, or remote
+  core inference dependency.
+- A real bounded Sprint completes without manual canonical-state repair, and
+  its evidence independently supports every published claim.

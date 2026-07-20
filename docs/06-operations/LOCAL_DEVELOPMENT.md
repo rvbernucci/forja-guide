@@ -1,6 +1,8 @@
 # Local Development
 
-Status: Sprint 05 closed; Sprint 06 observability implementation in progress
+Status: Sprints 00-08 closed; Sprint 09 implementation complete and preparing
+its protocol-v2 closure evidence. Sprint 10 remains unauthorized until the
+authoritative close receipt exists.
 
 ## Current Repository
 
@@ -170,6 +172,14 @@ go run ./cmd/forja run transition \
 - Python 3.9 or newer and `diff` for release-migration verification.
 
 See the [PostgreSQL recovery runbook](POSTGRESQL_RECOVERY.md).
+
+## Governed Retrieval Deployment
+
+The bounded governed retrieval runtime has a separate configuration and AWS
+identity boundary. Follow the
+[retrieval runtime deployment procedure](RETRIEVAL_RUNTIME_DEPLOYMENT.md)
+before running its preflight or private evaluation capture. Do not reuse an
+application's legacy Bedrock bearer-key environment.
 
 ## Observability
 

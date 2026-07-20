@@ -561,6 +561,9 @@ func loadMemoryRecord(
 		return contracts.MemoryRecord{}, err
 	}
 	defer rows.Close()
+	// The public contract distinguishes an empty canonical supersession set
+	// from an absent field, so preserve an empty array when no rows exist.
+	value.Supersedes = []string{}
 	for rows.Next() {
 		var id string
 		if err := rows.Scan(&id); err != nil {

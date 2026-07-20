@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/retrieval-evaluation-report.schema.json",
+  "title": "Forja Retrieval Evaluation Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "corpus_id", "corpus_sha256", "split", "code_commit", "embedding", "policy_hash", "k", "sample_count", "metrics", "duration_milliseconds"],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "corpus_id": {"type": "string", "pattern": "^retrieval_eval_[a-z0-9_-]{1,160}$"},
+    "corpus_sha256": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "split": {"enum": ["public", "tuning", "holdout", "ood", "adversarial", "regression"]},
+    "code_commit": {"type": "string", "pattern": "^[a-f0-9]{7,64}$"},
+    "embedding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["model", "version", "dimensions", "sparse_encoder_version"],
+      "properties": {
+        "model": {"type": "string", "minLength": 1, "maxLength": 200},
+        "version": {"type": "string", "minLength": 1, "maxLength": 200},
+        "dimensions": {"type": "integer", "minimum": 1, "maximum": 65536},
+        "sparse_encoder_version": {"type": "string", "minLength": 1, "maxLength": 200}
+      }
+    },
+    "policy_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "k": {"type": "integer", "minimum": 1, "maximum": 1000},
+    "sample_count": {"type": "integer", "minimum": 1, "maximum": 100000},
+    "metrics": {
+      "type": "object", "additionalProperties": false,
+      "required": ["cases", "recall_at_k", "precision_at_k", "mean_reciprocal_rank", "ndcg_at_k", "accepted_entity_count", "resolved_entity_count", "entity_resolution_accuracy", "expected_no_accepted_cases", "expected_no_accepted_pass", "stale_rejection_cases", "stale_rejection_pass", "cross_tenant_rejection_cases", "cross_tenant_rejection_pass", "unauthorized_rejection_cases", "unauthorized_rejection_pass", "mean_latency_milliseconds", "p95_latency_milliseconds", "max_latency_milliseconds", "mean_projection_lag_events", "max_projection_lag_events"],
+      "properties": {
+        "cases": {"type": "integer", "minimum": 1},
+        "recall_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+        "precision_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+        "mean_reciprocal_rank": {"type": "number", "minimum": 0, "maximum": 1},
+        "ndcg_at_k": {"type": "number", "minimum": 0, "maximum": 1},
+        "accepted_entity_count": {"type": "integer", "minimum": 0},
+        "resolved_entity_count": {"type": "integer", "minimum": 0},
+        "entity_resolution_accuracy": {"type": "number", "minimum": 0, "maximum": 1},
+        "expected_no_accepted_cases": {"type": "integer", "minimum": 0},
+        "expected_no_accepted_pass": {"type": "integer", "minimum": 0},
+        "stale_rejection_cases": {"type": "integer", "minimum": 0},
+        "stale_rejection_pass": {"type": "integer", "minimum": 0},
+        "cross_tenant_rejection_cases": {"type": "integer", "minimum": 0},
+        "cross_tenant_rejection_pass": {"type": "integer", "minimum": 0},
+        "unauthorized_rejection_cases": {"type": "integer", "minimum": 0},
+        "unauthorized_rejection_pass": {"type": "integer", "minimum": 0},
+        "mean_latency_milliseconds": {"type": "number", "minimum": 0, "maximum": 30000},
+        "p95_latency_milliseconds": {"type": "integer", "minimum": 0, "maximum": 30000},
+        "max_latency_milliseconds": {"type": "integer", "minimum": 0, "maximum": 30000},
+        "mean_projection_lag_events": {"type": "number", "minimum": 0, "maximum": 1000000},
+        "max_projection_lag_events": {"type": "integer", "minimum": 0, "maximum": 1000000}
+      }
+    },
+    "duration_milliseconds": {"type": "integer", "minimum": 0}
+  }
+}

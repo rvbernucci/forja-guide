@@ -12,6 +12,7 @@ import (
 	"github.com/rvbernucci/forja-guide/internal/contracts"
 	"github.com/rvbernucci/forja-guide/internal/fault"
 	"github.com/rvbernucci/forja-guide/internal/persistence"
+	"github.com/rvbernucci/forja-guide/internal/retrieval"
 )
 
 func TestAttemptLifecycleIsFencedIdempotentAndSecretSafe(t *testing.T) {
@@ -171,6 +172,84 @@ func TestAttemptReconciliationUsesDeadFencesNotPIDs(t *testing.T) {
 		oldProof,
 	); !fault.IsCode(err, fault.CodeConflict) {
 		t.Fatalf("stale scheduler finish error=%v, want conflict", err)
+	}
+}
+
+func TestFailedAttemptProducesSafeCanonicalIncident(t *testing.T) {
+	pool := migratedPool(t)
+	store := newIntegrationStore(t, pool)
+	runID := mustRunID(t)
+	if _, err := store.CreateRun(t.Context(), runID, "Create one governed failure incident", testMetadata("incident-run")); err != nil {
+		t.Fatal(err)
+	}
+	lease, err := store.AcquireLease(t.Context(), persistence.LeaseKey{
+		TenantID: DefaultTenantID, ResourceType: "scheduler", ResourceID: "incident-source",
+	}, "incident-scheduler", time.Minute)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof := persistence.LeaseProof{LeaseKey: lease.LeaseKey, OwnerID: lease.OwnerID, FencingToken: lease.FencingToken}
+	attempt, err := store.CreateAttempt(t.Context(), runID, "queued", testMetadata("incident-create"), proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempt, err = store.StartAttempt(t.Context(), attempt.AttemptID, attempt.Version, testMetadata("incident-start"), proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := successfulWorkerResult(attempt.AttemptID, runID.String())
+	result.Status, result.Retryable, result.TerminationReason, result.Report = "failed_terminal", false, "process_failure", nil
+	exitCode := 1
+	result.ExitCode = &exitCode
+	result.StartedAt = attempt.StartedAt.Add(time.Microsecond)
+	result.FinishedAt = time.Now().UTC()
+	result.DurationMS = result.FinishedAt.Sub(result.StartedAt).Milliseconds()
+	if _, err := store.FinishAttempt(t.Context(), attempt.AttemptID, attempt.Version, result, testMetadata("incident-finish"), proof); err != nil {
+		t.Fatal(err)
+	}
+	incident, found, err := store.GetIncidentForAttempt(t.Context(), attempt.AttemptID)
+	if err != nil || !found || incident.Classification != "process_failure" || incident.Severity != "critical" || incident.Retryable {
+		t.Fatalf("incident=%#v found=%v err=%v", incident, found, err)
+	}
+	if err := contracts.ValidateIncident(incident); err != nil {
+		t.Fatal(err)
+	}
+	source, err := retrieval.BuildIncidentSource(incident)
+	if err != nil {
+		t.Fatal(err)
+	}
+	card, err := retrieval.BuildCardText(source)
+	if err != nil || strings.Contains(card, "SECRET_STDOUT") || strings.Contains(card, "SECRET_STDERR") {
+		t.Fatalf("card=%q err=%v", card, err)
+	}
+	generation := contracts.RetrievalGenerationID("fixture", "v1", 3, retrieval.SparseEncoderVersion)
+	if _, err := pool.Exec(t.Context(), `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES ($1,$2,$3,'retrieval','retrieval_incident_fixture','fixture','v1',3,$4,'active')`,
+		DefaultTenantID, DefaultRepositoryID, generation, retrieval.SparseEncoderVersion); err != nil {
+		t.Fatal(err)
+	}
+	point, err := retrieval.BuildPoint(t.Context(), source, generation, postgresFixtureEmbedder{}, retrieval.HashingSparseEncoder{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var outboxID int64
+	if err := pool.QueryRow(t.Context(), `
+		SELECT outbox.outbox_id
+		FROM forja.outbox AS outbox
+		JOIN forja.events AS event ON event.event_id=outbox.event_id
+		WHERE event.aggregate_type='attempt' AND event.aggregate_id=$1 AND event.event_type='attempt.finished'`,
+		attempt.AttemptID).Scan(&outboxID); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.RecordRetrievalProjectionPoint(t.Context(), point, outboxID); err != nil {
+		t.Fatal(err)
+	}
+	resolved, err := store.ResolveRetrievalPoint(t.Context(), point.PointID)
+	if err != nil || len(resolved) != 1 || resolved[0].EntityID != incident.IncidentID || resolved[0].ArtifactFamily != "incident" {
+		t.Fatalf("resolved=%#v err=%v", resolved, err)
 	}
 }
 

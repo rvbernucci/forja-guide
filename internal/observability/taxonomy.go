@@ -20,6 +20,7 @@ const (
 	BoundaryPersistence Boundary = "persistence"
 	BoundaryDelivery    Boundary = "delivery"
 	BoundaryIndexing    Boundary = "indexing"
+	BoundaryRetrieval   Boundary = "retrieval"
 	BoundaryTelemetry   Boundary = "telemetry"
 	BoundaryOther       Boundary = "other"
 )
@@ -28,35 +29,36 @@ const (
 type Operation string
 
 const (
-	OperationPlanSprint      Operation = "plan_sprint"
-	OperationSubmitSprint    Operation = "submit_sprint"
-	OperationGetSprint       Operation = "get_sprint"
-	OperationGetRun          Operation = "get_run"
-	OperationApproveDecision Operation = "approve_decision"
-	OperationRejectDecision  Operation = "reject_decision"
-	OperationCancelRun       Operation = "cancel_run"
-	OperationResumeRun       Operation = "resume_run"
-	OperationCreateRun       Operation = "create_run"
-	OperationTransitionRun   Operation = "transition_run"
-	OperationHealth          Operation = "health"
-	OperationReadiness       Operation = "readiness"
-	OperationVersion         Operation = "version"
-	OperationMetrics         Operation = "metrics"
-	OperationExecuteDelivery Operation = "execute_delivery"
-	OperationRecoverDelivery Operation = "recover_delivery"
-	OperationDispatchWorker  Operation = "dispatch_worker"
-	OperationRunWorker       Operation = "run_worker"
-	OperationValidateChange  Operation = "validate_change"
-	OperationPublishChange   Operation = "publish_change"
-	OperationPublishIndex    Operation = "publish_index"
-	OperationQuery           Operation = "query"
-	OperationOther           Operation = "other"
+	OperationPlanSprint       Operation = "plan_sprint"
+	OperationSubmitSprint     Operation = "submit_sprint"
+	OperationGetSprint        Operation = "get_sprint"
+	OperationGetRun           Operation = "get_run"
+	OperationApproveDecision  Operation = "approve_decision"
+	OperationRejectDecision   Operation = "reject_decision"
+	OperationCancelRun        Operation = "cancel_run"
+	OperationResumeRun        Operation = "resume_run"
+	OperationCreateRun        Operation = "create_run"
+	OperationTransitionRun    Operation = "transition_run"
+	OperationHealth           Operation = "health"
+	OperationReadiness        Operation = "readiness"
+	OperationVersion          Operation = "version"
+	OperationMetrics          Operation = "metrics"
+	OperationExecuteDelivery  Operation = "execute_delivery"
+	OperationRecoverDelivery  Operation = "recover_delivery"
+	OperationDispatchWorker   Operation = "dispatch_worker"
+	OperationRunWorker        Operation = "run_worker"
+	OperationValidateChange   Operation = "validate_change"
+	OperationPublishChange    Operation = "publish_change"
+	OperationPublishIndex     Operation = "publish_index"
+	OperationQuery            Operation = "query"
+	OperationProjectRetrieval Operation = "project_retrieval"
+	OperationOther            Operation = "other"
 )
 
 var validBoundaries = map[Boundary]struct{}{
 	BoundaryMCP: {}, BoundaryHTTP: {}, BoundaryScheduler: {}, BoundaryWorker: {},
 	BoundaryValidation: {}, BoundaryPersistence: {}, BoundaryDelivery: {},
-	BoundaryIndexing: {}, BoundaryTelemetry: {}, BoundaryOther: {},
+	BoundaryIndexing: {}, BoundaryRetrieval: {}, BoundaryTelemetry: {}, BoundaryOther: {},
 }
 
 var validOperations = map[Operation]struct{}{
@@ -68,7 +70,7 @@ var validOperations = map[Operation]struct{}{
 	OperationRecoverDelivery: {}, OperationDispatchWorker: {}, OperationRunWorker: {},
 	OperationValidateChange: {},
 	OperationPublishChange:  {}, OperationQuery: {}, OperationOther: {},
-	OperationPublishIndex: {},
+	OperationPublishIndex: {}, OperationProjectRetrieval: {},
 }
 
 // FailureClass is the stable failure taxonomy shared by traces and metrics.

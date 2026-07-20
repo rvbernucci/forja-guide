@@ -45,6 +45,14 @@ contracts.
 | [`message.schema.json`](../../schemas/message.schema.json) | Immutable message parts and source citations |
 | [`memory-candidate.schema.json`](../../schemas/memory-candidate.schema.json) | Untrusted proposed learning and resolution lifecycle |
 | [`memory-record.schema.json`](../../schemas/memory-record.schema.json) | Explicitly promoted durable memory |
+| [`incident.schema.json`](../../schemas/incident.schema.json) | Safe immutable retrieval view of a failed terminal attempt |
+| [`retrieval-evaluation-corpus.schema.json`](../../schemas/retrieval-evaluation-corpus.schema.json) | Access-controlled offline retrieval expectations |
+| [`retrieval-evaluation-query-plan.schema.json`](../../schemas/retrieval-evaluation-query-plan.schema.json) | Private label-free query templates and frozen four-baseline capture policies |
+| [`retrieval-evaluation-outcomes.schema.json`](../../schemas/retrieval-evaluation-outcomes.schema.json) | One immutable captured ranking outcome set |
+| [`retrieval-evaluation-comparison.schema.json`](../../schemas/retrieval-evaluation-comparison.schema.json) | Four mandatory, policy-hash-bound baseline outcome sets |
+| [`retrieval-evaluation-report.schema.json`](../../schemas/retrieval-evaluation-report.schema.json) | One policy's bounded offline ranking evidence |
+| [`retrieval-evaluation-comparison-report.schema.json`](../../schemas/retrieval-evaluation-comparison-report.schema.json) | Stable four-baseline comparison evidence |
+| [`retrieval-preflight-receipt.schema.json`](../../schemas/retrieval-preflight-receipt.schema.json) | Redacted bounded readiness proof for PostgreSQL, Qdrant, and Bedrock |
 | [`artifact-bundle-manifest.schema.json`](../../schemas/artifact-bundle-manifest.schema.json) | Immutable content-addressed bundle inventory |
 
 The Go kernel embeds these schemas, compiles cross-schema references offline at

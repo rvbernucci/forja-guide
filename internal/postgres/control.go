@@ -23,6 +23,25 @@ func (s *Store) Authority() control.Authority {
 	return control.Authority{TenantID: s.tenantID, RepositoryID: s.repositoryID}
 }
 
+// GetDecision loads the current canonical decision for a derived projector.
+// It deliberately ignores event payloads and never creates authority from a
+// historical delivery record.
+func (s *Store) GetDecision(ctx context.Context, decisionID string) (control.Decision, bool, error) {
+	decision, err := scanDecision(s.pool.QueryRow(ctx, `
+		SELECT decision_id, 'sprint_' || sprint_id::text, run_id, action,
+		       risk_class, status, version, requested_by, decided_by, reason,
+		       created_at, updated_at, decided_at
+		FROM forja.decisions
+		WHERE tenant_id=$1 AND repository_id=$2 AND decision_id=$3`, s.tenantID, s.repositoryID, decisionID))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return control.Decision{}, false, nil
+	}
+	if err != nil {
+		return control.Decision{}, false, databaseError("postgres.GetDecision", err)
+	}
+	return decision, true, nil
+}
+
 func (s *Store) PlanSprint(
 	ctx context.Context,
 	command control.PlanCommand,

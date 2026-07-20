@@ -1,0 +1,60 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "09",
+  "status": "candidate_pending_immutable_review",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "validators": [
+    {
+      "name": "local repository quality gate",
+      "type": "mechanical",
+      "result": "passed",
+      "summary": "Unit, race, reproducible build, process smoke, Python, JSON, link, private-evaluation tracking, sensitive-content, and migration-aware historical rollback checks passed."
+    },
+    {
+      "name": "public synthetic retrieval comparison",
+      "type": "mechanical",
+      "result": "passed",
+      "summary": "The schema-validated public fixture distinguishes the four baseline policies and rejects its stale and cross-tenant cases. It is a contract smoke test, not production-quality evidence."
+    },
+    {
+      "name": "governed infrastructure boundary observation",
+      "type": "operational",
+      "result": "passed_with_deferred_activation",
+      "summary": "The VPS dependencies and role boundaries were observed without reading secrets. No workload identity or private retrieval capture was treated as Sprint 09 evidence."
+    },
+    {
+      "name": "immutable public closure candidate review",
+      "type": "independent",
+      "result": "pending",
+      "summary": "Protocol v2 requires a separate review of the exact candidate commit before Sprint 10 can be authorized."
+    }
+  ],
+  "acceptance": [
+    {
+      "criterion": "semantic and lexical results remain untrusted candidates until canonical resolution",
+      "result": "proven"
+    },
+    {
+      "criterion": "tenant, repository, lifecycle, freshness, source commit, and source hash boundaries fail closed",
+      "result": "proven"
+    },
+    {
+      "criterion": "Qdrant projection can be rebuilt and its serving alias can be cut over or rolled back safely",
+      "result": "proven"
+    },
+    {
+      "criterion": "private four-baseline evaluation can run without exposing labels to the runtime",
+      "result": "implementation_proven_execution_deferred"
+    },
+    {
+      "criterion": "production and AMD competition retrieval quality is accepted",
+      "result": "deferred_to_sprint_10"
+    }
+  ],
+  "unresolved_validation": [
+    "separate immutable candidate review",
+    "protected exact-main GitHub workflow",
+    "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
+  ],
+  "recorded_at": "2026-07-20T04:10:28Z"
+}

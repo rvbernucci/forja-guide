@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/retrieval-result.schema.json",
+  "title": "Forja Governed Retrieval Result",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "request_id", "schema_version", "status", "projection_freshness",
+    "accepted", "rejections", "receipt"
+  ],
+  "properties": {
+    "request_id": {"type": "string", "pattern": "^retrieval_request_[A-Za-z0-9_-]{1,200}$"},
+    "schema_version": {"const": "1.0"},
+    "status": {"enum": ["complete", "degraded", "blocked"]},
+    "projection_freshness": {"enum": ["fresh", "stale", "unknown"]},
+    "projection_lag_events": {"type": "integer", "minimum": 0, "maximum": 1000000},
+    "collection_generation": {"type": "string", "pattern": "^retrieval_generation_[a-f0-9]{64}$"},
+    "accepted": {
+      "type": "array", "maxItems": 100,
+      "items": {"$ref": "#/$defs/candidate"}
+    },
+    "rejections": {
+      "type": "array", "maxItems": 400,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["point_id", "reason"],
+        "properties": {
+          "point_id": {"type": "string", "pattern": "^retrieval_[a-f0-9]{64}$"},
+          "reason": {"enum": [
+            "unauthorized_scope", "missing_canonical_entity", "ambiguous_identity",
+            "source_hash_mismatch", "source_commit_mismatch", "inactive_source",
+            "stale_projection", "malformed_candidate", "duplicate_entity"
+          ]}
+        }
+      }
+    },
+    "ambiguities": {
+      "type": "array", "maxItems": 400,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["point_id", "alternative_entity_ids"],
+        "properties": {
+          "point_id": {"type": "string", "pattern": "^retrieval_[a-f0-9]{64}$"},
+          "alternative_entity_ids": {
+            "type": "array", "minItems": 2, "maxItems": 16, "uniqueItems": true,
+            "items": {"type": "string", "pattern": "^(?:symbol|file|artifact|memory|decision|test|incident)_[A-Za-z0-9_-]{1,200}$"}
+          }
+        }
+      }
+    },
+    "gaps": {
+      "type": "array", "maxItems": 64, "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 512}
+    },
+    "receipt": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "dense_candidates", "sparse_candidates", "fused_candidates",
+        "resolved_candidates", "rejected_candidates", "policy_hash"
+      ],
+      "properties": {
+        "dense_candidates": {"type": "integer", "minimum": 0, "maximum": 200},
+        "sparse_candidates": {"type": "integer", "minimum": 0, "maximum": 200},
+        "fused_candidates": {"type": "integer", "minimum": 0, "maximum": 400},
+        "resolved_candidates": {"type": "integer", "minimum": 0, "maximum": 100},
+        "rejected_candidates": {"type": "integer", "minimum": 0, "maximum": 400},
+        "policy_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"}
+      }
+    }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "point_id", "entity_id", "artifact_family", "source_hash",
+        "authority_class", "fused_score", "proof_refs"
+      ],
+      "properties": {
+        "point_id": {"type": "string", "pattern": "^retrieval_[a-f0-9]{64}$"},
+        "entity_id": {"type": "string", "pattern": "^(?:symbol|file|artifact|memory|decision|test|incident)_[A-Za-z0-9_-]{1,200}$"},
+        "artifact_family": {"enum": ["symbol", "decision", "test", "memory", "incident"]},
+        "source_commit": {"type": "string", "pattern": "^[a-f0-9]{40,64}$"},
+        "source_hash": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+        "authority_class": {"enum": ["canonical", "supporting", "candidate"]},
+        "repository_path": {"type": "string", "minLength": 1, "maxLength": 4096},
+        "dense_rank": {"type": "integer", "minimum": 1, "maximum": 200},
+        "sparse_rank": {"type": "integer", "minimum": 1, "maximum": 200},
+        "fused_score": {"type": "number", "exclusiveMinimum": 0},
+        "proof_refs": {
+          "type": "array", "maxItems": 256, "uniqueItems": true,
+          "items": {"type": "string", "minLength": 1, "maxLength": 512}
+        }
+      }
+    }
+  }
+}

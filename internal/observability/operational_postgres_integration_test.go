@@ -225,6 +225,18 @@ func TestOperationalSnapshotRequiresFreshLeaseAndCountsActualProjectionRows(t *t
 	); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := tx.Exec(ctx, `
+		INSERT INTO forja.retrieval_generations (
+			tenant_id, repository_id, generation_id, collection_alias, collection_name,
+			embedding_model, embedding_version, dimensions, sparse_encoder_version, status
+		) VALUES
+			($1,$2,'retrieval_generation_' || repeat('1', 64),'retrieval','retrieval_building','fixture','v1',3,'sparse-v1','building'),
+			($1,$2,'retrieval_generation_' || repeat('2', 64),'retrieval','retrieval_active','fixture','v1',3,'sparse-v1','active'),
+			($1,$2,'retrieval_generation_' || repeat('3', 64),'retrieval','retrieval_draining','fixture','v1',3,'sparse-v1','draining'),
+			($1,$2,'retrieval_generation_' || repeat('4', 64),'retrieval','retrieval_failed','fixture','v1',3,'sparse-v1','failed')`,
+		postgres.DefaultTenantID, repositoryA); err != nil {
+		t.Fatal(err)
+	}
 
 	reader, err := observability.NewPostgresOperationalReader(
 		tx, postgres.DefaultTenantID, repositoryA,
@@ -241,6 +253,9 @@ func TestOperationalSnapshotRequiresFreshLeaseAndCountsActualProjectionRows(t *t
 	}
 	if snapshot.ProjectionLag != 1 {
 		t.Fatalf("projection lag = %d, want one unprojected authority row", snapshot.ProjectionLag)
+	}
+	if snapshot.RetrievalGenerationsBuild != 1 || snapshot.RetrievalGenerationsLive != 1 || snapshot.RetrievalGenerationsDrain != 1 || snapshot.RetrievalGenerationsFail != 1 {
+		t.Fatalf("retrieval generation conditions=%#v", snapshot)
 	}
 	if snapshot.StuckRuns != 1 {
 		t.Fatalf(

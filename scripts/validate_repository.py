@@ -48,7 +48,11 @@ SKIPPED_DIRECTORIES = {
     ".tmp",
     "node_modules",
     "vendor",
+    "private-evaluations",
 }
+
+PRIVATE_EVALUATION_ROOT = "private-evaluations"
+PRIVATE_EVALUATION_TRACKED_ALLOWLIST = {"private-evaluations/README.md"}
 
 FORBIDDEN_PATTERNS = {
     "private user path": re.compile(r"/Users/[A-Za-z0-9._-]+/"),
@@ -705,6 +709,26 @@ def validate_sensitive_content(errors: list[str]) -> None:
                 )
 
 
+def validate_private_evaluation_tracking(errors: list[str]) -> None:
+    """Keep access-controlled corpora and captured answers out of public Git."""
+    result = subprocess.run(
+        ["git", "-C", str(ROOT), "ls-files", "-z", "--", PRIVATE_EVALUATION_ROOT],
+        check=False,
+        capture_output=True,
+    )
+    if result.returncode != 0:
+        errors.append("cannot inspect tracked private evaluation files")
+        return
+    tracked = {
+        path.decode("utf-8")
+        for path in result.stdout.split(b"\0")
+        if path
+    }
+    unexpected = tracked - PRIVATE_EVALUATION_TRACKED_ALLOWLIST
+    for path in sorted(unexpected):
+        errors.append(f"private evaluation corpus is tracked: {path}")
+
+
 def strip_fragment(target: str) -> str:
     """Remove URL query and fragment components from an internal link."""
     return target.split("#", maxsplit=1)[0].split("?", maxsplit=1)[0]
@@ -743,6 +767,7 @@ def main() -> int:
     validate_json(errors)
     validate_evidence_sets(errors)
     validate_sensitive_content(errors)
+    validate_private_evaluation_tracking(errors)
     validate_markdown_links(errors)
 
     if errors:

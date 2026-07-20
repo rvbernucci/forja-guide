@@ -137,27 +137,56 @@ boundaries and residual risk. Sprint 09 is authorized.
 **Outcome:** discover relevant artifacts and symbols with hybrid search while
 preserving authority and access boundaries.
 
-**Status:** Authorized by the authoritative
-[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json).
+**Status:** Implementation complete; the protocol-v2 closure candidate is
+published for immutable review. Private quality evaluation and competition-profile activation are
+transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
+[Sprint 09 execution plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
 
 ### Scope
 
-- [ ] Define Qdrant collections, named vectors, payload indexes, and aliases.
-- [ ] Produce embeddable symbol, decision, test, memory, and incident cards.
-- [ ] Implement dense semantic and sparse lexical retrieval.
-- [ ] Apply tenant, repository, status, authority, stale, language, and kind
+- [x] Define versioned Qdrant collection protocol plans, named vectors,
+  mandatory payload indexes, TLS/secret endpoint policy, an idempotent
+  official-client point writer, explicit collection/alias operator calls, and
+  physical generation/vector/index verification. Alias observation and guarded
+  rollback are implemented. Opt-in live integration now covers physical
+  blue-green cutover, guarded rollback, collection deletion, and replay.
+- [x] Produce embeddable symbol, decision, test, memory, and incident cards.
+  Every family rebuilds from its owning canonical source. Incident cards derive
+  only from immutable failed-attempt evidence; they are not log cards.
+- [x] Implement the dense/sparse request contracts, deterministic sparse
+  lexical encoder, Qdrant candidate execution, bounded RRF fusion, degraded
+  receipts, and mandatory PostgreSQL resolution. Concrete embedding-provider
+  deployment remains pending.
+- [x] Apply tenant, repository, status, authority, stale, language, and kind
   filters before ranking.
-- [ ] Implement weighted reciprocal rank fusion.
-- [ ] Implement canonical entity resolution and ambiguity handling.
-- [ ] Record embedding model, version, dimensions, source hash, and generation
+- [x] Implement weighted reciprocal rank fusion.
+- [x] Implement and test canonical-resolution and ambiguity-handling policy,
+  including the PostgreSQL resolver adapter for active canonical symbols and
+  canonically flagged tests.
+- [x] Record embedding model, version, dimensions, source hash, and generation
   timestamp.
-- [ ] Implement outbox-driven idempotent upsert and delete projections.
-- [ ] Add collection migration and blue-green re-embedding strategy.
-- [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
+- [x] Implement independent, fenced per-projector outbox delivery and backlog
+  replay. The symbol Qdrant upsert projector records PostgreSQL provenance
+  before acknowledging delivery. Superseded snapshots tombstone canonical
+  point receipts before idempotent Qdrant deletion; failed deletes stay
+  fail-closed and retry through the delivery ledger.
+- [x] Add collection migration and blue-green re-embedding strategy. Immutable
+  PostgreSQL generation receipts bind the collection/vector contract; the
+  Qdrant operator verifies a green collection, atomically switches the stable
+  alias, reads it back, retains the prior generation for observation, and
+  permits rollback only when the alias still points to the expected green
+  target. Unit and opt-in live drills cover cutover, rollback, deletion, and
+  replay.
+- [x] Build the public evaluation contracts, scorer, four-baseline capture,
+  freshness and leakage fixtures, and transfer execution of the private
+  tuning/holdout/OOD corpus to Sprint 10. Production activation remains
+  disabled until that evidence passes.
+- [x] Publish the complete fail-closed Sprint 09 evidence candidate without
+  authorizing Sprint 10.
 
 ### Acceptance
 
-- Identifier-heavy queries benefit from lexical retrieval.
-- Conceptual queries benefit from dense retrieval.
+- Public fixtures prove distinct lexical and dense paths; private comparative
+  benefit remains a Sprint 10 quality gate.
 - Cross-tenant and stale-authority test cases return zero unauthorized results.
 - Deleting Qdrant and replaying the outbox rebuilds the expected projection.

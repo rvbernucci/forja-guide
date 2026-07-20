@@ -12,12 +12,15 @@ const maxMetricsRequestsInFlight = 1
 
 // Metrics owns Forja's bounded-cardinality Prometheus instruments.
 type Metrics struct {
-	operations         *prometheus.CounterVec
-	duration           *prometheus.HistogramVec
-	inFlight           *prometheus.GaugeVec
-	telemetryFailures  *prometheus.CounterVec
-	indexEntities      *prometheus.CounterVec
-	indexInvalidations *prometheus.CounterVec
+	operations           *prometheus.CounterVec
+	duration             *prometheus.HistogramVec
+	inFlight             *prometheus.GaugeVec
+	telemetryFailures    *prometheus.CounterVec
+	indexEntities        *prometheus.CounterVec
+	indexInvalidations   *prometheus.CounterVec
+	retrievalCandidates  *prometheus.CounterVec
+	retrievalResolutions *prometheus.CounterVec
+	retrievalProjections *prometheus.CounterVec
 }
 
 // NewMetrics registers a fresh metric set with an explicit registry.
@@ -52,6 +55,18 @@ func NewMetrics(registerer prometheus.Registerer) (*Metrics, error) {
 			Namespace: "forja", Name: "index_invalidations_total",
 			Help: "Deterministic index invalidations by bounded reason.",
 		}, []string{"reason"}),
+		retrievalCandidates: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forja", Name: "retrieval_candidates_total",
+			Help: "Governed retrieval candidates by bounded ranking stage.",
+		}, []string{"stage"}),
+		retrievalResolutions: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forja", Name: "retrieval_resolutions_total",
+			Help: "Governed retrieval resolution outcomes.",
+		}, []string{"outcome"}),
+		retrievalProjections: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: "forja", Name: "retrieval_projection_deliveries_total",
+			Help: "Governed retrieval projection delivery outcomes.",
+		}, []string{"outcome"}),
 	}
 	for _, collector := range []prometheus.Collector{
 		metrics.operations,
@@ -60,12 +75,39 @@ func NewMetrics(registerer prometheus.Registerer) (*Metrics, error) {
 		metrics.telemetryFailures,
 		metrics.indexEntities,
 		metrics.indexInvalidations,
+		metrics.retrievalCandidates,
+		metrics.retrievalResolutions,
+		metrics.retrievalProjections,
 	} {
 		if err := registerer.Register(collector); err != nil {
 			return nil, err
 		}
 	}
 	return metrics, nil
+}
+
+func (m *Metrics) retrieved(stats RetrievalStats) {
+	if m == nil {
+		return
+	}
+	for stage, count := range map[string]int{"dense": stats.DenseCandidates, "sparse": stats.SparseCandidates, "fused": stats.FusedCandidates} {
+		if count > 0 {
+			m.retrievalCandidates.WithLabelValues(stage).Add(float64(count))
+		}
+	}
+	for outcome, count := range map[string]int{"accepted": stats.Accepted, "rejected": stats.Rejected} {
+		if count > 0 {
+			m.retrievalResolutions.WithLabelValues(outcome).Add(float64(count))
+		}
+	}
+	if stats.Degraded {
+		m.retrievalResolutions.WithLabelValues("degraded").Inc()
+	}
+	for outcome, count := range map[string]int{"claimed": stats.ProjectionClaimed, "published": stats.ProjectionPublished, "skipped": stats.ProjectionSkipped, "retried": stats.ProjectionRetried, "dead": stats.ProjectionDead} {
+		if count > 0 {
+			m.retrievalProjections.WithLabelValues(outcome).Add(float64(count))
+		}
+	}
 }
 
 func (m *Metrics) indexed(stats IndexStats) {

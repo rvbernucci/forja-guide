@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "corpus_id": "retrieval_eval_public_synthetic_v1",
+  "variants": [
+    {
+      "name": "lexical_only",
+      "policy_hash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "outcomes": [
+        {"case_id": "identifier_login_handler", "accepted_entity_ids": ["symbol_login_handler", "test_login_handler"], "latency_milliseconds": 3, "projection_lag_events": 0},
+        {"case_id": "conceptual_session_policy", "accepted_entity_ids": [], "latency_milliseconds": 3, "projection_lag_events": 0},
+        {"case_id": "stale_source_rejected", "accepted_entity_ids": [], "latency_milliseconds": 2, "projection_lag_events": 0},
+        {"case_id": "cross_tenant_rejected", "accepted_entity_ids": [], "latency_milliseconds": 2, "projection_lag_events": 0}
+      ]
+    },
+    {
+      "name": "dense_only",
+      "policy_hash": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "outcomes": [
+        {"case_id": "identifier_login_handler", "accepted_entity_ids": ["symbol_login_handler"], "latency_milliseconds": 4, "projection_lag_events": 1},
+        {"case_id": "conceptual_session_policy", "accepted_entity_ids": ["decision_session_policy"], "latency_milliseconds": 4, "projection_lag_events": 1},
+        {"case_id": "stale_source_rejected", "accepted_entity_ids": [], "latency_milliseconds": 3, "projection_lag_events": 1},
+        {"case_id": "cross_tenant_rejected", "accepted_entity_ids": [], "latency_milliseconds": 3, "projection_lag_events": 1}
+      ]
+    },
+    {
+      "name": "rrf_unweighted",
+      "policy_hash": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "outcomes": [
+        {"case_id": "identifier_login_handler", "accepted_entity_ids": ["symbol_login_handler", "test_login_handler"], "latency_milliseconds": 5, "projection_lag_events": 1},
+        {"case_id": "conceptual_session_policy", "accepted_entity_ids": ["decision_session_policy"], "latency_milliseconds": 5, "projection_lag_events": 1},
+        {"case_id": "stale_source_rejected", "accepted_entity_ids": [], "latency_milliseconds": 4, "projection_lag_events": 1},
+        {"case_id": "cross_tenant_rejected", "accepted_entity_ids": [], "latency_milliseconds": 4, "projection_lag_events": 1}
+      ]
+    },
+    {
+      "name": "rrf_weighted",
+      "policy_hash": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "outcomes": [
+        {"case_id": "identifier_login_handler", "accepted_entity_ids": ["symbol_login_handler", "test_login_handler"], "latency_milliseconds": 6, "projection_lag_events": 2},
+        {"case_id": "conceptual_session_policy", "accepted_entity_ids": ["decision_session_policy"], "latency_milliseconds": 6, "projection_lag_events": 2},
+        {"case_id": "stale_source_rejected", "accepted_entity_ids": [], "latency_milliseconds": 5, "projection_lag_events": 2},
+        {"case_id": "cross_tenant_rejected", "accepted_entity_ids": [], "latency_milliseconds": 5, "projection_lag_events": 2}
+      ]
+    }
+  ]
+}

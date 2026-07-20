@@ -1,0 +1,30 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "09",
+  "name": "Governed Retrieval Foundation",
+  "status": "completed",
+  "objective": "Implement governed hybrid candidate discovery, canonical resolution, independent Qdrant projection delivery, rebuild and rollback operations, and public/private evaluation tooling without making semantic similarity or a derived store authoritative.",
+  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "scope": [
+    "strict retrieval point, query, result, generation, and evaluation contracts",
+    "deterministic symbol, test, decision, memory, and incident retrieval cards",
+    "independent fenced projector delivery, checkpoints, retries, and replay",
+    "versioned Qdrant collections, indexes, aliases, cutover, rollback, deletion, and rebuild",
+    "bounded dense and sparse candidate execution plus weighted reciprocal-rank fusion",
+    "mandatory tenant, repository, lifecycle, freshness, source-hash, and canonical resolution",
+    "Bedrock Titan adapter through the standard AWS SDK chain for non-competition profiles",
+    "bounded operator CLIs, content-free telemetry, recovery procedures, and fail-closed preflight",
+    "public synthetic evaluation and access-controlled four-baseline capture tooling",
+    "explicit transfer of private quality measurement and Radeon-local activation to Sprint 10"
+  ],
+  "out_of_scope": [
+    "production retrieval policy activation before private holdout evidence",
+    "AMD Track 2 local language-model and embedding deployment",
+    "private corpus bodies, labels, captured prompts, and generated vectors in public Git",
+    "Neo4j projection and graph traversal",
+    "context-pack assembly and agent-facing token budgeting"
+  ],
+  "author": "codex",
+  "independent_validator": "separate immutable review of the exact public closure candidate plus protected GitHub Actions",
+  "completed_at": "2026-07-20T02:34:05Z"
+}

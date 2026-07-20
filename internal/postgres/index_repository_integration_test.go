@@ -58,8 +58,10 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		t.Fatalf("incomplete delta error=%v", err)
 	}
 	canonicalDeltas := indexPersistenceDeltas(t, first.Bundle, second.Bundle)
-	if len(canonicalDeltas) != 1 || canonicalDeltas[0].ChangeKind != "modified" ||
-		canonicalDeltas[0].PreviousEntityID == nil {
+	if len(canonicalDeltas) != 2 || canonicalDeltas[0].ChangeKind != "modified" ||
+		canonicalDeltas[0].EntityKind != "file" || canonicalDeltas[0].PreviousEntityID == nil ||
+		canonicalDeltas[1].ChangeKind != "reused" || canonicalDeltas[1].EntityKind != "symbol" ||
+		canonicalDeltas[1].PreviousEntityID == nil {
 		t.Fatalf("unexpected canonical delta fixture=%#v", canonicalDeltas)
 	}
 	falseReused := second
@@ -126,6 +128,9 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		UPDATE forja.artifacts SET status='archived', tombstoned_at=clock_timestamp(), updated_at=clock_timestamp()
 		WHERE artifact_id=$1`, *second.Bundle.Snapshot.ArtifactID); err == nil {
 		t.Fatal("live snapshot artifact was not protected")
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 009: %v", err)
 	}
 	if err := RollbackLast(t.Context(), pool); err == nil {
 		t.Fatal("migration rollback accepted canonical index history")
@@ -197,8 +202,14 @@ func TestIndexPublicationRejectsCallerControlledRenameAndMalformedPreviousID(t *
 	file.Path = "app/moved.py"
 	file.FileID = contracts.ComputeFileID(*file)
 	file.LineageID = contracts.ComputeFileLineageID(*file)
+	symbol := &target.Bundle.Symbols[0]
+	symbol.FileID = file.FileID
+	symbol.FileLineageID = file.LineageID
+	symbol.SymbolID = contracts.ComputeSymbolID(*symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(*symbol)
+	file.SymbolIDs = []string{symbol.SymbolID}
 	canonical := indexPersistenceDeltas(t, first.Bundle, target.Bundle)
-	if len(canonical) != 2 {
+	if len(canonical) != 4 {
 		t.Fatalf("changed-content move deltas=%#v", canonical)
 	}
 	callerRename := target
@@ -546,7 +557,7 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 		Adapters:            []contracts.AdapterDescriptor{descriptor},
 		Status:              "active",
 		Version:             1,
-		Counts:              contracts.SnapshotCounts{Files: 1},
+		Counts:              contracts.SnapshotCounts{Files: 1, Symbols: 1},
 		ArtifactID:          &artifactID,
 		ArtifactContentHash: &artifactHash,
 		CreatedBy:           "integration-suite",
@@ -563,13 +574,28 @@ func indexPublicationFixture(t *testing.T, pool *pgxpool.Pool, suffix, commit st
 	}
 	file.FileID = contracts.ComputeFileID(file)
 	file.LineageID = contracts.ComputeFileLineageID(file)
+	symbol := contracts.SymbolCard{
+		SchemaVersion: contracts.IndexSchemaVersion, SnapshotID: snapshot.SnapshotID,
+		FileID: file.FileID, FileLineageID: file.LineageID, Language: "python",
+		Kind: "function", Name: "main", QualifiedName: "main", Signature: "def main() -> None",
+		Declaration: contracts.SourceRange{
+			Start: contracts.SourcePosition{Line: 1, Column: 1, Offset: 0},
+			End:   contracts.SourcePosition{Line: 1, Column: 20, Offset: 19},
+		},
+	}
+	symbol.SymbolID = contracts.ComputeSymbolID(symbol)
+	symbol.LineageID = contracts.ComputeSymbolLineageID(symbol)
+	file.SymbolIDs = []string{symbol.SymbolID}
 	return persistence.IndexPublication{
 		Bundle: indexing.IndexBundle{
 			Snapshot: snapshot, Files: []contracts.FileCard{file},
-			Symbols: []contracts.SymbolCard{}, Relations: []contracts.RelationEvidence{},
+			Symbols: []contracts.SymbolCard{symbol}, Relations: []contracts.RelationEvidence{},
 		},
-		AdapterRuns:   []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
-		Deltas:        []persistence.IndexDelta{{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID}},
+		AdapterRuns: []persistence.IndexAdapterRun{{Adapter: descriptor, Status: "passed"}},
+		Deltas: []persistence.IndexDelta{
+			{Ordinal: 0, ChangeKind: "added", EntityKind: "file", EntityID: file.FileID},
+			{Ordinal: 1, ChangeKind: "added", EntityKind: "symbol", EntityID: symbol.SymbolID},
+		},
 		Invalidations: []persistence.IndexInvalidation{},
 	}
 }
