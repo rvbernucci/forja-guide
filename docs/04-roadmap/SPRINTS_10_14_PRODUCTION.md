@@ -97,6 +97,8 @@ filing and macro timelines without generating an analytical conclusion.
   explicit disabled-remote-provider test.
 - [ ] Prove source, configuration, and evaluation metadata recovery after
   instance destruction without committing model weights or secrets to Git.
+- [ ] Implement a local ROCm embedding provider for the competition profile;
+  keep the Bedrock adapter disabled for every core hackathon workflow.
 
 ### Implementation Progress
 
@@ -111,6 +113,8 @@ filing and macro timelines without generating an analytical conclusion.
 - [x] Added `docs/06-operations/RADEON_CLOUD_RUNTIME.md` for Radeon Cloud
   template, first-boot receipt capture, local inference boundary, and no-Git
   artifact rules.
+- [x] Added a loopback-only local HTTP embedding provider for Radeon-hosted
+  OpenAI-compatible embedding endpoints.
 - [ ] Capture the first real Radeon Cloud receipt and keep the raw artifact
   outside Git.
 
