@@ -129,6 +129,9 @@ filing and macro timelines. It does not yet generate an analytical memo.
 - [x] Convert the deterministic SEC seed into a snapshot-aware identity adapter
   that stores source hash, source limitations, ingestion run, and object
   lineage.
+- [x] Add a local SEC submissions snapshot adapter that validates issuer CIK
+  and ticker, filters 10-K/10-Q amendment forms, records source-object
+  lineage, and upserts the initial filing timeline.
 - [ ] Store accounting values as exact decimals with explicit units, scales,
   currencies, periods, fiscal frames, dimensions, and filing identities.
 - [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,

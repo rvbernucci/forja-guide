@@ -131,6 +131,31 @@ The company-tickers snapshot remains a discovery and identity aid. It is not a
 substitute for SEC submissions, filing archives, Company Facts, and filing
 source objects, which remain the authority for reported facts and documents.
 
+## SEC Submissions Snapshot Seed
+
+After issuer identity has been seeded, a preserved SEC submissions snapshot can
+populate the initial filing timeline for one covered company:
+
+```bash
+go run ./cmd/forja-alpha seed-submissions \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --submissions-json /secure/forja/sec/submissions/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-submissions-nvda.sql
+```
+
+The command validates that the snapshot CIK and ticker match the bounded
+universe, filters the recent filing table to `10-K`, `10-K/A`, `10-Q`, and
+`10-Q/A`, records the submissions JSON as a source object, records an ingestion
+run, and upserts `alpha_filings` with accession, form, period end, filing time,
+and availability time.
+
+This is a filing-timeline adapter, not a full document or XBRL parser. The
+primary filing document, inline XBRL instance, Company Facts payload, and
+parsed accounting facts remain separate Sprint 10 ingestion work.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must
