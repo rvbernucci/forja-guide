@@ -1,7 +1,8 @@
 # Runtime and MCP Architecture
 
-Status: Sprint 03 control surface, Sprint 04 bounded worker, and Sprint 05
-governed execution pipeline closed; Sprint 06 observability closure pending
+Status: Sprint 03 control surface, Sprint 04 bounded worker, Sprint 05 governed
+execution pipeline, and Sprint 06 observability foundation authoritatively
+closed
 
 ## MCP Boundary
 

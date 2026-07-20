@@ -147,7 +147,7 @@ gate.
 
 - Compiler-derived code lineage belongs to Sprint 08.
 - Embeddings, Qdrant collections, and semantic ranking belong to Sprint 09.
-- Neo4j projection belongs to Sprint 10.
+- Neo4j projection belongs to Sprint 11.
 - Context-pack assembly belongs to Sprint 11.
 - Object storage is not a secret manager and is not exposed directly to
   workers or model-generated credentials.

@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "candidate_pending_immutable_review",
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
   "validators": [
     {
       "name": "local repository quality gate",
@@ -15,6 +15,12 @@
       "type": "mechanical",
       "result": "passed",
       "summary": "The schema-validated public fixture distinguishes the four baseline policies and rejects its stale and cross-tenant cases. It is a contract smoke test, not production-quality evidence."
+    },
+    {
+      "name": "public exact-basis GitHub workflow",
+      "type": "mechanical",
+      "result": "passed",
+      "summary": "GitHub Actions run 29719449256 checked out basis commit 8cdb2bb53966b52a8480e09445caf37e89f8e2b8 and passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
     },
     {
       "name": "governed infrastructure boundary observation",
@@ -56,5 +62,5 @@
     "protected exact-main GitHub workflow",
     "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
   ],
-  "recorded_at": "2026-07-20T04:10:28Z"
+  "recorded_at": "2026-07-20T05:41:35Z"
 }

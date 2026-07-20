@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed_with_deferred_activation",
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
   "checks": [
     {
       "name": "canonical authority and tenant isolation",
@@ -35,8 +35,8 @@
     "A deployment workload identity and its least-privilege Bedrock policy have not been proven on the Hostinger workload.",
     "The AMD competition profile requires local Radeon language-model and embedding inference and must keep the Bedrock adapter disabled for core workflows.",
     "Qdrant and Neo4j administrators remain trusted infrastructure roles outside application controls.",
-    "The installed Qdrant validation wrapper depends on caller working directory and must be repaired before it can become Sprint 10 evidence."
+    "The installed Qdrant validation wrapper depends on caller working directory and must be repaired before it can become Sprint 10 evidence.",
+    "Sprint 09 records no separate reachable-vulnerability count without a committed scanner receipt."
   ],
-  "known_reachable_vulnerabilities": 0,
-  "recorded_at": "2026-07-20T04:10:28Z"
+  "recorded_at": "2026-07-20T05:41:35Z"
 }

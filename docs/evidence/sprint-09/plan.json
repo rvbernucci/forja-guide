@@ -4,7 +4,7 @@
   "name": "Governed Retrieval Foundation",
   "status": "completed",
   "objective": "Implement governed hybrid candidate discovery, canonical resolution, independent Qdrant projection delivery, rebuild and rollback operations, and public/private evaluation tooling without making semantic similarity or a derived store authoritative.",
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
   "scope": [
     "strict retrieval point, query, result, generation, and evaluation contracts",
     "deterministic symbol, test, decision, memory, and incident retrieval cards",

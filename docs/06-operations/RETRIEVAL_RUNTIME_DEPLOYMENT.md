@@ -1,6 +1,7 @@
 # Governed Retrieval Runtime Deployment
 
-Status: Sprint 09 pre-closure operator procedure. This document prepares a
+Status: Sprint 10 activation operator procedure built on the Sprint 09
+foundation. This document prepares a
 workload for the bounded retrieval preflight and private baseline capture; it
 does not activate a collection, choose a policy, or authorize a re-embedding.
 
@@ -59,5 +60,5 @@ go run ./cmd/forja-retrieval preflight \
    holdout, OOD, and adversarial outputs out of policy selection.
 
 The preflight receipt proves dependency readiness only. It does not prove
-retrieval quality, a workload role's least-privilege IAM policy, or final
-Sprint 09 acceptance.
+retrieval quality or a workload role's least-privilege IAM policy. Execution of
+this procedure is a Sprint 10 activation gate, not a Sprint 09 closure gate.

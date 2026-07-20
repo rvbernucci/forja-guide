@@ -1,6 +1,6 @@
 # Deterministic Lineage
 
-Status: Implemented by the Sprint 08 candidate; authoritative closure pending.
+Status: Implemented and authoritatively closed in Sprint 08.
 
 ## Decision
 

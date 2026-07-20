@@ -1,6 +1,7 @@
 # System Architecture
 
-Status: Partially implemented through Sprint 03
+Status: Modular foundation implemented through Sprint 09; Context Broker,
+Neo4j traversal, and production intelligence activation remain planned
 
 ## Overview
 
@@ -93,9 +94,11 @@ forjad
 ```
 
 The current modular kernel implements the run state machine, PostgreSQL
-authority, transactional outbox, and governed MCP surface. Scheduler, process
-supervisor, policy expansion, Context Broker, derived stores, and telemetry
-exporters remain planned. PostgreSQL, Qdrant, Neo4j, object storage, and
+authority, transactional outbox, governed MCP surface, bounded worker
+supervision, policy and approval boundaries, artifact storage, telemetry,
+deterministic indexing, and the governed Qdrant retrieval foundation. The
+Context Broker, Neo4j projection/traversal, and production intelligence policy
+remain planned. PostgreSQL, Qdrant, future Neo4j, object storage, and
 observability services remain separate infrastructure processes.
 
 This boundary gives Forja transactional simplicity while preserving replaceable

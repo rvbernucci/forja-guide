@@ -148,8 +148,9 @@ transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
   mandatory payload indexes, TLS/secret endpoint policy, an idempotent
   official-client point writer, explicit collection/alias operator calls, and
   physical generation/vector/index verification. Alias observation and guarded
-  rollback are implemented. Opt-in live integration now covers physical
-  blue-green cutover, guarded rollback, collection deletion, and replay.
+  rollback are implemented. Automated opt-in integration coverage exercises
+  physical blue-green cutover, guarded rollback, collection deletion, and
+  replay; operational execution is not claimed without a separate receipt.
 - [x] Produce embeddable symbol, decision, test, memory, and incident cards.
   Every family rebuilds from its owning canonical source. Incident cards derive
   only from immutable failed-attempt evidence; they are not log cards.
@@ -175,8 +176,8 @@ transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
   Qdrant operator verifies a green collection, atomically switches the stable
   alias, reads it back, retains the prior generation for observation, and
   permits rollback only when the alias still points to the expected green
-  target. Unit and opt-in live drills cover cutover, rollback, deletion, and
-  replay.
+  target. Unit and opt-in integration tests cover cutover, rollback, deletion,
+  and replay.
 - [x] Build the public evaluation contracts, scorer, four-baseline capture,
   freshness and leakage fixtures, and transfer execution of the private
   tuning/holdout/OOD corpus to Sprint 10. Production activation remains

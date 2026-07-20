@@ -1,7 +1,7 @@
 # Security Architecture
 
-Status: MCP, daemon, and Sprint 04 worker controls implemented; retrieval
-controls remain proposed
+Status: MCP, daemon, worker, deterministic-index, and governed-retrieval
+controls implemented through Sprint 09; production retrieval activation pending
 
 ## Primary Threats
 
@@ -69,6 +69,20 @@ Implemented in Sprint 04:
 - observed write-scope checks including ignored files and Git index flags;
 - hash-verified evidence references and durable output digests.
 
+Implemented through Sprints 08 and 09:
+
+- deterministic source-bound cards with explicit authority, lifecycle, source
+  hash, and source-commit provenance;
+- independent, fenced Qdrant projector delivery and canonical backlog checks;
+- mandatory tenant, repository, lifecycle, authority, and freshness filters
+  before dense or sparse ranking;
+- distrust of Qdrant payloads followed by fail-closed canonical PostgreSQL
+  resolution before any candidate becomes context;
+- bounded degraded receipts for unavailable projection freshness or Qdrant rank
+  paths, and explicit query failure when embedding generation is unavailable or
+  invalid;
+- content-free retrieval telemetry and private evaluation boundaries.
+
 Planned controls:
 
 - PostgreSQL row-level security where applicable;
@@ -79,13 +93,13 @@ Planned controls:
 - secret manager integration with brokered, non-filesystem worker credentials;
 - signed or hashed artifacts;
 - dependency and secret scanning;
-- projection provenance and freshness checks;
 - human approval for privileged operations.
 
 ## Retrieval Security
 
-Qdrant and Neo4j queries must apply tenant and repository scope before ranking
-or traversal. Context packs may contain only content the requesting principal is
+Qdrant queries apply tenant and repository scope before ranking, then require
+canonical PostgreSQL resolution. Future Neo4j traversal must preserve the same
+rule. Context packs may contain only content the requesting principal is
 authorized to read.
 
 Embedding similarity must never bypass access control.

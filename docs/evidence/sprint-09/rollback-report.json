@@ -2,19 +2,19 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
-  "strategy": "Stop new retrieval projection and query commands; preserve canonical PostgreSQL events, outbox history, per-projector deliveries, generation receipts, point receipts, artifacts, and evidence. Disable semantic retrieval or return to bounded source-backed exact behavior. If a new Qdrant generation is unhealthy, verify the expected alias target and atomically restore the last verified generation. If Qdrant is lost, recreate it from canonical sources and replay the dedicated projector. Migration 009 may downgrade only before governed retrieval history exists; otherwise rollback is a forward repair that preserves the ledger.",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
+  "strategy": "Stop new retrieval projection and query commands; preserve canonical PostgreSQL events, outbox history, per-projector deliveries, generation receipts, point receipts, artifacts, and evidence. Disable semantic retrieval when a dependency is unhealthy. Qdrant rank-path failures return bounded degraded receipts; embedding-provider failures return an explicit error and no result file. If a new Qdrant generation is unhealthy, verify the expected alias target and atomically restore the last verified generation. If Qdrant is lost, recreate it from canonical sources and replay the dedicated projector. Migration 009 may downgrade only before governed retrieval history exists; otherwise rollback is a forward repair that preserves the ledger. No canonical exact-lookup fallback is implemented.",
   "rollback_target": "620256d0d0744f6ecf1e1851dff83a5cf02e48e3",
   "tests": [
     {
       "name": "blue-green alias rollback",
       "result": "passed",
-      "summary": "A disposable Qdrant drill verified green, switched the stable alias, read it back, and restored the prior target only while the expected alias fence remained valid."
+      "summary": "Automated operator tests verify the green generation contract, alias switch readback, and restoration of the prior target only while the expected alias fence remains valid."
     },
     {
       "name": "derived-store deletion and replay",
       "result": "passed",
-      "summary": "An empty Qdrant instance was rebuilt from canonical PostgreSQL projection history without treating vectors as authority."
+      "summary": "Automated rebuild coverage verifies canonical ledger reset and replay without treating vectors as authority. Operational execution requires a separate receipt."
     },
     {
       "name": "canonical-history downgrade refusal",
@@ -22,12 +22,12 @@
       "summary": "Migration 009 refuses destructive downgrade after projector, delivery, checkpoint, generation, or point history exists."
     },
     {
-      "name": "provider and Qdrant outage degradation",
+      "name": "provider and Qdrant outage behavior",
       "result": "passed",
-      "summary": "Unavailable embedding or candidate retrieval returns bounded explicit gaps and cannot broaden scope or fabricate a canonical entity."
+      "summary": "Unavailable Qdrant rank paths return bounded explicit degradation. An unavailable or invalid embedding fails the query explicitly. Neither path can broaden scope, fabricate a canonical entity, or write an authoritative result."
     }
   ],
   "data_migration_required": true,
   "runtime_state_impact": "Empty pre-adoption environments can return to Sprint 08. Environments with retrieval history retain migration 009 and use forward repair, alias rollback, or canonical replay while production retrieval remains disabled until Sprint 10 quality gates pass.",
-  "recorded_at": "2026-07-20T04:10:28Z"
+  "recorded_at": "2026-07-20T05:41:35Z"
 }
