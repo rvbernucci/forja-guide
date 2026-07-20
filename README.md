@@ -11,9 +11,11 @@ It is designed around one principle:
 ## Status
 
 This repository includes the authoritatively closed **Sprint 08 deterministic
-indexing plane** and the in-progress **Sprint 09 governed retrieval
-foundation** alongside the public
-architecture and roadmap. Sprint state is recorded by the mutually exclusive
+indexing plane** and the implementation-complete **Sprint 09 governed retrieval
+foundation** alongside the public architecture and roadmap. Sprint 09 private
+quality activation is explicitly transferred to the Radeon Runtime and
+Retrieval Evidence Sprint; production retrieval remains disabled until those
+gates pass. Sprint state is recorded by the mutually exclusive
 candidate or receipt in [`docs/evidence`](docs/evidence/); only an authoritative
 close receipt closes a Sprint and authorizes its successor. It is not yet a
 production-ready multi-agent runtime.
@@ -112,7 +114,11 @@ activation still requires a workload-role deployment, region/model-access
 evidence, and private evaluation results. Incident cards now derive only from
 the matching immutable terminal attempt event and retain classification,
 severity, identifiers, and evidence hashes, never worker output. Neo4j
-traversal remains pending for Sprint 10.
+traversal remains pending for the graph-grounded context work in Sprint 11.
+Sprints 10-14 now form the Forja Radeon path for AMD AI DevMaster Track 2:
+local ROCm model and embedding inference, graph-grounded RAG, governed tools,
+multi-step planning, local memory, permission controls, measurable
+optimization, and a reproducible public submission.
 
 When a canonical snapshot is superseded, the projector first tombstones every
 affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the

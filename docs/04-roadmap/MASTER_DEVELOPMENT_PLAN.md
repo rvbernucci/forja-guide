@@ -1,7 +1,9 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-08 closed. Sprint 09 is authorized. Gates A and B
-are achieved.
+Status: Active. Sprints 00-08 are closed. Sprint 09 implementation is complete
+and preparing its protocol-v2 closure candidate. Sprint 10 remains unauthorized
+until the authoritative Sprint 09 close receipt exists. Gates A and B are
+achieved.
 
 ## Objective
 
@@ -58,11 +60,11 @@ A Sprint is done when:
 | 07 | Artifacts and Memory | Object storage, conversations, memory, and provenance |
 | 08 | Deterministic Indexing | Compiler-backed repository and code lineage |
 | 09 | Governed Retrieval | Qdrant hybrid search and canonical entity resolution |
-| 10 | Graph Projection | Neo4j lineage, impact paths, and projection recovery |
-| 11 | Context Broker | Minimal evidence-backed context packs |
-| 12 | Governance and Resilience | Approvals, policy, recovery, security, and chaos tests |
-| 13 | Evaluation Harness | Repeatable quality, safety, cost, and OOD evaluations |
-| 14 | Production Pilot | End-to-end pilot, SLOs, release, and 1.0 readiness |
+| 10 | Radeon Runtime and Retrieval Evidence | Local ROCm inference, local embeddings, and transferred retrieval evaluation |
+| 11 | Graph-Grounded Context Broker | Neo4j lineage plus minimal canonical RAG context |
+| 12 | Governed Local Agent Product | Planning, tools, RAG, memory, permissions, and private UX |
+| 13 | ROCm Optimization and Evaluation | Quantized local inference, quality gates, and reproducible benchmarks |
+| 14 | Pilot, Release, and AMD Submission | End-to-end pilot, submission artifacts, and Forja 1.0 readiness |
 
 ## Critical Path
 
@@ -97,17 +99,19 @@ After Sprint 05:
 - evidence is generated and validated;
 - recovery does not require manual database editing.
 
-### Gate C: Context Intelligence
+### Gate C: Local Context Intelligence
 
 After Sprint 11:
 
 - exact, semantic, and graph retrieval are evaluated separately;
+- core language-model and embedding inference execute locally on AMD
+  Radeon/ROCm in the competition profile;
 - context packs cite canonical sources;
 - stale projections degrade safely;
 - token budgets are enforced;
 - semantic candidates never become authority automatically.
 
-### Gate D: Production Readiness
+### Gate D: Product and Submission Readiness
 
 After Sprint 14:
 
@@ -115,6 +119,8 @@ After Sprint 14:
 - SLOs have measured baselines;
 - backup and restore are demonstrated;
 - one real repository pilot completes successfully;
+- the AMD Track 2 source, specification, demo, and presentation reproduce from
+  a clean Radeon Cloud environment;
 - the public release accurately describes implemented behavior.
 
 ## Evidence Ledger

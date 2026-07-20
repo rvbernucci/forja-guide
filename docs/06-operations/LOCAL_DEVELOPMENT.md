@@ -1,7 +1,8 @@
 # Local Development
 
-Status: Sprints 00-08 closed; Sprint 09 governed retrieval is in pre-closure
-validation.
+Status: Sprints 00-08 closed; Sprint 09 implementation complete and preparing
+its protocol-v2 closure evidence. Sprint 10 remains unauthorized until the
+authoritative close receipt exists.
 
 ## Current Repository
 

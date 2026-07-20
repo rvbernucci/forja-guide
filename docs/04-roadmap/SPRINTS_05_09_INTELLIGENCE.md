@@ -137,8 +137,9 @@ boundaries and residual risk. Sprint 09 is authorized.
 **Outcome:** discover relevant artifacts and symbols with hybrid search while
 preserving authority and access boundaries.
 
-**Status:** Authorized by the authoritative
-[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json). See the
+**Status:** Implementation complete; protocol-v2 closure evidence is being
+published. Private quality evaluation and competition-profile activation are
+transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
 [Sprint 09 execution plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
 
 ### Scope
@@ -176,11 +177,14 @@ preserving authority and access boundaries.
   permits rollback only when the alias still points to the expected green
   target. Unit and opt-in live drills cover cutover, rollback, deletion, and
   replay.
-- [ ] Build retrieval recall, precision, freshness, and leakage evaluations.
+- [x] Build the public evaluation contracts, scorer, four-baseline capture,
+  freshness and leakage fixtures, and transfer execution of the private
+  tuning/holdout/OOD corpus to Sprint 10. Production activation remains
+  disabled until that evidence passes.
 
 ### Acceptance
 
-- Identifier-heavy queries benefit from lexical retrieval.
-- Conceptual queries benefit from dense retrieval.
+- Public fixtures prove distinct lexical and dense paths; private comparative
+  benefit remains a Sprint 10 quality gate.
 - Cross-tenant and stale-authority test cases return zero unauthorized results.
 - Deleting Qdrant and replaying the outbox rebuilds the expected projection.

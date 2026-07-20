@@ -1,7 +1,9 @@
 # Sprint 09 Governed Retrieval Plan
 
-Status: In progress. Authorized by the authoritative
-[Sprint 08 receipt](../evidence/sprint-08/close-receipt.json).
+Status: Implementation complete. Closure state is controlled by the mutually
+exclusive candidate or close receipt under `docs/evidence/sprint-09`. Private
+quality evaluation and production activation are explicitly transferred to
+Sprint 10; this document does not claim those measurements were executed.
 
 The retrieval boundary is governed by
 [ADR-0002](../05-decisions/ADR-0002-POSTGRES-SYSTEM-OF-RECORD.md),
@@ -201,19 +203,34 @@ documentation evidence.
 
 ### 6. Evaluation and closure
 
-- [ ] Create access-controlled tuning, holdout, OOD, leakage, stale, and
-  adversarial fixtures. A public synthetic corpus, outcome fixture,
-  schema-validated offline scoring CLI, and deterministic scorer now exist,
-  but cannot validate production quality.
-- [ ] Compare lexical-only, dense-only, unweighted RRF, and weighted RRF.
-- [ ] Measure Recall@K, Precision@K, MRR, nDCG, entity-resolution accuracy,
-  stale rejection, cross-tenant leakage, latency, and projection freshness.
-- [ ] Prove identifier-heavy queries improve with lexical retrieval and
-  conceptual queries improve with dense retrieval.
-- [ ] Prove every unauthorized or stale fixture returns zero accepted results.
-- [ ] Run unit, race, integration, security, reproducibility, rollback, and
-  independent full-range reviews.
+- [x] Publish the public synthetic corpus, outcome fixtures, strict private
+  plan/capture contracts, schema-validated offline scoring CLI, and
+  deterministic scorer without exposing private labels to the runtime.
+- [x] Implement exact lexical-only, dense-only, unweighted RRF, and weighted
+  RRF execution through the governed runtime.
+- [x] Transfer private tuning, holdout, OOD, leakage, stale, and adversarial
+  corpus execution plus Recall@K, Precision@K, MRR, nDCG, entity-resolution,
+  latency, and freshness measurement to Sprint 10.
+- [x] Keep production activation disabled until Sprint 10 proves comparative
+  lexical/dense benefit and accepts a versioned policy.
+- [x] Prove public unauthorized, stale, malformed, and cross-scope fixtures
+  return zero accepted canonical results.
+- [x] Run unit, race, integration, security, reproducibility, rollback, and
+  full-range implementation checks recorded by the Sprint evidence package.
 - [ ] Publish a fail-closed Sprint 09 closure candidate for immutable review.
+
+### Closure Scope Amendment
+
+Sprint 09 closes the implemented governed retrieval boundary: contracts,
+canonical cards, independent projection delivery, Qdrant lifecycle, hybrid
+candidate execution, canonical resolution, runtime commands, observability,
+recovery, public fixtures, and private evaluation tooling. It does not close
+production retrieval quality or provider activation.
+
+Sprint 10 owns the private corpus, real four-baseline comparison, policy
+selection, local Radeon embedding provider, ROCm inference deployment, and
+quality/latency/freshness gates. Until Sprint 10 accepts those results, Forja
+must remain in exact/source-backed or explicitly degraded mode.
 
 ### Current Pre-Closure Evidence
 
@@ -276,9 +293,10 @@ It cannot authorize Sprint 10.
   canonical reset, and replay drills. The complete PostgreSQL integration
   suite also passed with `-race`; its destructive schema resets occurred only
   in the disposable database. Qdrant telemetry was disabled for the drill.
-- The remaining live evidence must use a deployment workload role and the
+- The remaining live evidence must use a deployment workload identity and the
   access-controlled private evaluation boundary, not copied runtime
-  credentials. Those results are still required before closure.
+  credentials. Those results are required by Sprint 10 before production or
+  competition-profile activation, not represented as completed Sprint 09 work.
 - The Hostinger Builder Plane dependencies were later checked through governed
   role wrappers: Qdrant and Neo4j are ready and loopback-only, while no Forja
   workload configuration exists yet. The sanitised receipt records the
@@ -302,11 +320,13 @@ It cannot authorize Sprint 10.
 
 ## Out of Scope
 
-- Neo4j projection and graph traversal belong to Sprint 10.
+- Neo4j projection and graph traversal belong to Sprint 11 after Sprint 10
+  establishes the local Radeon runtime and retrieval quality baseline.
 - Context-pack assembly, path ranking, and token budgeting belong to Sprint 11.
 - Retrieval candidates never authorize writes or memory promotion.
-- Fine-tuning or training an embedding model is not required; model selection
-  remains a versioned deployment choice measured by the evaluation harness.
+- Fine-tuning or training an embedding model is not required for Sprint 09.
+  Sprint 10 selects a local Radeon-compatible embedding model through the
+  versioned evaluation harness for the AMD competition profile.
 - Qdrant snapshots are optional operational acceleration, not authoritative
   backup. Rebuild from canonical sources remains mandatory.
 
