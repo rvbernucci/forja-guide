@@ -58,7 +58,7 @@ authority_class          source authority, never inferred from similarity
 stale                     explicit projection state
 language / symbol_kind   optional hard filters
 proof_refs               canonical evidence references
-graph_node_ids           future Sprint 10 join hints only
+graph_node_ids           future Sprint 11 join hints only
 embedding_model          configured provider identity
 embedding_version        immutable model/prompt contract version
 embedding_dimensions     exact dense-vector dimensions
@@ -278,9 +278,8 @@ It cannot authorize Sprint 10.
   receipt excludes credentials, AWS identity, hosts, collection names, text,
   vectors, and provider responses. No workload-role preflight receipt has yet
   been captured.
-- Vulnerability reachability is checked by the repository quality gate. Sprint
-  09 makes no separate scanner-result claim without a committed, hash-pinned
-  receipt.
+- Sprint 09 makes no vulnerability-reachability claim because no hash-pinned
+  scanner receipt is committed for this candidate.
 - The public fixture remains a contract smoke test only. No tuning, holdout,
   OOD, adversarial, production corpus, private label, or provider result is
   represented by these results.
@@ -291,8 +290,9 @@ It cannot authorize Sprint 10.
   Sprint 09 makes no provider-execution claim without a committed receipt.
 - The repository contains opt-in PostgreSQL and Qdrant integration drills for
   blue-green cutover, alias rollback, deletion, canonical reset, and replay.
-  Sprint 09 closure relies on their automated source and public CI execution,
-  not on an uncommitted local transcript.
+  Public CI executes PostgreSQL durability; Qdrant lifecycle remains test-source
+  coverage only for Sprint 09 because no immutable live execution receipt is
+  committed.
 - The remaining live evidence must use a deployment workload identity and the
   access-controlled private evaluation boundary, not copied runtime
   credentials. Those results are required by Sprint 10 before production or

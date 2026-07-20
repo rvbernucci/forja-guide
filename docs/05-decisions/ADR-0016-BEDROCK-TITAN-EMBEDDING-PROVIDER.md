@@ -42,14 +42,13 @@ FORJA_BEDROCK_LIVE=1 FORJA_BEDROCK_REGION=us-east-1 \
   go test ./internal/retrieval -run '^TestLiveBedrockTitanEmbedding$' -count=1
 ```
 
-## Live Compatibility Evidence
+## Compatibility Evidence Boundary
 
-On 2026-07-19, the standard AWS credential chain resolved a local AWS profile,
-the Bedrock control plane reported `amazon.titan-embed-text-v2:0` as active in
-`us-east-1`, and the opt-in probe received one valid 1024-dimension vector.
-The run recorded neither AWS identity details, input text, vector values, nor
-credentials. It proves API compatibility only; it is not a production
-workload-role attestation.
+The opt-in probe is implementation tooling, not evidence that a provider call
+occurred. Sprint 09 records no Bedrock execution claim without a committed,
+hash-pinned receipt. Workload-role compatibility and provider activation remain
+Sprint 10 gates, and their private receipts must exclude AWS identity details,
+input text, vector values, and credentials.
 
 ## Execution Boundary
 
