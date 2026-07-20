@@ -67,6 +67,10 @@ The model chooses and explains a bounded analytical plan. Deterministic tools
 perform material calculations. No model output establishes canonical facts or
 authorizes privileged operations.
 
+The complete source, temporal, relational, object, Qdrant, Neo4j, and lineage
+design is documented in the
+[Forja Alpha data architecture](FORJA_ALPHA_DATA_ARCHITECTURE.md).
+
 ## Planned Capability Packs
 
 | Pack | Canonical inputs | Primary tools |

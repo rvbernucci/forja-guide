@@ -3,6 +3,10 @@
 Status: Canonical PostgreSQL and object storage implemented; governed Qdrant
 retrieval foundation implemented; Neo4j serving layer planned
 
+The financial specialization preserves these same authority boundaries and is
+defined separately in the
+[Forja Alpha data architecture](FORJA_ALPHA_DATA_ARCHITECTURE.md).
+
 The PostgreSQL authority, transactional event/outbox boundary, idempotency,
 leases, checkpoints, dead letters, run projection replay, governed
 conversation/memory model, and content-addressed S3-compatible object layer

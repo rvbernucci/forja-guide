@@ -7,9 +7,10 @@ quality, security, and evidence gates.
 
 ## Objective
 
-Deliver Forja 1.0 as a governed multi-agent factory that can execute one
-approved software Sprint from intent to validated evidence with restart safety,
-bounded authority, complete auditability, and measured context quality.
+Deliver the neutral Forja runtime and its first bounded product vertical, Forja
+Alpha. Alpha must turn a financial-research question into a point-in-time,
+source-grounded, locally inferred, tool-verified memo with restart safety,
+bounded authority, complete auditability, and measured product quality.
 
 ## Planning Rules
 
@@ -60,11 +61,11 @@ A Sprint is done when:
 | 07 | Artifacts and Memory | Object storage, conversations, memory, and provenance |
 | 08 | Deterministic Indexing | Compiler-backed repository and code lineage |
 | 09 | Governed Retrieval | Qdrant hybrid search and canonical entity resolution |
-| 10 | Radeon Runtime and Retrieval Evidence | Local ROCm inference, local embeddings, and transferred retrieval evaluation |
-| 11 | Graph-Grounded Context Broker | Neo4j lineage plus minimal canonical RAG context |
-| 12 | Governed Local Agent Product | Planning, tools, RAG, memory, permissions, and private UX |
-| 13 | ROCm Optimization and Evaluation | Quantized local inference, quality gates, and reproducible benchmarks |
-| 14 | Pilot, Release, and AMD Submission | End-to-end pilot, submission artifacts, and Forja 1.0 readiness |
+| 10 | Canonical Financial Data and Local Runtime | Point-in-time Magnificent Seven data plus verified Radeon/ROCm inference |
+| 11 | Deterministic Finance Tools and Evidence Fabric | Typed analytics plus canonical Qdrant/Neo4j context |
+| 12 | Governed Alpha Agent and Research Workspace | Planning, tools, RAG, memory, permissions, verification, and web UX |
+| 13 | Evaluation, ROCm Optimization, and Safety Closure | Held-out quality gates and reproducible Radeon performance |
+| 14 | Pilot, Release, and AMD Submission | Clean Forja Alpha release and complete Track 2 submission |
 
 ## Critical Path
 
@@ -111,6 +112,16 @@ After Sprint 11:
 - token budgets are enforced;
 - semantic candidates never become authority automatically.
 
+### Gate C2: Alpha Product Completeness
+
+After Sprint 12:
+
+- financial sources are point-in-time and raw-to-claim traceable;
+- deterministic tools own material accounting and statistical calculations;
+- the local model plans, invokes bounded tools, and composes verified memos;
+- multi-turn memory remains governed, scoped, exportable, and deletable;
+- the complete primary scenario is operable from the web interface.
+
 ### Gate D: Product and Submission Readiness
 
 After Sprint 14:
@@ -118,7 +129,7 @@ After Sprint 14:
 - security and chaos suites pass;
 - SLOs have measured baselines;
 - backup and restore are demonstrated;
-- one real repository pilot completes successfully;
+- the primary financial-research pilot and its degraded paths complete;
 - the AMD Track 2 source, specification, demo, and presentation reproduce from
   a clean Radeon Cloud environment;
 - the public release accurately describes implemented behavior.
@@ -148,4 +159,4 @@ represented by hash-pinned metadata.
 
 - [Sprints 00-04: Foundation and execution](SPRINTS_00_04_FOUNDATION.md)
 - [Sprints 05-09: Delivery and intelligence](SPRINTS_05_09_INTELLIGENCE.md)
-- [Sprints 10-14: Governance and production](SPRINTS_10_14_PRODUCTION.md)
+- [Sprints 10-14: Forja Alpha production](SPRINTS_10_14_PRODUCTION.md)
