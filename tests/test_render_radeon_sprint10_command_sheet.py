@@ -36,7 +36,8 @@ class RadeonSprint10CommandSheetTests(unittest.TestCase):
             "verify_radeon_operator_bundle.py",
             "check_radeon_sprint10_private_inputs.py",
             "run-sprint10-evidence.sh",
-            "radeon-public-summary.json",
+            "diagnose_radeon_sprint10_artifacts.py",
+            "Bring Back Only The Public Summary",
             "ingest_radeon_sprint10_public_summary.py",
             "verify_sprint10_review_readiness.py",
         ]

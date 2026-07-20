@@ -127,6 +127,17 @@ If the bundle lives at the default path, this is equivalent to:
 The evidence runner writes private artifacts under `{evidence_dir}` and creates
 `{evidence_dir}/radeon-public-summary.json`.
 
+Diagnose the artifact set before copying anything back:
+
+```bash
+python3 scripts/diagnose_radeon_sprint10_artifacts.py \\
+  --evidence-dir {evidence_dir} \\
+  --output /workspace/forja-alpha-sprint10-artifact-diagnosis.json
+```
+
+Proceed only when the diagnosis reports
+`"stage": "ready_to_ingest_public_summary"`.
+
 ## 7. Bring Back Only The Public Summary
 
 Copy only this public-safe file back to the repository workstation:

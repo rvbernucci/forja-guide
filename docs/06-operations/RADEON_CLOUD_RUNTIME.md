@@ -205,6 +205,19 @@ The generated `radeon-public-summary.json` includes only report hashes,
 validity, gate counts, and error classes. It intentionally drops private paths,
 logs, prompts, model outputs, vectors, source bodies, and credentials.
 
+Before copying the public summary back to the workstation, diagnose the
+private artifact set on the Radeon instance:
+
+```bash
+python3 scripts/diagnose_radeon_sprint10_artifacts.py \
+  --evidence-dir /workspace/forja-alpha-sprint10-evidence \
+  --output /workspace/forja-alpha-sprint10-artifact-diagnosis.json
+```
+
+The diagnosis is read-only. It reports the first incomplete artifact and the
+next action when a run stops midway. Copy back only the public summary after
+the diagnosis reports `stage: ready_to_ingest_public_summary`.
+
 If the public summary passes review, prepare the public Sprint 10 evidence
 package without closing the Sprint:
 

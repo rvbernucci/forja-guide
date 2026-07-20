@@ -65,6 +65,14 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
             "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json",
             report["next_commands"],
         )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/diagnose_radeon_sprint10_artifacts.py --evidence-dir /workspace/forja-alpha-sprint10-evidence"
+            ),
+            report["next_commands"].index(
+                "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json"
+            ),
+        )
 
     def test_ready_package_reports_ready_without_authorizing_next_sprint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
