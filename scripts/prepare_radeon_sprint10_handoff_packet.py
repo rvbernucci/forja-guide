@@ -114,8 +114,19 @@ def prepare_packet(
         branch=branch,
         repo_dir=repo_dir,
     )
+    quick_start = render_quick_start(
+        host=host,
+        port=port,
+        repo_url=repo_url,
+        branch=branch,
+        repo_dir=repo_dir,
+        bundle_dir=bundle_dir,
+        evidence_dir=evidence_dir,
+        snapshot_root=snapshot_root,
+    )
 
     files = [
+        write_file(output_dir / "quick-start.md", quick_start),
         write_file(output_dir / "command-sheet.md", command_sheet),
         write_file(output_dir / "web-terminal-bootstrap.sh", web_bootstrap, mode=0o700),
         write_file(output_dir / "web-terminal-evidence.md", web_sheet),
@@ -150,6 +161,62 @@ def prepare_packet(
         "mode": oct(stat.S_IMODE(manifest_path.stat().st_mode)),
     }
     return manifest
+
+
+def render_quick_start(
+    *,
+    host: str,
+    port: str,
+    repo_url: str,
+    branch: str,
+    repo_dir: str,
+    bundle_dir: str,
+    evidence_dir: str,
+    snapshot_root: str,
+) -> str:
+    return f"""# Sprint 10 Radeon Handoff Quick Start
+
+Status: public-safe operator index. This file only points to the prepared
+handoff materials; it does not collect evidence, close Sprint 10, or authorize
+Sprint 11.
+
+## Boundary
+
+- Host/port target: `{host}:{port}`
+- Repository: `{repo_url}`
+- Branch: `{branch}`
+- Radeon checkout: `{repo_dir}`
+- Private operator bundle: `{bundle_dir}`
+- Private evidence directory: `{evidence_dir}`
+- Private snapshot root: `{snapshot_root}`
+
+## Recommended Order
+
+1. Read `command-sheet.md` on the workstation.
+2. Run the SSH preflight from `command-sheet.md`.
+3. If SSH is ready, follow the workstation/Radeon command sequence in
+   `command-sheet.md`.
+4. If SSH is not ready but Jupyter/OpenCode web terminal works, copy
+   `web-terminal-bootstrap.sh` into the Radeon terminal and run it there.
+5. After bootstrap, follow the rendered `web-terminal-evidence.md` on Radeon.
+6. Export only `{evidence_dir}/radeon-public-summary.json` back to the
+   workstation.
+7. Verify and ingest the public summary from the workstation.
+8. Request immutable review, then use the Sprint 10 promotion checklist.
+
+## Do Not Export Or Commit
+
+- Raw runtime receipts, command logs, prompts, model outputs, embeddings,
+  vectors, source bodies, private source snapshots, model weights, caches,
+  tokens, credentials, or filled candidate files.
+- Any close receipt before independent review has passed.
+
+## Success Shape
+
+The first target is `ready_for_independent_review: true` while
+`next_sprint_authorized: false`. Sprint 11 remains blocked until the reviewed
+candidate is promoted to a protocol v2 `close-receipt.json`.
+"""
 
 
 def parse_args() -> argparse.Namespace:
