@@ -26,7 +26,7 @@
       "name": "public live Qdrant lifecycle",
       "type": "mechanical",
       "result": "passed",
-      "summary": "The exact-basis workflow proved collection creation, first alias creation, PostgreSQL-serialized atomic replacement, blue-green readback, guarded rollback, query, deletion, and cleanup against digest-pinned Qdrant v1.18.2."
+      "summary": "The exact-basis workflow proved collection creation, first alias creation, atomic replacement through the required guard interface, blue-green readback, guarded rollback, query, deletion, and cleanup against digest-pinned Qdrant v1.18.2. PostgreSQL guard serialization was proven in a separate integration gate; no composed test is claimed."
     },
     {
       "name": "immutable public closure candidate review",
@@ -61,5 +61,5 @@
     "separate immutable candidate review",
     "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
   ],
-  "recorded_at": "2026-07-20T08:04:21Z"
+  "recorded_at": "2026-07-20T08:28:42Z"
 }
