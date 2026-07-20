@@ -128,6 +128,23 @@ Radeon web terminal and writes `/workspace/forja-radeon-sshd-diagnosis.json`.
 Keep that diagnosis private beside the runtime artifacts; it is a repair aid,
 not Sprint closure evidence.
 
+If the web terminal is usable but SSH remains unavailable, render the fallback
+evidence sheet from the workstation:
+
+```bash
+python3 scripts/render_radeon_sprint10_web_terminal_sheet.py \
+  --repo-url https://github.com/rvbernucci/forja-guide \
+  --branch feat/sprint-10-radeon-runtime-v2 \
+  --repo-dir /workspace/forja-guide \
+  --output /tmp/forja-radeon-web-terminal-evidence.md
+```
+
+This fallback preserves the same fail-closed evidence order through the Radeon
+Jupyter/OpenCode terminal: checkout, bundle generation, strict private
+preflights, local endpoint evidence, artifact diagnosis, and export of only
+`radeon-public-summary.json`. It does not weaken the Sprint 10 closure rule and
+does not authorize Sprint 11.
+
 ## Private Candidate File
 
 Create `/secure/forja/radeon-model-candidates.json` with at least two local

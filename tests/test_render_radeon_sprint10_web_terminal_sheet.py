@@ -1,15 +1,16 @@
-"""Tests for the Sprint 10 Radeon operator command sheet renderer."""
+"""Tests for the Sprint 10 Radeon web-terminal evidence sheet renderer."""
 
 from __future__ import annotations
 
 import importlib.util
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_PATH = ROOT / "scripts" / "render_radeon_sprint10_command_sheet.py"
+SCRIPT_PATH = ROOT / "scripts" / "render_radeon_sprint10_web_terminal_sheet.py"
 
 
 def load_module(path: Path, name: str):
@@ -22,67 +23,72 @@ def load_module(path: Path, name: str):
     return module
 
 
-SHEET = load_module(SCRIPT_PATH, "render_radeon_sprint10_command_sheet")
+SHEET = load_module(SCRIPT_PATH, "render_radeon_sprint10_web_terminal_sheet")
 
 
-class RadeonSprint10CommandSheetTests(unittest.TestCase):
-    def test_sheet_contains_ordered_evidence_flow(self) -> None:
+class RadeonSprint10WebTerminalSheetTests(unittest.TestCase):
+    def test_sheet_contains_web_terminal_fallback_flow(self) -> None:
         body = render()
 
         expected = [
-            "preflight_radeon_ssh.py 36.150.116.206 31200",
-            "wait_radeon_ssh.py 36.150.116.206 31200",
-            "render_radeon_sprint10_web_terminal_sheet.py",
-            "python3 scripts/validate_repository.py",
+            "Prepare The Repository",
             "prepare_radeon_sprint10_operator_bundle.py",
             "verify_radeon_operator_bundle.py",
+            "Fill Private Inputs Outside Git",
+            "Start Local Endpoints On Loopback",
             "check_radeon_sprint10_private_inputs.py",
             "run-sprint10-evidence.sh",
             "diagnose_radeon_sprint10_artifacts.py",
-            "Bring Back Only The Public Summary",
+            "Export Only The Public Summary",
             "ingest_radeon_sprint10_public_summary.py",
             "verify_sprint10_review_readiness.py",
         ]
         positions = [body.index(item) for item in expected]
         self.assertEqual(sorted(positions), positions)
 
-    def test_sheet_is_public_safe_by_default(self) -> None:
+    def test_sheet_is_public_safe_and_fail_closed(self) -> None:
         body = render()
 
         forbidden = ["FIREWORKS_API_KEY", "AWS_SECRET", "hf_", "password=", "token="]
         for value in forbidden:
             self.assertNotIn(value, body)
         self.assertIn("contains no credentials", body)
+        self.assertIn("Do not export private receipts", body)
         self.assertIn("next_sprint_authorized: false", body)
 
-    def test_sheet_uses_supplied_branch_and_paths(self) -> None:
+    def test_sheet_uses_supplied_paths(self) -> None:
         body = SHEET.render_sheet(
-            host="example.test",
-            port="2222",
             repo_url="https://github.com/example/repo",
             branch="feature/demo",
             repo_dir="/workspace/demo",
+            bundle_dir="/workspace/bundle",
             evidence_dir="/workspace/evidence",
             snapshot_root="/secure/demo",
         )
 
-        self.assertIn("preflight_radeon_ssh.py example.test 2222", body)
-        self.assertIn("wait_radeon_ssh.py example.test 2222", body)
-        self.assertIn("git checkout feature/demo", body)
         self.assertIn("git clone https://github.com/example/repo .", body)
+        self.assertIn("git checkout feature/demo", body)
+        self.assertIn("cd /workspace/demo", body)
+        self.assertIn("--bundle-dir /workspace/bundle", body)
         self.assertIn("--snapshot-root /secure/demo", body)
         self.assertIn("/workspace/evidence/radeon-public-summary.json", body)
+
+    def test_cli_writes_output_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "sheet.md"
+            code = SHEET.main(["--output", output.as_posix()])
+            self.assertEqual(0, code)
+            self.assertIn("Sprint 10 Radeon Web-Terminal Evidence Sheet", output.read_text(encoding="utf-8"))
 
 
 def render() -> str:
     return SHEET.render_sheet(
-        host="36.150.116.206",
-        port="31200",
         repo_url=SHEET.DEFAULT_REPO,
         branch=SHEET.DEFAULT_BRANCH,
-        repo_dir="/workspace/forja-guide",
-        evidence_dir="/workspace/forja-alpha-sprint10-evidence",
-        snapshot_root="/secure/forja",
+        repo_dir=SHEET.DEFAULT_REPO_DIR,
+        bundle_dir=SHEET.DEFAULT_BUNDLE_DIR,
+        evidence_dir=SHEET.DEFAULT_EVIDENCE_DIR,
+        snapshot_root=SHEET.DEFAULT_SNAPSHOT_ROOT,
     )
 
 
