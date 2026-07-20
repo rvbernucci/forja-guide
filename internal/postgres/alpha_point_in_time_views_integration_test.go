@@ -6,6 +6,19 @@ func TestAlphaPointInTimeViewsExposeAvailabilityClock(t *testing.T) {
 	pool := migratedPool(t)
 
 	viewColumns := map[string][]string{
+		"alpha_v_source_coverage": {
+			"tenant_id",
+			"repository_id",
+			"source_object_id",
+			"source_key",
+			"data_family",
+			"ingestion_state",
+			"object_count",
+			"row_count",
+			"available_at",
+			"ingested_at",
+			"metadata",
+		},
 		"alpha_v_issuer_filing_timeline": {
 			"tenant_id",
 			"repository_id",

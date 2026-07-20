@@ -237,11 +237,12 @@ values from YTD rows, or decide issuer-specific custom extensions.
 
 ## Point-in-Time Query Views
 
-Sprint 10 now publishes two read-only query surfaces above the raw Alpha
+Sprint 10 now publishes three read-only query surfaces above the raw Alpha
 tables:
 
 | View | Purpose | Required research filter |
 | --- | --- | --- |
+| `alpha_v_source_coverage` | Source-system, ingestion-run, source-object, hash, lifecycle, availability, row-count, object-count, and metadata coverage inventory | Permission and scope policy before display |
 | `alpha_v_issuer_filing_timeline` | Filing chronology with issuer name, CIK, ticker, accession, form, fiscal period, filing time, availability time, lifecycle, and source object | `available_at <= :as_of` |
 | `alpha_v_reported_metric_panel` | First-pass reported metric observations with metric key, issuer, filing accession, period, numeric value, unit, currency, lineage, and quality state | `available_at <= :as_of` |
 
@@ -267,10 +268,11 @@ distinguish the following clocks where applicable:
 | `valid_from` / `valid_to` | Canonical validity interval for a versioned mapping or identity |
 | `superseded_at` | Time an amendment or corrected source replaced a prior preferred version |
 
-Every research request declares an `as_of` timestamp. Canonical views exclude
-filings, observations, revisions, mappings, and identities whose
-`available_at` is later than `as_of`. Current-state queries and historical
-point-in-time queries use different explicit contracts.
+Every research request declares an `as_of` timestamp. Canonical query tools
+must exclude filings, observations, revisions, mappings, and identities whose
+availability or validity clocks are later than the declared `as_of`.
+Current-state queries and historical point-in-time queries use different
+explicit contracts.
 
 ## Storage Responsibilities
 

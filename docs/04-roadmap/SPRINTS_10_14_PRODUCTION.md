@@ -151,6 +151,9 @@ filing and macro timelines. It does not yet generate an analytical memo.
   impossible periods, and unmapped custom concepts rather than guessing.
 - [x] Add point-in-time query views that expose `available_at` and require
   research tools to filter `available_at <= as_of` before evidence assembly.
+- [x] Add a source coverage view for UI and agent audit surfaces, including
+  source system, ingestion state, object hash, availability, row counts, and
+  metadata.
 
 ### Runtime Work
 
