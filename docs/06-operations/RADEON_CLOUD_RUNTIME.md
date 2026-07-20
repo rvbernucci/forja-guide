@@ -171,7 +171,7 @@ Use `--dry-run --output-plan /workspace/forja-alpha-sprint10-plan.json` first
 when reviewing an instance setup. The runner executes the smaller audited
 scripts in order: optional source-manifest build, runtime receipt, readiness
 proof, source restore, local model benchmark, local embedding benchmark, and
-competition-profile recovery.
+competition-profile recovery, then creates the public-safe summary artifact.
 It fails fast on the first broken gate and writes sanitized JSON evidence under
 the evidence directory. Raw source snapshots, candidate configuration, model
 weights, tokens, and private artifacts remain outside Git.
@@ -184,18 +184,9 @@ as a safe starting point, then replace the example model IDs and ports with the
 actual local endpoints running on the Radeon instance. The benchmark will
 reject non-loopback URLs even if the JSON shape is otherwise valid.
 
-After the private recovery report verifies, generate a public summary for
-review before updating the Sprint 10 evidence package:
-
-```bash
-python3 scripts/summarize_radeon_sprint10_evidence.py \
-  --recovery /workspace/forja-alpha-sprint10-evidence/forja-alpha-competition-profile-recovery.json \
-  --output /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json
-```
-
-The summary includes only report hashes, validity, gate counts, and error
-classes. It intentionally drops private paths, logs, prompts, model outputs,
-vectors, source bodies, and credentials.
+The generated `radeon-public-summary.json` includes only report hashes,
+validity, gate counts, and error classes. It intentionally drops private paths,
+logs, prompts, model outputs, vectors, source bodies, and credentials.
 
 If the public summary passes review, prepare the public Sprint 10 evidence
 package without closing the Sprint:

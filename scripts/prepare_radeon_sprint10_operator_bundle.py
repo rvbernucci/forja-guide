@@ -111,10 +111,6 @@ python3 scripts/run_radeon_sprint10_evidence.py \
   --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
   --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
   --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL"
-
-python3 scripts/summarize_radeon_sprint10_evidence.py \
-  --recovery /workspace/forja-alpha-sprint10-evidence/forja-alpha-competition-profile-recovery.json \
-  --output /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json
 """
 
 

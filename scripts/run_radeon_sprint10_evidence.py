@@ -27,6 +27,7 @@ REPORT_NAMES = {
     "model_benchmark": "forja-radeon-model-candidate-report.json",
     "embedding_benchmark": "forja-radeon-embedding-benchmark.json",
     "recovery": "forja-alpha-competition-profile-recovery.json",
+    "public_summary": "radeon-public-summary.json",
 }
 
 
@@ -194,6 +195,19 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
                 str(paths["recovery"]),
             ],
             paths["recovery"],
+        ),
+        command_step(
+            "public_summary",
+            "Summarize the private recovery report into a public-safe Sprint 10 package artifact.",
+            [
+                python,
+                "scripts/summarize_radeon_sprint10_evidence.py",
+                "--recovery",
+                str(paths["recovery"]),
+                "--output",
+                str(paths["public_summary"]),
+            ],
+            paths["public_summary"],
         ),
     ])
     return {

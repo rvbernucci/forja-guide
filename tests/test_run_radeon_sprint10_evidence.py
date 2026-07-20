@@ -41,11 +41,14 @@ class Sprint10EvidenceRunnerTests(unittest.TestCase):
                 "model_benchmark",
                 "embedding_benchmark",
                 "competition_profile_recovery",
+                "public_summary",
             ],
             [step["step_id"] for step in plan["steps"]],
         )
         self.assertIn("embedding_benchmark", plan["outputs"])
-        self.assertIn("--embedding-benchmark", plan["steps"][-1]["argv"])
+        self.assertIn("public_summary", plan["outputs"])
+        self.assertIn("--embedding-benchmark", plan["steps"][-2]["argv"])
+        self.assertIn("scripts/summarize_radeon_sprint10_evidence.py", plan["steps"][-1]["argv"])
         self.assertIn("--require-endpoints", plan["steps"][1]["argv"])
 
     def test_plan_can_build_source_manifest_before_verification(self) -> None:

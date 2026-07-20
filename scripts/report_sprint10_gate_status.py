@@ -142,7 +142,6 @@ def gate_status(evidence_dir: Path) -> tuple[dict[str, Any], int]:
             "python3 scripts/prepare_radeon_sprint10_operator_bundle.py",
             "python3 scripts/verify_radeon_operator_bundle.py --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle --allow-placeholders",
             "python3 scripts/run_radeon_sprint10_evidence.py --evidence-dir /workspace/forja-alpha-sprint10-evidence ...",
-            "python3 scripts/summarize_radeon_sprint10_evidence.py --recovery /workspace/forja-alpha-sprint10-evidence/forja-alpha-competition-profile-recovery.json --output /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json",
             "python3 scripts/apply_radeon_sprint10_public_summary.py --summary docs/evidence/sprint-10/radeon-public-summary.json",
             "python3 scripts/verify_sprint10_review_readiness.py --evidence-dir docs/evidence/sprint-10",
         ],
