@@ -23,12 +23,6 @@
       "summary": "GitHub Actions run 29719449256 checked out basis commit 8cdb2bb53966b52a8480e09445caf37e89f8e2b8 and passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
     },
     {
-      "name": "governed infrastructure boundary observation",
-      "type": "operational",
-      "result": "passed_with_deferred_activation",
-      "summary": "The VPS dependencies and role boundaries were observed without reading secrets. No workload identity or private retrieval capture was treated as Sprint 09 evidence."
-    },
-    {
       "name": "immutable public closure candidate review",
       "type": "independent",
       "result": "pending",

@@ -171,8 +171,10 @@ from being presented as authoritative context.
   do not bypass this gate by calling Qdrant directly.
 - `QueryService` bounds a full retrieval request to five seconds by default;
   `ProjectionWorker` bounds each delivery to fifteen seconds. Operators may
-  configure shorter limits but never more than thirty seconds. A timed-out
-  query returns a degraded receipt; a timed-out delivery is retained for
+  configure shorter limits but never more than thirty seconds. A timeout while
+  querying Qdrant or resolving canonical context returns a degraded receipt.
+  An embedding failure, including expiration before a valid vector exists,
+  returns an error and no query receipt. A timed-out delivery is retained for
   fenced retry and cannot advance its checkpoint.
 - If the physical collection verification fails, do not run a projector or
   switch an alias. Build a new generation and investigate the mismatch.
