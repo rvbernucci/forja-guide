@@ -49,6 +49,9 @@ Keep the raw receipt outside Git. Publish only a sanitized summary under
 - Core language-model inference for the competition profile runs locally on AMD
   Radeon GPU through ROCm.
 - Core embeddings for the competition profile run locally on AMD Radeon GPU.
+- The competition embedding provider uses a loopback-only OpenAI-compatible
+  `/v1/embeddings` endpoint, typically served by vLLM or SGLang on the same
+  Radeon instance. Non-loopback embedding endpoints fail during configuration.
 - Remote APIs may be used for development research, but they are not accepted
   as core-function fallbacks in the Track 2 submission profile.
 - The Bedrock retrieval adapter remains available for non-competition
@@ -70,6 +73,16 @@ Sprint 10 must preserve sanitized evidence for:
   retrieval compatibility.
 - Lexical-only, dense-only, unweighted RRF, and weighted RRF retrieval baseline
   results on tuning and untouched holdout partitions.
+
+## Local Embedding Provider
+
+Use the local provider with an endpoint base URL such as
+`http://127.0.0.1:8000`. The provider appends `/v1/embeddings`, sends one raw
+card or query at a time, requires JSON float embeddings, validates dimensions,
+rejects non-finite values, and returns only sanitized errors.
+
+The provider is intentionally loopback-only. This keeps Sprint 10 aligned with
+the Track 2 rule that core inference must run locally on Radeon/ROCm.
 
 ## No-Git Boundary
 

@@ -47,7 +47,9 @@ quality debt transferred from Sprint 09.
 - [ ] Benchmark at least two model/precision candidates against a frozen public
   task set before selecting the default.
 - [ ] Implement a local ROCm embedding provider for the competition profile;
-  keep the Bedrock adapter disabled for every core hackathon workflow.
+  keep the Bedrock adapter disabled for every core hackathon workflow. The
+  loopback-only OpenAI-compatible provider is implemented; wiring it into the
+  competition runtime remains pending.
 - [ ] Create or import the access-controlled tuning, holdout, OOD, leakage,
   stale, and adversarial retrieval corpus planned in Sprint 09.
 - [ ] Execute lexical-only, dense-only, unweighted RRF, and weighted RRF through
@@ -71,6 +73,8 @@ quality debt transferred from Sprint 09.
 - [x] Added `scripts/capture_radeon_runtime_receipt.py` to collect bounded GPU,
   ROCm, PyTorch, vLLM, Git, host, and secret-presence evidence without storing
   credential values.
+- [x] Added a loopback-only local HTTP embedding provider for Radeon-hosted
+  OpenAI-compatible embedding endpoints.
 - [ ] Capture the first real receipt from the Radeon Cloud instance and keep
   the raw artifact outside Git.
 
