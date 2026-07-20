@@ -139,6 +139,31 @@ their frozen benchmarks without response-body, input-text, or vector storage.
 It is still evidence, not a Sprint closure by itself: raw reports remain
 outside Git until reviewed and summarized.
 
+## One-Shot Sprint 10 Evidence Runner
+
+When the Radeon instance is ready and the local model and embedding endpoints
+are already serving on loopback, run the whole evidence sequence with one
+command:
+
+```bash
+python3 scripts/run_radeon_sprint10_evidence.py \
+  --evidence-dir /workspace/forja-alpha-sprint10-evidence \
+  --source-manifest /secure/forja/alpha-source-manifest.json \
+  --snapshot-root /secure/forja \
+  --model-candidates /secure/forja/radeon-model-candidates.json \
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL"
+```
+
+Use `--dry-run --output-plan /workspace/forja-alpha-sprint10-plan.json` first
+when reviewing an instance setup. The runner executes the smaller audited
+scripts in order: runtime receipt, readiness proof, source restore, local
+model benchmark, local embedding benchmark, and competition-profile recovery.
+It fails fast on the first broken gate and writes sanitized JSON evidence under
+the evidence directory. Raw source snapshots, candidate configuration, model
+weights, tokens, and private artifacts remain outside Git.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
