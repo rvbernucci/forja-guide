@@ -7,6 +7,9 @@ weakening the neutral Forja kernel.
 
 The canonical source and storage design is defined in the
 [Forja Alpha data architecture](../02-architecture/FORJA_ALPHA_DATA_ARCHITECTURE.md).
+The Sprint-by-Sprint extraction, storage, projection, and evidence map is
+tracked in the
+[Sprints 10-14 data execution matrix](SPRINTS_10_14_DATA_EXECUTION_MATRIX.md).
 
 ## Product Outcome
 
