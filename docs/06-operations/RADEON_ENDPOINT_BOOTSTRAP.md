@@ -33,6 +33,15 @@ Keep model caches, candidate configuration, benchmark outputs, and raw runtime
 receipts outside Git. Prefer persistent PVC paths such as `/secure/forja` and
 `/workspace/forja-alpha-sprint10-evidence`.
 
+To generate private templates on the Radeon instance:
+
+```bash
+python3 scripts/prepare_radeon_sprint10_operator_bundle.py
+```
+
+The generator writes a private env template, two-candidate config template, and
+ordered evidence script under `/workspace/forja-alpha-sprint10-operator-bundle`.
+
 ## Private Candidate File
 
 Create `/secure/forja/radeon-model-candidates.json` with at least two local
