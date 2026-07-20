@@ -1,9 +1,9 @@
 # Master Development Plan
 
-Status: Active. Sprints 00-08 are closed. The non-authoritative Sprint 09
-protocol-v2 closure candidate is published for immutable review. Sprint 10
-remains unauthorized until the authoritative Sprint 09 close receipt exists.
-Gates A and B are achieved.
+Status: Active. Sprints 00-09 are closed. The authoritative Sprint 09
+protocol-v2 receipt records the immutable review and authorizes Sprint 10.
+Gates A and B are achieved; Sprint 10 remains subject to its own readiness,
+quality, security, and evidence gates.
 
 ## Objective
 
