@@ -35,6 +35,9 @@ func MetricObservationsFromCompanyFacts(snapshot SECCompanyFactsSnapshot) ([]Alp
 	}
 	observations := []AlphaMetricObservation{}
 	for _, fact := range snapshot.RawFacts {
+		if fact.QualityState != "" && fact.QualityState != "accepted" {
+			continue
+		}
 		mapping, ok := mappingByConcept[fact.ConceptID]
 		if !ok {
 			continue

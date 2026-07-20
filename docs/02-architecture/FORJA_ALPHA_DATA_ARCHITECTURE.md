@@ -186,6 +186,13 @@ identity, context hash, and source-object lineage. Metric mapping, dimensional
 validation, unit/scale normalization, amendment priority, and
 `alpha_metric_observations` remain reviewed Sprint 10 work.
 
+Unsupported taxonomies, missing unit identity, missing numeric monetary values,
+invalid currency units, and impossible or missing periods are not discarded.
+They are preserved as raw facts with `quality_state='quarantined'` and are
+excluded from first-pass metric-observation promotion. This keeps the evidence
+auditable without allowing ambiguous source rows to become canonical accounting
+truth.
+
 ## Canonical Metric Registry Seed
 
 The initial metric registry is seeded after raw facts exist:
@@ -234,6 +241,7 @@ object that states the selection remains
 This is intentionally a first-pass reported observation layer. It does not
 deduplicate multiple reported candidates, resolve amendments, infer quarterly
 values from YTD rows, or decide issuer-specific custom extensions.
+It promotes only mapped, numeric USD facts whose raw quality state is accepted.
 
 ## Point-in-Time Query Views
 

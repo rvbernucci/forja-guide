@@ -34,6 +34,31 @@ func TestMetricObservationsFromCompanyFactsSelectsMappedNumericFacts(t *testing.
 	}
 }
 
+func TestMetricObservationsFromCompanyFactsSkipsQuarantinedFacts(t *testing.T) {
+	company, ok := ResolveSECCompany("NVDA")
+	if !ok {
+		t.Fatal("NVDA fixture company not found")
+	}
+	snapshot, err := ParseSECCompanyFactsSnapshot(
+		[]byte(secCompanyFactsWithUnsupportedFixture()),
+		company,
+		time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observations, err := MetricObservationsFromCompanyFacts(snapshot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(observations) != 1 {
+		t.Fatalf("observations = %d, want 1", len(observations))
+	}
+	if observations[0].MetricID != "alpha_metric_revenue" {
+		t.Fatalf("metric = %s, want alpha_metric_revenue", observations[0].MetricID)
+	}
+}
+
 func TestWriteAlphaMetricObservationsSeedSQL(t *testing.T) {
 	snapshot := mustCompanyFactsSnapshot(t)
 	var builder strings.Builder

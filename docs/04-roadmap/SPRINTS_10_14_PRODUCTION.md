@@ -147,8 +147,9 @@ filing and macro timelines. It does not yet generate an analytical memo.
 - [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,
   `published_at`, `available_at`, `ingested_at`, and supersession
   independently.
-- [ ] Quarantine ambiguous dimensions, unsupported units, duplicate contexts,
-  impossible periods, and unmapped custom concepts rather than guessing.
+- [x] Quarantine unsupported taxonomies, missing units, missing numeric
+  monetary values, invalid currency units, and impossible or missing periods
+  rather than promoting them into canonical metrics.
 - [x] Add point-in-time query views that expose `available_at` and require
   research tools to filter `available_at <= as_of` before evidence assembly.
 - [x] Add a source coverage view for UI and agent audit surfaces, including

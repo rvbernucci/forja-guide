@@ -45,6 +45,9 @@ func TestParseSECCompanyFactsSnapshotSummarizesCoverage(t *testing.T) {
 		if fact.PeriodStart == "" || fact.PeriodEnd == "" {
 			t.Fatalf("raw fact missing explicit period: %#v", fact)
 		}
+		if fact.QualityState != "accepted" || len(fact.QualityReasons) != 0 {
+			t.Fatalf("fixture fact should be accepted: %#v", fact)
+		}
 	}
 	if strings.Join(coverage.Forms, ",") != "10-K,10-Q" {
 		t.Fatalf("forms = %#v", coverage.Forms)
@@ -130,6 +133,42 @@ func TestWriteSECCompanyFactsSeedSQLRecordsSourceObjectAndCoverage(t *testing.T)
 	}
 }
 
+func TestParseSECCompanyFactsSnapshotQuarantinesUnsupportedFacts(t *testing.T) {
+	company, ok := ResolveSECCompany("NVDA")
+	if !ok {
+		t.Fatal("NVDA fixture company not found")
+	}
+	snapshot, err := ParseSECCompanyFactsSnapshot(
+		[]byte(secCompanyFactsWithUnsupportedFixture()),
+		company,
+		time.Date(2026, 7, 20, 12, 0, 0, 0, time.UTC),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(snapshot.RawFacts) != 2 {
+		t.Fatalf("raw facts = %d, want 2", len(snapshot.RawFacts))
+	}
+	accepted := 0
+	quarantined := 0
+	for _, fact := range snapshot.RawFacts {
+		switch fact.QualityState {
+		case "accepted":
+			accepted++
+		case "quarantined":
+			quarantined++
+			if strings.Join(fact.QualityReasons, ",") != "unsupported_taxonomy" {
+				t.Fatalf("unexpected quarantine reasons: %#v", fact.QualityReasons)
+			}
+		default:
+			t.Fatalf("unexpected quality state: %#v", fact)
+		}
+	}
+	if accepted != 1 || quarantined != 1 {
+		t.Fatalf("accepted=%d quarantined=%d, want 1/1", accepted, quarantined)
+	}
+}
+
 func secCompanyFactsFixture() string {
 	return `{
   "cik": 1045810,
@@ -161,6 +200,37 @@ func secCompanyFactsFixture() string {
         "units": {
           "USD": [
             {"start": "2023-01-30", "end": "2024-01-28", "val": 29760000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "-6"}
+          ]
+        }
+      }
+    }
+  }
+}`
+}
+
+func secCompanyFactsWithUnsupportedFixture() string {
+	return `{
+  "cik": 1045810,
+  "entityName": "NVIDIA CORP",
+  "facts": {
+    "us-gaap": {
+      "Revenues": {
+        "label": "Revenues",
+        "description": "Revenue from contracts with customers",
+        "units": {
+          "USD": [
+            {"start": "2023-01-30", "end": "2024-01-28", "val": 60922000000, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "-6"}
+          ]
+        }
+      }
+    },
+    "nvda": {
+      "CustomMetric": {
+        "label": "Custom Metric",
+        "description": "Issuer extension not reviewed by Sprint 10",
+        "units": {
+          "USD": [
+            {"start": "2023-01-30", "end": "2024-01-28", "val": 123, "accn": "0001045810-24-000029", "fy": 2024, "fp": "FY", "form": "10-K", "filed": "2024-02-21", "frame": "CY2023", "decimals": "0"}
           ]
         }
       }

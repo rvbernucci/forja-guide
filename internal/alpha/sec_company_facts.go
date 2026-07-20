@@ -33,28 +33,30 @@ type SECCompanyFactsCoverage struct {
 }
 
 type SECCompanyFact struct {
-	FactID       string
-	TaxonomyID   string
-	Taxonomy     string
-	ConceptID    string
-	ConceptName  string
-	ConceptLabel string
-	ContextID    string
-	ContextHash  string
-	FilingID     string
-	Accession    string
-	Unit         string
-	Currency     string
-	LexicalValue string
-	NumericValue string
-	Decimals     string
-	PeriodStart  string
-	PeriodEnd    string
-	FormType     string
-	FiscalYear   int
-	FiscalPeriod string
-	FiledAt      string
-	Frame        string
+	FactID         string
+	TaxonomyID     string
+	Taxonomy       string
+	ConceptID      string
+	ConceptName    string
+	ConceptLabel   string
+	ContextID      string
+	ContextHash    string
+	FilingID       string
+	Accession      string
+	Unit           string
+	Currency       string
+	LexicalValue   string
+	NumericValue   string
+	Decimals       string
+	PeriodStart    string
+	PeriodEnd      string
+	FormType       string
+	FiscalYear     int
+	FiscalPeriod   string
+	FiledAt        string
+	Frame          string
+	QualityState   string
+	QualityReasons []string
 }
 
 type secCompanyFactsPayload struct {
@@ -203,6 +205,7 @@ func companyFactFromRow(company SECCompany, taxonomy, conceptName string, concep
 	if form == "other" {
 		form = strings.ToUpper(strings.TrimSpace(row.Form))
 	}
+	qualityState, qualityReasons := classifyCompanyFactQuality(taxonomy, conceptName, unit, numeric, periodStart, periodEnd)
 	contextHashInput := strings.Join([]string{company.CIK, accession, taxonomy, conceptName, unit, periodStart, periodEnd, row.Frame}, "|")
 	contextDigest := sha256.Sum256([]byte(contextHashInput))
 	contextHash := hex.EncodeToString(contextDigest[:])
@@ -210,28 +213,30 @@ func companyFactFromRow(company SECCompany, taxonomy, conceptName string, concep
 	factHashInput := strings.Join([]string{contextHashInput, lexical, decimals}, "|")
 	factDigest := sha256.Sum256([]byte(factHashInput))
 	return SECCompanyFact{
-		FactID:       "alpha_fact_" + hex.EncodeToString(factDigest[:16]),
-		TaxonomyID:   taxonomyID(taxonomy),
-		Taxonomy:     taxonomy,
-		ConceptID:    conceptID(taxonomy, conceptName),
-		ConceptName:  conceptName,
-		ConceptLabel: strings.TrimSpace(concept.Label),
-		ContextID:    "alpha_context_" + hex.EncodeToString(contextDigest[:16]),
-		ContextHash:  contextHash,
-		FilingID:     filingID(company.CIK, accession),
-		Accession:    accession,
-		Unit:         strings.TrimSpace(unit),
-		Currency:     currencyFromUnit(unit),
-		LexicalValue: lexical,
-		NumericValue: numeric,
-		Decimals:     decimals,
-		PeriodStart:  periodStart,
-		PeriodEnd:    periodEnd,
-		FormType:     form,
-		FiscalYear:   row.FY,
-		FiscalPeriod: strings.TrimSpace(row.FP),
-		FiledAt:      filedAt,
-		Frame:        strings.TrimSpace(row.Frame),
+		FactID:         "alpha_fact_" + hex.EncodeToString(factDigest[:16]),
+		TaxonomyID:     taxonomyID(taxonomy),
+		Taxonomy:       taxonomy,
+		ConceptID:      conceptID(taxonomy, conceptName),
+		ConceptName:    conceptName,
+		ConceptLabel:   strings.TrimSpace(concept.Label),
+		ContextID:      "alpha_context_" + hex.EncodeToString(contextDigest[:16]),
+		ContextHash:    contextHash,
+		FilingID:       filingID(company.CIK, accession),
+		Accession:      accession,
+		Unit:           strings.TrimSpace(unit),
+		Currency:       currencyFromUnit(unit),
+		LexicalValue:   lexical,
+		NumericValue:   numeric,
+		Decimals:       decimals,
+		PeriodStart:    periodStart,
+		PeriodEnd:      periodEnd,
+		FormType:       form,
+		FiscalYear:     row.FY,
+		FiscalPeriod:   strings.TrimSpace(row.FP),
+		FiledAt:        filedAt,
+		Frame:          strings.TrimSpace(row.Frame),
+		QualityState:   qualityState,
+		QualityReasons: qualityReasons,
 	}, nil
 }
 
@@ -279,6 +284,37 @@ func summarizeCompanyFacts(payload secCompanyFactsPayload) SECCompanyFactsCovera
 		Currencies:     sortedStringKeys(currencies),
 		CanonicalHints: sortedStringKeys(hints),
 	}
+}
+
+func classifyCompanyFactQuality(taxonomy, conceptName, unit, numericValue, periodStart, periodEnd string) (string, []string) {
+	reasons := []string{}
+	trimmedTaxonomy := strings.TrimSpace(taxonomy)
+	trimmedConcept := strings.TrimSpace(conceptName)
+	trimmedUnit := strings.TrimSpace(unit)
+	if trimmedTaxonomy == "" || trimmedConcept == "" {
+		reasons = append(reasons, "missing_concept_identity")
+	}
+	if !strings.EqualFold(trimmedTaxonomy, "us-gaap") && !strings.EqualFold(trimmedTaxonomy, "dei") {
+		reasons = append(reasons, "unsupported_taxonomy")
+	}
+	if trimmedUnit == "" {
+		reasons = append(reasons, "missing_unit")
+	}
+	if strings.EqualFold(trimmedUnit, "USD") && strings.TrimSpace(numericValue) == "" {
+		reasons = append(reasons, "missing_numeric_value")
+	}
+	if currency := currencyFromUnit(trimmedUnit); currency != "" && len(currency) != 3 {
+		reasons = append(reasons, "invalid_currency_unit")
+	}
+	if periodStart == "" || periodEnd == "" {
+		reasons = append(reasons, "missing_period")
+	} else if periodStart > periodEnd {
+		reasons = append(reasons, "impossible_period")
+	}
+	if len(reasons) > 0 {
+		return "quarantined", reasons
+	}
+	return "accepted", nil
 }
 
 func validateSECCompanyFactsSnapshot(snapshot SECCompanyFactsSnapshot) error {
@@ -513,6 +549,10 @@ func writeRawFactSQL(writer io.Writer, tenantID, repositoryID, sourceObjectID st
 	if fact.Decimals != "" {
 		decimals = sqlString(fact.Decimals)
 	}
+	qualityState := fact.QualityState
+	if qualityState == "" {
+		qualityState = "accepted"
+	}
 	_, err := fmt.Fprintf(writer, `
 INSERT INTO forja.alpha_xbrl_facts (
     tenant_id, repository_id, fact_id, filing_id, concept_id, context_id,
@@ -521,7 +561,7 @@ INSERT INTO forja.alpha_xbrl_facts (
 ) VALUES (
     %s::uuid, %s::uuid, %s, %s, %s, %s,
     %s, %s, %s, %s, %s, %s,
-    0, 'accepted'
+    0, %s
 ) ON CONFLICT (tenant_id, repository_id, fact_id) DO UPDATE SET
     filing_id=EXCLUDED.filing_id,
     concept_id=EXCLUDED.concept_id,
@@ -535,7 +575,7 @@ INSERT INTO forja.alpha_xbrl_facts (
     quality_state=EXCLUDED.quality_state;
 `,
 		sqlString(tenantID), sqlString(repositoryID), sqlString(fact.FactID), sqlString(fact.FilingID), sqlString(fact.ConceptID), sqlString(fact.ContextID),
-		sqlString(sourceObjectID), sqlString(fact.Unit), decimals, sqlString(fact.LexicalValue), numericValue, currency)
+		sqlString(sourceObjectID), sqlString(fact.Unit), decimals, sqlString(fact.LexicalValue), numericValue, currency, sqlString(qualityState))
 	return err
 }
 
