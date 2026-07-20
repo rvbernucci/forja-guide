@@ -65,7 +65,29 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
     paths = {name: evidence_dir / filename for name, filename in REPORT_NAMES.items()}
     expected_commit = resolve_commit(args.expected_commit)
     python = sys.executable
-    steps = [
+    steps = []
+    if args.build_source_manifest:
+        build_manifest_argv = [
+            python,
+            "scripts/build_alpha_snapshot_manifest.py",
+            "--snapshot-root",
+            str(args.snapshot_root),
+            "--output",
+            str(args.source_manifest),
+        ]
+        for spec in args.required_snapshot:
+            build_manifest_argv.extend(["--required-snapshot", spec])
+        for spec in args.optional_snapshot:
+            build_manifest_argv.extend(["--optional-snapshot", spec])
+        steps.append(
+            command_step(
+                "source_manifest_build",
+                "Build the source snapshot manifest from restored private files.",
+                build_manifest_argv,
+                args.source_manifest,
+            )
+        )
+    steps.extend([
         command_step(
             "runtime_receipt",
             "Capture sanitized Radeon, ROCm, Python, vLLM, torch, and Git runtime evidence.",
@@ -173,7 +195,7 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             ],
             paths["recovery"],
         ),
-    ]
+    ])
     return {
         "schema_version": "1.0",
         "plan_kind": "radeon_sprint10_evidence_sequence",
@@ -188,6 +210,9 @@ def build_plan(args: argparse.Namespace) -> dict[str, Any]:
             "raw_artifacts_outside_git": True,
         },
         "inputs": {
+            "build_source_manifest": args.build_source_manifest,
+            "required_snapshots": list(args.required_snapshot),
+            "optional_snapshots": list(args.optional_snapshot),
             "source_manifest": str(args.source_manifest),
             "snapshot_root": str(args.snapshot_root),
             "model_task_set": str(args.model_task_set),
@@ -258,6 +283,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--evidence-dir", type=Path, default=DEFAULT_EVIDENCE_DIR)
     parser.add_argument("--source-manifest", type=Path, required=True)
     parser.add_argument("--snapshot-root", type=Path, required=True)
+    parser.add_argument("--build-source-manifest", action="store_true")
+    parser.add_argument("--required-snapshot", action="append", default=[])
+    parser.add_argument("--optional-snapshot", action="append", default=[])
     parser.add_argument(
         "--model-task-set",
         type=Path,

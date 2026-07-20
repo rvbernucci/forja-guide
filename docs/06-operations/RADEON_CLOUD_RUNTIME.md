@@ -148,8 +148,15 @@ command:
 ```bash
 python3 scripts/run_radeon_sprint10_evidence.py \
   --evidence-dir /workspace/forja-alpha-sprint10-evidence \
+  --build-source-manifest \
   --source-manifest /secure/forja/alpha-source-manifest.json \
   --snapshot-root /secure/forja \
+  --required-snapshot sec_identity=sec/company_tickers.json \
+  --required-snapshot sec_submissions=sec/submissions/CIK0001045810.json \
+  --required-snapshot sec_company_facts=sec/companyfacts/CIK0001045810.json \
+  --required-snapshot treasury=treasury/real-yield-10y.csv \
+  --required-snapshot fred=fred/FEDFUNDS.csv \
+  --required-snapshot market=market/NVDA-adjusted.csv \
   --model-candidates /secure/forja/radeon-model-candidates.json \
   --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
   --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
@@ -158,8 +165,9 @@ python3 scripts/run_radeon_sprint10_evidence.py \
 
 Use `--dry-run --output-plan /workspace/forja-alpha-sprint10-plan.json` first
 when reviewing an instance setup. The runner executes the smaller audited
-scripts in order: runtime receipt, readiness proof, source restore, local
-model benchmark, local embedding benchmark, and competition-profile recovery.
+scripts in order: optional source-manifest build, runtime receipt, readiness
+proof, source restore, local model benchmark, local embedding benchmark, and
+competition-profile recovery.
 It fails fast on the first broken gate and writes sanitized JSON evidence under
 the evidence directory. Raw source snapshots, candidate configuration, model
 weights, tokens, and private artifacts remain outside Git.

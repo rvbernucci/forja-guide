@@ -48,6 +48,24 @@ class Sprint10EvidenceRunnerTests(unittest.TestCase):
         self.assertIn("--embedding-benchmark", plan["steps"][-1]["argv"])
         self.assertIn("--require-endpoints", plan["steps"][1]["argv"])
 
+    def test_plan_can_build_source_manifest_before_verification(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            args = namespace(root)
+            args.build_source_manifest = True
+            args.required_snapshot = ["sec_identity=sec/company_tickers.json"]
+            args.optional_snapshot = ["metadata=metadata/source-notes.json"]
+            with patch.object(RUNNER, "resolve_commit", return_value="c" * 40):
+                plan = RUNNER.build_plan(args)
+
+        self.assertEqual("source_manifest_build", plan["steps"][0]["step_id"])
+        self.assertIn("scripts/build_alpha_snapshot_manifest.py", plan["steps"][0]["argv"])
+        self.assertIn("--required-snapshot", plan["steps"][0]["argv"])
+        self.assertIn("sec_identity=sec/company_tickers.json", plan["steps"][0]["argv"])
+        self.assertIn("--optional-snapshot", plan["steps"][0]["argv"])
+        self.assertEqual(["sec_identity=sec/company_tickers.json"], plan["inputs"]["required_snapshots"])
+        self.assertEqual(["metadata=metadata/source-notes.json"], plan["inputs"]["optional_snapshots"])
+
     def test_execution_stops_on_first_failed_step(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -85,6 +103,9 @@ def namespace(root: Path) -> object:
             "evidence_dir": root / "evidence",
             "source_manifest": root / "manifest.json",
             "snapshot_root": root / "snapshots",
+            "build_source_manifest": False,
+            "required_snapshot": [],
+            "optional_snapshot": [],
             "model_task_set": Path("internal/alpha/testdata/radeon_model_selection_public_v1.json"),
             "model_candidates": root / "model-candidates.json",
             "embedding_input_set": Path("internal/alpha/testdata/radeon_embedding_public_v1.json"),
