@@ -15,6 +15,8 @@ import (
 
 var retrievalCollectionNamePattern = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,119}$`)
 
+const retrievalAliasMutationTimeout = 30 * time.Second
+
 // RegisterRetrievalGeneration stores an immutable derived-store contract in
 // PostgreSQL before a physical collection is built. Replays are accepted only
 // when every vector-contract field agrees; a reused generation ID can never
@@ -220,18 +222,20 @@ func (s *Store) WithRetrievalAliasMutation(ctx context.Context, alias string, op
 	if !retrievalCollectionNamePattern.MatchString(alias) || operation == nil {
 		return fmt.Errorf("retrieval alias mutation guard is invalid")
 	}
-	tx, err := s.pool.Begin(ctx)
+	guardContext, cancel := context.WithTimeout(ctx, retrievalAliasMutationTimeout)
+	defer cancel()
+	tx, err := s.pool.Begin(guardContext)
 	if err != nil {
 		return databaseError("postgres.WithRetrievalAliasMutation.begin", err)
 	}
 	defer func() { _ = tx.Rollback(context.Background()) }()
-	if err := s.lockRetrievalAlias(ctx, tx, alias); err != nil {
+	if err := s.lockRetrievalAlias(guardContext, tx, alias); err != nil {
 		return err
 	}
-	if err := operation(ctx); err != nil {
+	if err := operation(guardContext); err != nil {
 		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := tx.Commit(guardContext); err != nil {
 		return databaseError("postgres.WithRetrievalAliasMutation.commit", err)
 	}
 	return nil

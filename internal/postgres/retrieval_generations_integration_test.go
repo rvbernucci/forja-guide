@@ -179,6 +179,28 @@ func TestRetrievalAliasMutationGuardSerializesStoreInstances(t *testing.T) {
 	}
 }
 
+func TestRetrievalAliasMutationGuardBoundsExternalWork(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	store := newIntegrationStore(t, pool)
+	if err := store.WithRetrievalAliasMutation(t.Context(), "forja_retrieval", func(ctx context.Context) error {
+		deadline, ok := ctx.Deadline()
+		if !ok {
+			t.Fatal("alias mutation operation has no deadline")
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 || remaining > retrievalAliasMutationTimeout {
+			t.Fatalf("alias mutation deadline remaining=%s, want (0,%s]", remaining, retrievalAliasMutationTimeout)
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func retrievalGenerationFixture(collectionSuffix, version string) persistence.RetrievalGenerationConfig {
 	return persistence.RetrievalGenerationConfig{
 		GenerationID:    contracts.RetrievalGenerationID("fixture", version, 3, "sparse-fixture-v1"),
