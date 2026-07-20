@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_BRANCH = "feat/sprint-10-radeon-runtime-v2"
+DEFAULT_REPO = "https://github.com/rvbernucci/forja-guide"
+DEFAULT_REPO_DIR = "/workspace/forja-guide"
+
+
 def load_wait_report(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
@@ -25,7 +30,15 @@ def wait_status(payload: dict[str, Any]) -> str:
     return "unknown"
 
 
-def render_sheet(*, wait_report: dict[str, Any], host: str, port: str) -> str:
+def render_sheet(
+    *,
+    wait_report: dict[str, Any],
+    host: str,
+    port: str,
+    repo_url: str = DEFAULT_REPO,
+    branch: str = DEFAULT_BRANCH,
+    repo_dir: str = DEFAULT_REPO_DIR,
+) -> str:
     status = wait_status(wait_report)
     return f"""# Radeon SSH Recovery Sheet
 
@@ -37,9 +50,24 @@ Observed host: `{host}`
 Observed port: `{port}`
 Observed wait status: `{status}`
 
-## 1. Diagnose SSH Inside The Radeon Instance
+## 1. Prepare Repository In The Web Terminal
 
 Run in the Radeon Jupyter/OpenCode terminal:
+
+```bash
+mkdir -p {repo_dir}
+cd {repo_dir}
+if [ ! -d .git ]; then
+  git clone {repo_url} .
+fi
+git fetch origin
+git checkout {branch}
+git pull --ff-only origin {branch}
+```
+
+## 2. Diagnose SSH Inside The Radeon Instance
+
+Run in the same terminal:
 
 ```bash
 python3 scripts/diagnose_radeon_sshd.py \\
@@ -62,7 +90,7 @@ python3 scripts/wait_radeon_ssh.py {host} {port} \\
   --probe-timeout-seconds 8
 ```
 
-## 2. Repair Missing OpenSSH Server
+## 3. Repair Missing OpenSSH Server
 
 If `command -v sshd` prints nothing, install OpenSSH server from the web
 terminal:
@@ -72,7 +100,7 @@ apt-get update
 apt-get install -y openssh-server
 ```
 
-## 3. Repair Missing Runtime Directory Or Host Keys
+## 4. Repair Missing Runtime Directory Or Host Keys
 
 If `sshd` exists but cannot start, repair the common ephemeral-image issues:
 
@@ -82,7 +110,7 @@ chmod 755 /run/sshd
 ssh-keygen -A
 ```
 
-## 4. Start SSHD
+## 5. Start SSHD
 
 Try the service manager first. If this image does not use systemd, fall back to
 the OpenSSH init script or direct daemon start:
@@ -93,7 +121,7 @@ ps -ef | grep '[s]shd' || true
 ss -ltnp | grep ':22 ' || true
 ```
 
-## 5. Recheck From The Workstation
+## 6. Recheck From The Workstation
 
 Run from the repository workstation:
 
@@ -117,6 +145,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--wait-report", type=Path)
     parser.add_argument("--host", default="<radeon-host>")
     parser.add_argument("--port", default="<radeon-port>")
+    parser.add_argument("--repo-url", default=DEFAULT_REPO)
+    parser.add_argument("--branch", default=DEFAULT_BRANCH)
+    parser.add_argument("--repo-dir", default=DEFAULT_REPO_DIR)
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 
@@ -124,7 +155,14 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     wait_report = load_wait_report(args.wait_report)
-    body = render_sheet(wait_report=wait_report, host=args.host, port=args.port)
+    body = render_sheet(
+        wait_report=wait_report,
+        host=args.host,
+        port=args.port,
+        repo_url=args.repo_url,
+        branch=args.branch,
+        repo_dir=args.repo_dir,
+    )
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(body, encoding="utf-8")

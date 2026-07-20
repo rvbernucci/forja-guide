@@ -57,6 +57,9 @@ def preflight(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
             wait_report=wait_report,
             host=args.host,
             port=str(args.port),
+            repo_url=args.repo_url,
+            branch=args.branch,
+            repo_dir=args.repo_dir,
         )
         write_text(args.recovery_output, recovery_body)
         recovery_rendered = True
@@ -69,6 +72,11 @@ def preflight(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "wait_output": args.wait_output.as_posix(),
         "recovery_rendered": recovery_rendered,
         "recovery_output": args.recovery_output.as_posix() if recovery_rendered else None,
+        "recovery_repo": {
+            "repo_url": args.repo_url,
+            "branch": args.branch,
+            "repo_dir": args.repo_dir,
+        },
         "last_status": wait_report.get("last_result", {}).get("status")
         if isinstance(wait_report.get("last_result"), dict)
         else None,
@@ -87,6 +95,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--probe-timeout-seconds", type=float, default=8.0)
     parser.add_argument("--wait-output", type=Path, default=DEFAULT_WAIT_OUTPUT)
     parser.add_argument("--recovery-output", type=Path, default=DEFAULT_RECOVERY_OUTPUT)
+    parser.add_argument("--repo-url", default=RECOVERY.DEFAULT_REPO)
+    parser.add_argument("--branch", default=RECOVERY.DEFAULT_BRANCH)
+    parser.add_argument("--repo-dir", default=RECOVERY.DEFAULT_REPO_DIR)
     parser.add_argument("--output", type=Path)
     return parser.parse_args()
 

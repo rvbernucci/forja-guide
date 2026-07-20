@@ -109,6 +109,9 @@ python3 scripts/preflight_radeon_ssh.py <host> <port> \
   --probe-timeout-seconds 8 \
   --wait-output /tmp/forja-radeon-ssh-wait.json \
   --recovery-output /tmp/forja-radeon-ssh-recovery.md \
+  --repo-url https://github.com/rvbernucci/forja-guide \
+  --branch feat/sprint-10-radeon-runtime-v2 \
+  --repo-dir /workspace/forja-guide \
   --output /tmp/forja-radeon-ssh-preflight.json
 ```
 

@@ -37,6 +37,8 @@ class RadeonSSHRecoverySheetTests(unittest.TestCase):
 
         expected = [
             "Observed wait status: `connected_no_banner`",
+            "git clone https://github.com/rvbernucci/forja-guide .",
+            "git checkout feat/sprint-10-radeon-runtime-v2",
             "diagnose_radeon_sshd.py",
             "command -v sshd",
             "apt-get install -y openssh-server",
@@ -59,6 +61,21 @@ class RadeonSSHRecoverySheetTests(unittest.TestCase):
         for forbidden in ("password=", "token=", "hf_", "AWS_SECRET", "PRIVATE KEY"):
             self.assertNotIn(forbidden, body)
         self.assertIn("contains no credentials", body)
+
+    def test_sheet_uses_supplied_branch_and_paths(self) -> None:
+        body = RECOVERY.render_sheet(
+            wait_report=connected_no_banner_report(),
+            host="example.test",
+            port="2222",
+            repo_url="https://github.com/example/repo",
+            branch="feature/demo",
+            repo_dir="/workspace/demo",
+        )
+
+        self.assertIn("mkdir -p /workspace/demo", body)
+        self.assertIn("git clone https://github.com/example/repo .", body)
+        self.assertIn("git checkout feature/demo", body)
+        self.assertIn("wait_radeon_ssh.py example.test 2222", body)
 
     def test_load_wait_report_reads_json_object(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

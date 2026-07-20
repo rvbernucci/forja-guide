@@ -85,9 +85,14 @@ class RadeonSSHPreflightTests(unittest.TestCase):
             self.assertTrue(report["recovery_rendered"])
             self.assertEqual(args.recovery_output.as_posix(), report["recovery_output"])
             self.assertEqual("connected_no_banner", report["last_status"])
+            self.assertEqual("https://github.com/example/repo", report["recovery_repo"]["repo_url"])
+            self.assertEqual("feature/demo", report["recovery_repo"]["branch"])
+            self.assertEqual("/workspace/demo", report["recovery_repo"]["repo_dir"])
             self.assertFalse(report["next_sprint_authorized"])
             self.assertTrue(args.wait_output.is_file())
-            self.assertIn("Radeon SSH Recovery Sheet", args.recovery_output.read_text(encoding="utf-8"))
+            body = args.recovery_output.read_text(encoding="utf-8")
+            self.assertIn("Radeon SSH Recovery Sheet", body)
+            self.assertIn("git checkout feature/demo", body)
 
 
 def args_for(directory: Path) -> argparse.Namespace:
@@ -99,6 +104,9 @@ def args_for(directory: Path) -> argparse.Namespace:
         probe_timeout_seconds=1.0,
         wait_output=directory / "wait.json",
         recovery_output=directory / "recovery.md",
+        repo_url="https://github.com/example/repo",
+        branch="feature/demo",
+        repo_dir="/workspace/demo",
         output=None,
     )
 

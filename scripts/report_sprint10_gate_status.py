@@ -140,9 +140,9 @@ def gate_status(evidence_dir: Path) -> tuple[dict[str, Any], int]:
         "errors": errors,
         "next_commands": [
             "python3 scripts/render_radeon_sprint10_command_sheet.py --host <host> --port <port> --output /tmp/sprint10-radeon-command-sheet.md",
-            "python3 scripts/preflight_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10 --wait-output /tmp/forja-radeon-ssh-wait.json --recovery-output /tmp/forja-radeon-ssh-recovery.md --output /tmp/forja-radeon-ssh-preflight.json",
+            "python3 scripts/preflight_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10 --wait-output /tmp/forja-radeon-ssh-wait.json --recovery-output /tmp/forja-radeon-ssh-recovery.md --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-preflight.json",
             "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
-            "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --output /tmp/forja-radeon-ssh-recovery.md",
+            "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-recovery.md",
             "python3 scripts/prepare_radeon_sprint10_operator_bundle.py",
             "python3 scripts/verify_radeon_operator_bundle.py --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle --allow-placeholders",
             "python3 scripts/verify_radeon_operator_bundle.py --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle",

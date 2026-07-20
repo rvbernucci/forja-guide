@@ -41,6 +41,9 @@ python3 scripts/preflight_radeon_ssh.py {host} {port} \\
   --probe-timeout-seconds 8 \\
   --wait-output /tmp/forja-radeon-ssh-wait.json \\
   --recovery-output /tmp/forja-radeon-ssh-recovery.md \\
+  --repo-url {repo_url} \\
+  --branch {branch} \\
+  --repo-dir {repo_dir} \\
   --output /tmp/forja-radeon-ssh-preflight.json
 ```
 
@@ -65,6 +68,9 @@ python3 scripts/render_radeon_ssh_recovery_sheet.py \\
   --wait-report /tmp/forja-radeon-ssh-wait.json \\
   --host {host} \\
   --port {port} \\
+  --repo-url {repo_url} \\
+  --branch {branch} \\
+  --repo-dir {repo_dir} \\
   --output /tmp/forja-radeon-ssh-recovery.md
 ```
 
