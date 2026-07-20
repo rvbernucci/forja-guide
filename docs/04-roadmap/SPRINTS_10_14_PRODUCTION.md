@@ -144,9 +144,9 @@ filing and macro timelines. It does not yet generate an analytical memo.
 - [x] Store accounting values as exact decimals with explicit units, SEC
   decimals, currencies, periods, fiscal frames, dimensions, and filing
   identities.
-- [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,
+- [x] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,
   `published_at`, `available_at`, `ingested_at`, and supersession
-  independently.
+  independently across the SEC and first Treasury snapshot adapters.
 - [x] Quarantine unsupported taxonomies, missing units, missing numeric
   monetary values, invalid currency units, and impossible or missing periods
   rather than promoting them into canonical metrics.
@@ -155,6 +155,8 @@ filing and macro timelines. It does not yet generate an analytical memo.
 - [x] Add a source coverage view for UI and agent audit surfaces, including
   source system, ingestion state, object hash, availability, row counts, and
   metadata.
+- [x] Add a local Treasury CSV snapshot seed for the 10-year real-yield series
+  with observed, published, available, and optional vintage clocks.
 
 ### Runtime Work
 

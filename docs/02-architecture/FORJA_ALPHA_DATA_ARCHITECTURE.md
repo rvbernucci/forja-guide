@@ -243,6 +243,27 @@ deduplicate multiple reported candidates, resolve amendments, infer quarterly
 values from YTD rows, or decide issuer-specific custom extensions.
 It promotes only mapped, numeric USD facts whose raw quality state is accepted.
 
+## Treasury Series Snapshot Seed
+
+The first macro/rates adapter ingests a hash-pinned local Treasury CSV snapshot
+for the 10-year real-yield series:
+
+```bash
+go run ./cmd/forja-alpha seed-treasury-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --csv /secure/forja/treasury/real-yield-10y.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-treasury-real-yield-10y.sql
+```
+
+The CSV must include a date column and a value/rate column. Optional
+`published_at` and `vintage_at` columns preserve publication and revision
+semantics. The seed records the Treasury source system, source object,
+ingestion run, series registry row, and accepted `alpha_series_observations`.
+Rows with empty or non-numeric values are counted in source metadata and do
+not become canonical observations.
+
 ## Point-in-Time Query Views
 
 Sprint 10 now publishes three read-only query surfaces above the raw Alpha
