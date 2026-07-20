@@ -115,10 +115,11 @@ evidence, and private evaluation results. Incident cards now derive only from
 the matching immutable terminal attempt event and retain classification,
 severity, identifiers, and evidence hashes, never worker output. Neo4j
 traversal remains pending for the graph-grounded context work in Sprint 11.
-Sprints 10-14 now form the Forja Radeon path for AMD AI DevMaster Track 2:
-local ROCm model and embedding inference, graph-grounded RAG, governed tools,
-multi-step planning, local memory, permission controls, measurable
-optimization, and a reproducible public submission.
+Sprints 10-14 now complete Forja Alpha for AMD AI DevMaster Track 2: canonical
+point-in-time financial data, local ROCm model and embedding inference,
+deterministic analytical tools, graph-grounded RAG, multi-step planning,
+governed memory and permissions, measurable optimization, and a reproducible
+public submission.
 
 When a canonical snapshot is superseded, the projector first tombstones every
 affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the
@@ -144,8 +145,9 @@ the local ROCm, data, retrieval, and analytical adapters are unavailable.
 make alpha-run
 ```
 
-Open `http://127.0.0.1:8787`. See the [architecture](docs/02-architecture/FORJA_ALPHA.md)
-and [local operation guide](docs/06-operations/FORJA_ALPHA_LOCAL.md).
+Open `http://127.0.0.1:8787`. See the [architecture](docs/02-architecture/FORJA_ALPHA.md),
+[data architecture](docs/02-architecture/FORJA_ALPHA_DATA_ARCHITECTURE.md), and
+[local operation guide](docs/06-operations/FORJA_ALPHA_LOCAL.md).
 
 ## Architecture
 

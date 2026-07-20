@@ -58,6 +58,8 @@ implementation releases.
 
 ### Added
 
+- A refactored Forja Alpha production roadmap and point-in-time financial data
+  architecture for Sprints 10-14.
 - Forja Alpha local web experience foundation with an embedded three-pane
   research interface, strict local-inference endpoint policy, bounded
   research-plan API, and explicit capability readiness.
