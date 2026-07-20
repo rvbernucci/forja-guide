@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "candidate_pending_immutable_review",
-  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
+  "basis_commit": "a9a971cff16ee50ab4fafca3a475f117a47f438d",
   "validators": [
     {
       "name": "local repository quality gate",
@@ -20,13 +20,13 @@
       "name": "public exact-basis GitHub workflow",
       "type": "mechanical",
       "result": "passed",
-      "summary": "GitHub Actions run 29722787449 checked out basis commit 8602b2175be98ea4a8cc68ccf2b7f4804378c31f and passed repository validation, PostgreSQL durability, the pinned live-Qdrant lifecycle, and the clean-host observability rehearsal."
+      "summary": "GitHub Actions run 29726147010 checked out basis commit a9a971cff16ee50ab4fafca3a475f117a47f438d and passed repository validation, PostgreSQL durability, the pinned live-Qdrant lifecycle, and the clean-host observability rehearsal."
     },
     {
       "name": "public live Qdrant lifecycle",
       "type": "mechanical",
       "result": "passed",
-      "summary": "The exact-basis workflow proved collection creation, first alias creation, atomic replacement, blue-green readback, guarded rollback, query, deletion, and cleanup against digest-pinned Qdrant v1.18.2."
+      "summary": "The exact-basis workflow proved collection creation, first alias creation, PostgreSQL-serialized atomic replacement, blue-green readback, guarded rollback, query, deletion, and cleanup against digest-pinned Qdrant v1.18.2."
     },
     {
       "name": "immutable public closure candidate review",
@@ -61,5 +61,5 @@
     "separate immutable candidate review",
     "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
   ],
-  "recorded_at": "2026-07-20T06:59:12Z"
+  "recorded_at": "2026-07-20T08:04:21Z"
 }

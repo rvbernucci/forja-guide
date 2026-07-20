@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
+  "basis_commit": "a9a971cff16ee50ab4fafca3a475f117a47f438d",
   "strategy": "Stop new retrieval projection and query commands; preserve canonical PostgreSQL events, outbox history, per-projector deliveries, generation receipts, point receipts, artifacts, and evidence. Disable semantic retrieval when a dependency is unhealthy. Qdrant rank-path failures return bounded degraded receipts; embedding-provider failures return an explicit error and no result file. If a new Qdrant generation is unhealthy, verify the expected alias target and atomically restore the last verified generation. If Qdrant is lost, recreate it from canonical sources and replay the dedicated projector. Migration 009 may downgrade only before governed retrieval history exists; otherwise rollback is a forward repair that preserves the ledger. No canonical exact-lookup fallback is implemented.",
   "rollback_target": "620256d0d0744f6ecf1e1851dff83a5cf02e48e3",
   "tests": [
     {
       "name": "blue-green alias rollback",
       "result": "passed",
-      "summary": "Automated operator tests and the public live-Qdrant CI gate verify the green generation contract, atomic delete-and-create alias replacement, switch readback, and restoration of the prior target only while the expected alias fence remains valid."
+      "summary": "Automated operator tests and the public live-Qdrant CI gate verify the green generation contract, PostgreSQL-advisory-lock serialization across operators, bounded alias mutation work, atomic delete-and-create alias replacement, switch readback, and restoration of the prior target only while the expected alias fence remains valid."
     },
     {
       "name": "derived-store deletion and replay",
@@ -29,5 +29,5 @@
   ],
   "data_migration_required": true,
   "runtime_state_impact": "Empty pre-adoption environments can return to Sprint 08. Environments with retrieval history retain migration 009 and use forward repair, alias rollback, or canonical replay while production retrieval remains disabled until Sprint 10 quality gates pass.",
-  "recorded_at": "2026-07-20T06:59:12Z"
+  "recorded_at": "2026-07-20T08:04:21Z"
 }
