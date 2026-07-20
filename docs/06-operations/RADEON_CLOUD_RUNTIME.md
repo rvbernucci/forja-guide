@@ -296,6 +296,17 @@ the SSH path, web-terminal fallback, public-summary export boundary, immutable
 review, and final promotion checklist without collecting evidence or closing
 Sprint 10.
 
+If you only need to audit the private source-data requirements before creating
+or using a Radeon instance, render the snapshot checklist directly:
+
+```bash
+python3 scripts/render_radeon_sprint10_snapshot_checklist.py \
+  --output /tmp/forja-radeon-snapshot-checklist.md
+```
+
+The checklist is generated from the same `REQUIRED_SNAPSHOTS` contract used by
+the private-input preflight, so it stays aligned with the evidence runner.
+
 After an immutable review is recorded under
 `docs/evidence/sprint-10/reviews/`, generate the final close receipt with the
 fail-closed promoter. First render the final promotion checklist:

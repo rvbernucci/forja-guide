@@ -49,6 +49,10 @@ SSH_RECOVERY = load_module(
     "render_radeon_ssh_recovery_sheet.py",
     "render_radeon_ssh_recovery_sheet_for_handoff",
 )
+SNAPSHOT_CHECKLIST = load_module(
+    "render_radeon_sprint10_snapshot_checklist.py",
+    "render_radeon_sprint10_snapshot_checklist_for_handoff",
+)
 
 
 def sha256_text(body: str) -> str:
@@ -124,9 +128,15 @@ def prepare_packet(
         evidence_dir=evidence_dir,
         snapshot_root=snapshot_root,
     )
+    snapshot_checklist = SNAPSHOT_CHECKLIST.render_checklist(
+        snapshot_root=snapshot_root,
+        model_candidates=f"{snapshot_root}/radeon-model-candidates.json",
+        required_snapshots=SNAPSHOT_CHECKLIST.load_private_input_contract(),
+    )
 
     files = [
         write_file(output_dir / "quick-start.md", quick_start),
+        write_file(output_dir / "snapshot-checklist.md", snapshot_checklist),
         write_file(output_dir / "command-sheet.md", command_sheet),
         write_file(output_dir / "web-terminal-bootstrap.sh", web_bootstrap, mode=0o700),
         write_file(output_dir / "web-terminal-evidence.md", web_sheet),
@@ -198,11 +208,13 @@ Sprint 11.
    `command-sheet.md`.
 4. If SSH is not ready but Jupyter/OpenCode web terminal works, copy
    `web-terminal-bootstrap.sh` into the Radeon terminal and run it there.
-5. After bootstrap, follow the rendered `web-terminal-evidence.md` on Radeon.
-6. Export only `{evidence_dir}/radeon-public-summary.json` back to the
+5. Before GPU work, use `snapshot-checklist.md` to place the required private
+   source snapshots and `{snapshot_root}/radeon-model-candidates.json`.
+6. After bootstrap, follow the rendered `web-terminal-evidence.md` on Radeon.
+7. Export only `{evidence_dir}/radeon-public-summary.json` back to the
    workstation.
-7. Verify and ingest the public summary from the workstation.
-8. Request immutable review, then use the Sprint 10 promotion checklist.
+8. Verify and ingest the public summary from the workstation.
+9. Request immutable review, then use the Sprint 10 promotion checklist.
 
 ## Do Not Export Or Commit
 

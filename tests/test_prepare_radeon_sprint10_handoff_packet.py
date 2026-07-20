@@ -41,6 +41,7 @@ class RadeonSprint10HandoffPacketTests(unittest.TestCase):
             self.assertEqual(
                 {
                     "quick-start.md",
+                    "snapshot-checklist.md",
                     "command-sheet.md",
                     "web-terminal-bootstrap.sh",
                     "web-terminal-evidence.md",
@@ -70,6 +71,7 @@ class RadeonSprint10HandoffPacketTests(unittest.TestCase):
             modes = {Path(item["path"]).name: item["mode"] for item in report["files"]}
             self.assertEqual("0o700", modes["web-terminal-bootstrap.sh"])
             self.assertEqual("0o600", modes["quick-start.md"])
+            self.assertEqual("0o600", modes["snapshot-checklist.md"])
             self.assertEqual("0o600", modes["command-sheet.md"])
             self.assertEqual("0o600", modes["web-terminal-evidence.md"])
             self.assertEqual("0o600", modes["ssh-recovery.md"])
@@ -89,6 +91,7 @@ class RadeonSprint10HandoffPacketTests(unittest.TestCase):
                 "Read `command-sheet.md`",
                 "Run the SSH preflight",
                 "copy\n   `web-terminal-bootstrap.sh`",
+                "use `snapshot-checklist.md`",
                 "Export only `/workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json`",
                 "Verify and ingest the public summary",
                 "Request immutable review",
