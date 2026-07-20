@@ -32,8 +32,8 @@
     {
       "name": "live Qdrant lifecycle",
       "result": "passed",
-      "summary": "Public CI ran the integration lifecycle against digest-pinned Qdrant v1.18.2: physical collection creation, first alias creation, PostgreSQL-serialized atomic delete-and-create replacement, blue-green cutover, readback, guarded rollback, dense and sparse query paths, deletion, and cleanup all passed."
+      "summary": "Public CI ran the lifecycle against digest-pinned Qdrant v1.18.2 through the required guard interface: physical collection creation, first alias creation, atomic delete-and-create replacement, blue-green cutover, readback, guarded rollback, dense and sparse query paths, deletion, and cleanup all passed. PostgreSQL serialization is proven separately by the PostgreSQL integration suite; no composed test is claimed."
     }
   ],
-  "recorded_at": "2026-07-20T08:04:21Z"
+  "recorded_at": "2026-07-20T08:28:42Z"
 }

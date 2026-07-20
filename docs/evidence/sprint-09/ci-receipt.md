@@ -18,9 +18,13 @@ The `Repository quality / validate` job checked out the basis commit and passed:
 - public repository validation;
 - PostgreSQL durability validation, including cross-store advisory-lock
   serialization and a bounded mutation context;
-- live Qdrant v1.18.2 collection, query, PostgreSQL-serialized atomic alias
-  replacement, rollback, deletion, and cleanup validation;
+- live Qdrant v1.18.2 collection, query, atomic alias replacement, rollback,
+  deletion, and cleanup validation using the required guard interface;
 - observability-stack rehearsal on a clean Linux host.
+
+The PostgreSQL gate proves distributed guard serialization and bounded work;
+the live Qdrant gate independently proves the real-server lifecycle. The run
+does not claim one composed test that uses the PostgreSQL guard against Qdrant.
 
 The workflow log is the authoritative execution record. This receipt does not
 claim a private retrieval evaluation, a production workload preflight, a

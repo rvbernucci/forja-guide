@@ -9,7 +9,7 @@
     {
       "name": "blue-green alias rollback",
       "result": "passed",
-      "summary": "Automated operator tests and the public live-Qdrant CI gate verify the green generation contract, PostgreSQL-advisory-lock serialization across operators, bounded alias mutation work, atomic delete-and-create alias replacement, switch readback, and restoration of the prior target only while the expected alias fence remains valid."
+      "summary": "PostgreSQL integration tests prove advisory-lock serialization across Store instances and bounded mutation work. Independently, operator tests and the public live-Qdrant gate verify the green generation contract, atomic delete-and-create alias replacement, switch readback, and restoration of the prior target only while the expected alias fence remains valid. No composed PostgreSQL-plus-live-Qdrant test is claimed."
     },
     {
       "name": "derived-store deletion and replay",
@@ -29,5 +29,5 @@
   ],
   "data_migration_required": true,
   "runtime_state_impact": "Empty pre-adoption environments can return to Sprint 08. Environments with retrieval history retain migration 009 and use forward repair, alias rollback, or canonical replay while production retrieval remains disabled until Sprint 10 quality gates pass.",
-  "recorded_at": "2026-07-20T08:04:21Z"
+  "recorded_at": "2026-07-20T08:28:42Z"
 }
