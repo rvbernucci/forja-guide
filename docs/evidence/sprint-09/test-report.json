@@ -33,11 +33,6 @@
       "name": "Qdrant lifecycle test coverage",
       "result": "passed",
       "summary": "Unit, protocol, and opt-in integration test sources cover physical collection creation, payload indexes, dense and sparse query paths, upsert, deletion, blue-green alias cutover, guarded rollback, derived-store deletion, canonical reset, and replay. No uncommitted live execution is claimed as closure evidence."
-    },
-    {
-      "name": "governed VPS dependency observation",
-      "result": "passed_with_documented_gap",
-      "summary": "Qdrant and Neo4j were running, ready, and loopback-only through scoped wrappers. The staged linux/amd64 CLI failed closed without runtime configuration. The installed Qdrant validator has a caller-working-directory defect transferred to Sprint 10."
     }
   ],
   "recorded_at": "2026-07-20T05:41:35Z"

@@ -297,10 +297,11 @@ It cannot authorize Sprint 10.
   access-controlled private evaluation boundary, not copied runtime
   credentials. Those results are required by Sprint 10 before production or
   competition-profile activation, not represented as completed Sprint 09 work.
-- The Hostinger Builder Plane dependencies were later checked through governed
-  role wrappers: Qdrant and Neo4j are ready and loopback-only, while no Forja
-  workload configuration exists yet. The sanitised receipt records the
-  verified boundary and the remaining activation prerequisites in
+- A historical operator note reports that Hostinger Builder Plane dependencies
+  were checked through governed role wrappers and that Qdrant and Neo4j were
+  ready and loopback-only at that time. No immutable underlying command receipt
+  is committed, so it proves neither current readiness nor a verified boundary.
+  The note and remaining activation prerequisites are retained in
   [`VPS_RETRIEVAL_RUNTIME_RECEIPT.md`](../06-operations/VPS_RETRIEVAL_RUNTIME_RECEIPT.md).
 
 ## Acceptance Evidence

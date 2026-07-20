@@ -13,10 +13,10 @@ not independently reviewable from this repository.
 
 | Dependency | Operator-reported result | Reported boundary |
 | --- | --- | --- |
-| Qdrant | Running and ready | REST and gRPC are loopback-only; no public port is open |
-| Neo4j | Running and ready | HTTP and Bolt are loopback-only; no public port is open |
-| Access factory | Working | Separate SSH keys for `mariana-approver`, `mariana-access-admin`, `mariana-infra-admin`, and `mariana-codex` were verified |
-| Grants | Closed after verification | No active grant remained after the checks |
+| Qdrant | Historically reported running and ready | REST and gRPC were reported as loopback-only; no public port was reported open |
+| Neo4j | Historically reported running and ready | HTTP and Bolt were reported as loopback-only; no public port was reported open |
+| Access factory | Historically reported working | Separate SSH keys for `mariana-approver`, `mariana-access-admin`, `mariana-infra-admin`, and `mariana-codex` were reported as verified |
+| Grants | Historically reported closed after verification | The note reported that no active grant remained after the checks |
 
 The note recorded healthy Qdrant and Neo4j wrapper summaries without retaining
 their command output. They are historical context only.
