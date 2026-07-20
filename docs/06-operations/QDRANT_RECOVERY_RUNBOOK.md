@@ -29,10 +29,12 @@ and SDK compatibility before changing it.
 ## Live Rehearsal
 
 The repository includes opt-in integration tests that create and delete real
-Qdrant collections. They never read a key from a command argument: supply the
-loopback endpoint and development key through the environment. The second test
-also needs an isolated disposable PostgreSQL database through
-`FORJA_TEST_DATABASE_URL`.
+Qdrant collections. Public CI runs the first lifecycle test against the
+digest-pinned Sprint 09 image and records the result in
+[`docs/evidence/sprint-09/ci-receipt.md`](../evidence/sprint-09/ci-receipt.md).
+The tests never read a key from a command argument: supply the loopback endpoint
+and development key through the environment. The second test also needs an
+isolated disposable PostgreSQL database through `FORJA_TEST_DATABASE_URL`.
 
 ```bash
 export FORJA_QDRANT_LIVE=1
@@ -77,7 +79,8 @@ normal secret-management boundary; do not use this development command there.
 8. Only after verification, use `CutoverQdrantCollection` to direct the
    serving alias to the rebuilt physical collection. It verifies the green
    physical contract, records the prior alias observation, performs one atomic
-   Qdrant alias update, and reads the alias back. Preserve the previous
+   Qdrant alias transaction containing delete and create actions when replacing
+   an existing target, and reads the alias back. Preserve the previous
    collection during the observation window.
 9. Only after the alias read-back succeeds, call
    `ActivateRetrievalGeneration` for the matching registered PostgreSQL

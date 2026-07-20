@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
+  "basis_commit": "8602b2175be98ea4a8cc68ccf2b7f4804378c31f",
   "tests": [
     {
       "name": "complete local quality-gate component set",
@@ -17,7 +17,7 @@
     {
       "name": "public exact-basis CI",
       "result": "passed",
-      "summary": "Public GitHub Actions run 29719449256 on basis commit 8cdb2bb53966b52a8480e09445caf37e89f8e2b8 passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
+      "summary": "Public GitHub Actions run 29722787449 on basis commit 8602b2175be98ea4a8cc68ccf2b7f4804378c31f passed repository validation, PostgreSQL durability, the pinned live-Qdrant lifecycle, and the clean-host observability rehearsal."
     },
     {
       "name": "PostgreSQL retrieval integration suite",
@@ -30,10 +30,10 @@
       "summary": "Sprint 08-to-07, Sprint 07-to-06, and Sprint 05-to-04 binary compatibility rehearsals dynamically rolled a disposable PostgreSQL 18.4 schema from migration 009 to each historical target and passed."
     },
     {
-      "name": "Qdrant lifecycle test coverage",
+      "name": "live Qdrant lifecycle",
       "result": "passed",
-      "summary": "Unit, protocol, and opt-in integration test sources cover physical collection creation, payload indexes, dense and sparse query paths, upsert, deletion, blue-green alias cutover, guarded rollback, derived-store deletion, canonical reset, and replay. No uncommitted live execution is claimed as closure evidence."
+      "summary": "Public CI ran the integration lifecycle against digest-pinned Qdrant v1.18.2: physical collection creation, first alias creation, atomic delete-and-create replacement, blue-green cutover, readback, guarded rollback, dense and sparse query paths, deletion, and cleanup all passed."
     }
   ],
-  "recorded_at": "2026-07-20T05:41:35Z"
+  "recorded_at": "2026-07-20T06:59:12Z"
 }

@@ -137,10 +137,11 @@ documentation evidence.
   rollback. PostgreSQL records registration, activation, draining, and safe
   retirement of generations.
 - [x] Implement automated Qdrant blue-green build verification, atomic alias
-  switch, observation, and rollback coverage. The opt-in integration test
-  creates two physical Qdrant generations, verifies both alias targets,
-  rolls back with compare-before-switch protection, and deletes its temporary
-  state.
+  switch, observation, and rollback coverage. Public exact-basis CI runs the
+  integration test against digest-pinned Qdrant v1.18.2: it creates two
+  physical generations, verifies first alias creation and atomic
+  delete-and-create replacement, verifies both targets, rolls back with
+  compare-before-switch protection, and deletes its temporary state.
 
 ### 4. Governed hybrid retrieval
 
@@ -290,9 +291,10 @@ It cannot authorize Sprint 10.
   Sprint 09 makes no provider-execution claim without a committed receipt.
 - The repository contains opt-in PostgreSQL and Qdrant integration drills for
   blue-green cutover, alias rollback, deletion, canonical reset, and replay.
-  Public CI executes PostgreSQL durability; Qdrant lifecycle remains test-source
-  coverage only for Sprint 09 because no immutable live execution receipt is
-  committed.
+  Public CI run `29722787449` on basis commit `8602b217` executes PostgreSQL
+  durability and the digest-pinned live Qdrant collection, query, atomic alias
+  replacement, rollback, deletion, and cleanup lifecycle. Deployment-host
+  replay and production activation remain Sprint 10 concerns.
 - The remaining live evidence must use a deployment workload identity and the
   access-controlled private evaluation boundary, not copied runtime
   credentials. Those results are required by Sprint 10 before production or
