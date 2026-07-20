@@ -2,12 +2,12 @@
   "evidence_version": "1.0",
   "sprint_id": "10",
   "status": "partial_pass",
-  "basis_commit": "19d183fb5b86e71ce78160f9a1728b50ff87d988",
+  "basis_commit": "0473b2d2ee8a6a324bb217ca51dbaaa24283d398",
   "tests": [
     {
       "name": "local repository quality gate",
       "result": "passed",
-      "summary": "make validate passed on the public branch after adding the Sprint 10 closure promoter. It covered npm dependency installation, Go module verification, go vet, Go unit tests, go test -race, reproducible linux/amd64 and linux/arm64 builds, kernel smoke, MCP smoke, worker smoke, alpha test, 115 Python tests, and repository validation."
+      "summary": "make validate passed on the public branch after adding the Sprint 10 closure promoter. It covered npm dependency installation, Go module verification, go vet, Go unit tests, go test -race, reproducible linux/amd64 and linux/arm64 builds, kernel smoke, MCP smoke, worker smoke, alpha test, 118 Python tests, and repository validation."
     },
     {
       "name": "Sprint 10 Python evidence tooling",
@@ -30,5 +30,5 @@
       "summary": "The known Radeon instance refused SSH on 36.150.116.206:31200, so no real runtime receipt, real model benchmark, real embedding benchmark, or instance-destruction recovery evidence is claimed yet."
     }
   ],
-  "recorded_at": "2026-07-20T19:17:51Z"
+  "recorded_at": "2026-07-20T19:22:54Z"
 }

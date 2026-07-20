@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "10",
   "status": "partial_pass",
-  "basis_commit": "19d183fb5b86e71ce78160f9a1728b50ff87d988",
+  "basis_commit": "0473b2d2ee8a6a324bb217ca51dbaaa24283d398",
   "validation": [
     {
       "gate": "data spine implementation",
@@ -30,5 +30,5 @@
       "summary": "The close-receipt promoter is fail-closed and rejects missing rollback, missing real Radeon gates, pre-authorized candidates, and review artifacts outside the Sprint 10 review folder."
     }
   ],
-  "recorded_at": "2026-07-20T19:17:51Z"
+  "recorded_at": "2026-07-20T19:22:54Z"
 }
