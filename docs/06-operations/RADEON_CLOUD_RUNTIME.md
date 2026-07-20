@@ -145,6 +145,10 @@ When the Radeon instance is ready and the local model and embedding endpoints
 are already serving on loopback, run the whole evidence sequence with one
 command:
 
+Use the endpoint preparation checklist in
+[`RADEON_ENDPOINT_BOOTSTRAP.md`](RADEON_ENDPOINT_BOOTSTRAP.md) before running
+the evidence sequence.
+
 ```bash
 python3 scripts/run_radeon_sprint10_evidence.py \
   --evidence-dir /workspace/forja-alpha-sprint10-evidence \
