@@ -208,6 +208,31 @@ This registry authorizes candidate normalizations; it still does not select
 periods, resolve amendments, derive quarterly values from YTD facts, or create
 `alpha_metric_observations`.
 
+## Initial Metric Observation Seed
+
+Mapped numeric Company Facts rows can be promoted into reported metric
+observations only after identity, submissions, raw Company Facts, and metric
+mappings have been seeded:
+
+```bash
+go run ./cmd/forja-alpha seed-metric-observations \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --company-facts-json /secure/forja/sec/companyfacts/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-metric-observations-nvda.sql
+```
+
+The command selects only numeric USD raw facts whose concept IDs match reviewed
+metric mappings. Each observation keeps the source fact, filing, issuer,
+period end, value, unit, currency, and a lineage object that states the
+selection remains `mapped_raw_fact_only_no_amendment_or_ytd_resolution`.
+
+This is intentionally a first-pass reported observation layer. It does not
+deduplicate multiple reported candidates, resolve amendments, infer quarterly
+values from YTD rows, or decide issuer-specific custom extensions.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must
