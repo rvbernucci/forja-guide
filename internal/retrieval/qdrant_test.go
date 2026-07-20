@@ -109,6 +109,19 @@ type recordingQdrantBlueGreenClient struct {
 	recordingQdrantAliasClient
 }
 
+type recordingAliasMutationGuard struct {
+	calls int
+	err   error
+}
+
+func (guard *recordingAliasMutationGuard) WithRetrievalAliasMutation(ctx context.Context, _ string, operation func(context.Context) error) error {
+	guard.calls++
+	if guard.err != nil {
+		return guard.err
+	}
+	return operation(ctx)
+}
+
 func (client *recordingQdrantUpserter) Upsert(_ context.Context, request *qdrant.UpsertPoints) (*qdrant.UpdateResult, error) {
 	client.request = request
 	return &qdrant.UpdateResult{}, client.err
@@ -358,14 +371,14 @@ func collectionInfo(plan QdrantCollectionPlan) *qdrant.CollectionInfo {
 func TestSwitchQdrantAliasCreatesAnAbsentAlias(t *testing.T) {
 	client := &recordingQdrantAliasClient{}
 	expected := AliasObservation{AliasName: "forja_retrieval"}
-	if err := SwitchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green", expected); err != nil {
+	if err := switchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green", expected); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.actions) != 1 || client.actions[0].GetCreateAlias().GetAliasName() != "forja_retrieval" || client.actions[0].GetCreateAlias().GetCollectionName() != "forja_retrieval_green" {
 		t.Fatalf("alias actions=%#v", client.actions)
 	}
 	client.err = errors.New("unavailable")
-	if err := SwitchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_blue", AliasObservation{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_green", Exists: true}); err == nil {
+	if err := switchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_blue", AliasObservation{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_green", Exists: true}); err == nil {
 		t.Fatal("alias failure was accepted")
 	}
 }
@@ -373,7 +386,7 @@ func TestSwitchQdrantAliasCreatesAnAbsentAlias(t *testing.T) {
 func TestSwitchQdrantAliasReplacesAnExistingAliasAtomically(t *testing.T) {
 	expected := AliasObservation{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_blue", Exists: true}
 	client := &recordingQdrantAliasClient{aliases: []*qdrant.AliasDescription{{AliasName: expected.AliasName, CollectionName: expected.CollectionName}}}
-	if err := SwitchQdrantAlias(context.Background(), client, expected.AliasName, "forja_retrieval_green", expected); err != nil {
+	if err := switchQdrantAlias(context.Background(), client, expected.AliasName, "forja_retrieval_green", expected); err != nil {
 		t.Fatal(err)
 	}
 	if len(client.actions) != 2 || client.actions[0].GetDeleteAlias().GetAliasName() != expected.AliasName || client.actions[1].GetCreateAlias().GetCollectionName() != "forja_retrieval_green" {
@@ -387,7 +400,7 @@ func TestSwitchQdrantAliasReplacesAnExistingAliasAtomically(t *testing.T) {
 func TestSwitchQdrantAliasRejectsStaleExpectation(t *testing.T) {
 	client := &recordingQdrantAliasClient{aliases: []*qdrant.AliasDescription{{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_newer"}}}
 	expected := AliasObservation{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_blue", Exists: true}
-	if err := SwitchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green", expected); err == nil {
+	if err := switchQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green", expected); err == nil {
 		t.Fatal("stale alias expectation was accepted")
 	}
 	if len(client.actions) != 0 {
@@ -425,7 +438,8 @@ func TestCutoverAndRollbackVerifyTheObservedAliasTarget(t *testing.T) {
 		recordingQdrantCollectionClient: recordingQdrantCollectionClient{exists: true, info: collectionInfo(plan)},
 		recordingQdrantAliasClient:      recordingQdrantAliasClient{aliases: []*qdrant.AliasDescription{{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_blue"}}},
 	}
-	previous, err := CutoverQdrantCollection(context.Background(), client, "forja_retrieval", plan)
+	guard := &recordingAliasMutationGuard{}
+	previous, err := CutoverQdrantCollection(context.Background(), guard, client, "forja_retrieval", plan)
 	if err != nil {
 		t.Fatalf("CutoverQdrantCollection() error = %v", err)
 	}
@@ -435,11 +449,14 @@ func TestCutoverAndRollbackVerifyTheObservedAliasTarget(t *testing.T) {
 	if _, err := VerifyQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_green"); err != nil {
 		t.Fatal(err)
 	}
-	if err := RollbackQdrantCollection(context.Background(), client, "forja_retrieval", "forja_retrieval_green", previous.CollectionName); err != nil {
+	if err := RollbackQdrantCollection(context.Background(), guard, client, "forja_retrieval", "forja_retrieval_green", previous.CollectionName); err != nil {
 		t.Fatalf("RollbackQdrantCollection() error = %v", err)
 	}
 	if _, err := VerifyQdrantAlias(context.Background(), client, "forja_retrieval", "forja_retrieval_blue"); err != nil {
 		t.Fatal(err)
+	}
+	if guard.calls != 2 {
+		t.Fatalf("guard calls=%d, want 2", guard.calls)
 	}
 }
 
@@ -447,11 +464,29 @@ func TestRollbackQdrantCollectionCannotOverwriteNewerAliasTarget(t *testing.T) {
 	client := &recordingQdrantBlueGreenClient{
 		recordingQdrantAliasClient: recordingQdrantAliasClient{aliases: []*qdrant.AliasDescription{{AliasName: "forja_retrieval", CollectionName: "forja_retrieval_newer"}}},
 	}
-	if err := RollbackQdrantCollection(context.Background(), client, "forja_retrieval", "forja_retrieval_green", "forja_retrieval_blue"); err == nil {
+	if err := RollbackQdrantCollection(context.Background(), &recordingAliasMutationGuard{}, client, "forja_retrieval", "forja_retrieval_green", "forja_retrieval_blue"); err == nil {
 		t.Fatal("rollback overwrote a newer alias target")
 	}
 	if len(client.actions) != 0 {
 		t.Fatalf("unexpected rollback write=%#v", client.actions)
+	}
+}
+
+func TestCutoverRequiresDistributedAliasMutationGuard(t *testing.T) {
+	plan, err := BuildQdrantCollectionPlan("forja_retrieval_green", 3, contracts.RetrievalGenerationID("fixture", "v1", 3, SparseEncoderVersion))
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &recordingQdrantBlueGreenClient{recordingQdrantCollectionClient: recordingQdrantCollectionClient{exists: true, info: collectionInfo(plan)}}
+	if _, err := CutoverQdrantCollection(context.Background(), nil, client, "forja_retrieval", plan); err == nil {
+		t.Fatal("cutover accepted no distributed alias mutation guard")
+	}
+	guard := &recordingAliasMutationGuard{err: errors.New("lock unavailable")}
+	if _, err := CutoverQdrantCollection(context.Background(), guard, client, "forja_retrieval", plan); err == nil {
+		t.Fatal("cutover continued after guard acquisition failed")
+	}
+	if len(client.actions) != 0 {
+		t.Fatalf("alias changed without guard: %#v", client.actions)
 	}
 }
 

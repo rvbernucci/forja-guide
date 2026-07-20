@@ -17,6 +17,7 @@ import (
 // unit tests remain the default for contributors without Qdrant available.
 func TestLiveQdrantBlueGreenQueryAndDelete(t *testing.T) {
 	client := liveQdrantClient(t)
+	guard := &recordingAliasMutationGuard{}
 	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Second)
 	defer cancel()
 	suffix := strconv.FormatInt(time.Now().UnixNano(), 36)
@@ -36,7 +37,7 @@ func TestLiveQdrantBlueGreenQueryAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous, err := CutoverQdrantCollection(ctx, client, alias, bluePlan)
+	previous, err := CutoverQdrantCollection(ctx, guard, client, alias, bluePlan)
 	if err != nil || previous.Exists {
 		t.Fatalf("blue cutover previous=%#v err=%v", previous, err)
 	}
@@ -45,11 +46,11 @@ func TestLiveQdrantBlueGreenQueryAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	previous, err = CutoverQdrantCollection(ctx, client, alias, greenPlan)
+	previous, err = CutoverQdrantCollection(ctx, guard, client, alias, greenPlan)
 	if err != nil || !previous.Exists || previous.CollectionName != blueCollection {
 		t.Fatalf("green cutover previous=%#v err=%v", previous, err)
 	}
-	if err := RollbackQdrantCollection(ctx, client, alias, greenCollection, blueCollection); err != nil {
+	if err := RollbackQdrantCollection(ctx, guard, client, alias, greenCollection, blueCollection); err != nil {
 		t.Fatal(err)
 	}
 

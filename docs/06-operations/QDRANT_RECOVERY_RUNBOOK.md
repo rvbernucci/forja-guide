@@ -21,6 +21,11 @@ artifacts.
 - Production endpoints are outside this profile. They require TLS and an API
   key through `QdrantEndpoint.ClientConfig`; no secret belongs in an artifact,
   card, CLI argument, log, or committed environment file.
+- Every cutover and rollback must pass the canonical PostgreSQL store as its
+  `QdrantAliasMutationGuard`. This holds the tenant/repository/alias advisory
+  lock from observation through Qdrant update and readback across all governed
+  operator processes. Direct alias changes in Qdrant bypass this safety boundary
+  and are prohibited while Forja manages the collection.
 
 The pinned `qdrant/qdrant:v1.18.2-unprivileged` image is the Sprint 09 local
 compatibility target. Review the official [Qdrant upgrade guidance](https://qdrant.tech/documentation/operations/upgrades/)
@@ -77,19 +82,21 @@ normal secret-management boundary; do not use this development command there.
 7. Compare the durable checkpoint with the maximum published outbox prefix and
    verify sampled point IDs against active PostgreSQL symbol/source hashes.
 8. Only after verification, use `CutoverQdrantCollection` to direct the
-   serving alias to the rebuilt physical collection. It verifies the green
-   physical contract, records the prior alias observation, performs one atomic
+   serving alias to the rebuilt physical collection, passing the canonical
+   PostgreSQL store as the required mutation guard. It acquires the scoped
+   advisory lock, records the prior alias observation, performs one atomic
    Qdrant alias transaction containing delete and create actions when replacing
-   an existing target, and reads the alias back. Preserve the previous
-   collection during the observation window.
+   an existing target, reads the alias back, and only then releases the lock.
+   Preserve the previous collection during the observation window.
 9. Only after the alias read-back succeeds, call
    `ActivateRetrievalGeneration` for the matching registered PostgreSQL
    generation. It drains the prior active generation transactionally. Do not
    retire the prior generation while it remains the guarded rollback target.
 10. If the observed serving behavior requires rollback, call
-   `RollbackQdrantCollection` with the recorded prior target. It first proves
-   the alias still points to the expected green collection; it refuses to
-   overwrite a newer operator cutover. Read the alias back after rollback,
+   `RollbackQdrantCollection` with the canonical PostgreSQL mutation guard and
+   the recorded prior target. Under the same scoped lock, it first proves the
+   alias still points to the expected green collection; it refuses to overwrite
+   a newer governed operator cutover. Read the alias back after rollback,
    reactivate the recorded prior PostgreSQL generation, and record the result
    in the operator ticket.
 
