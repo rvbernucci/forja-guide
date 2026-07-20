@@ -172,14 +172,18 @@ go run ./cmd/forja-alpha seed-company-facts \
 ```
 
 The command validates the CIK, records the snapshot SHA-256 and source object,
-stores an ingestion receipt, and writes a sanitized coverage summary into
-source-object metadata: taxonomy count, concept count, unit count, fact count,
-forms, fiscal years, currencies, and canonical metric hints.
+stores an ingestion receipt, writes a sanitized coverage summary into
+source-object metadata, and persists raw XBRL-like rows into
+`alpha_taxonomies`, `alpha_xbrl_concepts`, `alpha_xbrl_contexts`, and
+`alpha_xbrl_facts`. Coverage metadata includes taxonomy count, concept count,
+unit count, fact count, forms, fiscal years, currencies, and canonical metric
+hints.
 
-This step deliberately stops before choosing authoritative accounting values.
-Metric mapping, context construction, dimensional validation, unit/scale
-normalization, amendment priority, and `alpha_metric_observations` remain
-reviewed Sprint 10 work.
+This step deliberately stops before choosing authoritative accounting metrics.
+The raw fact rows preserve lexical and numeric values, units, period end,
+filing accession, concept identity, context hash, and source-object lineage.
+Metric mapping, dimensional validation, unit/scale normalization, amendment
+priority, and `alpha_metric_observations` remain reviewed Sprint 10 work.
 
 ## Temporal Contract
 

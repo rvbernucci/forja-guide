@@ -135,6 +135,8 @@ filing and macro timelines. It does not yet generate an analytical memo.
 - [x] Add a local SEC Company Facts snapshot adapter that validates CIK,
   records source-object lineage, and publishes sanitized coverage metadata
   before metric mapping.
+- [x] Persist initial Company Facts raw rows into taxonomy, concept, context,
+  and fact tables with deterministic IDs and source-object lineage.
 - [ ] Store accounting values as exact decimals with explicit units, scales,
   currencies, periods, fiscal frames, dimensions, and filing identities.
 - [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,

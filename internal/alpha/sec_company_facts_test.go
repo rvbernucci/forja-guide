@@ -32,6 +32,17 @@ func TestParseSECCompanyFactsSnapshotSummarizesCoverage(t *testing.T) {
 	if coverage.TaxonomyCount != 1 || coverage.ConceptCount != 3 || coverage.UnitCount != 3 || coverage.FactCount != 4 {
 		t.Fatalf("unexpected coverage: %#v", coverage)
 	}
+	if len(snapshot.RawFacts) != 4 {
+		t.Fatalf("raw facts = %d, want 4", len(snapshot.RawFacts))
+	}
+	for _, fact := range snapshot.RawFacts {
+		if fact.FactID == "" || fact.ConceptID == "" || fact.ContextID == "" || fact.FilingID == "" {
+			t.Fatalf("raw fact missing deterministic IDs: %#v", fact)
+		}
+		if fact.LexicalValue == "" {
+			t.Fatalf("raw fact missing lexical value: %#v", fact)
+		}
+	}
 	if strings.Join(coverage.Forms, ",") != "10-K,10-Q" {
 		t.Fatalf("forms = %#v", coverage.Forms)
 	}
@@ -90,10 +101,16 @@ func TestWriteSECCompanyFactsSeedSQLRecordsSourceObjectAndCoverage(t *testing.T)
 		"COMMIT;",
 		"INSERT INTO forja.alpha_ingestion_runs",
 		"INSERT INTO forja.alpha_source_objects",
+		"INSERT INTO forja.alpha_taxonomies",
+		"INSERT INTO forja.alpha_xbrl_concepts",
+		"INSERT INTO forja.alpha_xbrl_contexts",
+		"INSERT INTO forja.alpha_xbrl_facts",
 		"alpha-sec-company-facts-snapshot-v1",
 		"alpha/sec/companyfacts/CIK0001045810/" + snapshot.ContentSHA256 + ".json",
 		"SEC Company Facts is a structured fact snapshot",
 		"canonical_hints",
+		"60922000000",
+		"alpha_filing_",
 	}
 	for _, fragment := range required {
 		if !strings.Contains(sql, fragment) {
@@ -102,6 +119,9 @@ func TestWriteSECCompanyFactsSeedSQLRecordsSourceObjectAndCoverage(t *testing.T)
 	}
 	if strings.Count(sql, "INSERT INTO forja.alpha_source_objects") != 1 {
 		t.Fatalf("source object insert count mismatch:\n%s", sql)
+	}
+	if strings.Count(sql, "INSERT INTO forja.alpha_xbrl_facts") != 4 {
+		t.Fatalf("raw fact insert count mismatch:\n%s", sql)
 	}
 }
 
