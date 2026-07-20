@@ -41,6 +41,10 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
         self.assertFalse(report["next_sprint_authorized"])
         self.assertEqual(4, len(report["real_radeon_gates"]))
         self.assertTrue(all(not gate["complete"] for gate in report["real_radeon_gates"]))
+        self.assertEqual(
+            "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
+            report["next_commands"][0],
+        )
         self.assertIn(
             "python3 scripts/check_radeon_sprint10_private_inputs.py --snapshot-root /secure/forja --model-candidates /secure/forja/radeon-model-candidates.json ...",
             report["next_commands"],

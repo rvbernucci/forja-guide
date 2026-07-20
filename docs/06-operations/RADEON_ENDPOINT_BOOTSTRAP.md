@@ -86,6 +86,20 @@ The probe reports whether an SSH banner is visible, whether the TCP port is
 refused, or whether the instance accepted TCP but did not send a banner before
 the timeout.
 
+When the instance is still booting, wait for a real SSH banner before copying
+files or starting evidence commands:
+
+```bash
+python3 scripts/wait_radeon_ssh.py <host> <port> \
+  --timeout-seconds 180 \
+  --interval-seconds 10 \
+  --probe-timeout-seconds 8 \
+  --output /workspace/forja-radeon-ssh-wait.json
+```
+
+`connected_no_banner` means the TCP proxy accepted the connection but SSH is
+not ready yet. Treat `ready` as the only signal that SSH work may proceed.
+
 ## Private Candidate File
 
 Create `/secure/forja/radeon-model-candidates.json` with at least two local
