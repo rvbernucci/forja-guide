@@ -42,28 +42,40 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
         self.assertEqual(4, len(report["real_radeon_gates"]))
         self.assertTrue(all(not gate["complete"] for gate in report["real_radeon_gates"]))
         self.assertEqual(
-            "python3 scripts/render_radeon_sprint10_command_sheet.py --host <host> --port <port> --output /tmp/sprint10-radeon-command-sheet.md",
+            "python3 scripts/prepare_radeon_sprint10_handoff_packet.py --host <host> --port <port> --output-dir /tmp/forja-radeon-sprint10-handoff",
             report["next_commands"][0],
         )
         self.assertEqual(
-            "python3 scripts/preflight_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10 --wait-output /tmp/forja-radeon-ssh-wait.json --recovery-output /tmp/forja-radeon-ssh-recovery.md --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-preflight.json",
+            "python3 scripts/render_radeon_sprint10_command_sheet.py --host <host> --port <port> --output /tmp/sprint10-radeon-command-sheet.md",
             report["next_commands"][1],
         )
         self.assertEqual(
-            "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
+            "python3 scripts/preflight_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10 --wait-output /tmp/forja-radeon-ssh-wait.json --recovery-output /tmp/forja-radeon-ssh-recovery.md --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-preflight.json",
             report["next_commands"][2],
         )
         self.assertEqual(
-            "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-recovery.md",
+            "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
             report["next_commands"][3],
         )
         self.assertEqual(
-            "python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-bootstrap.sh",
+            "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-recovery.md",
             report["next_commands"][4],
         )
         self.assertEqual(
-            "python3 scripts/render_radeon_sprint10_web_terminal_sheet.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-evidence.md",
+            "python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-bootstrap.sh",
             report["next_commands"][5],
+        )
+        self.assertEqual(
+            "python3 scripts/render_radeon_sprint10_web_terminal_sheet.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-evidence.md",
+            report["next_commands"][6],
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/prepare_radeon_sprint10_handoff_packet.py --host <host> --port <port> --output-dir /tmp/forja-radeon-sprint10-handoff"
+            ),
+            report["next_commands"].index(
+                "python3 scripts/render_radeon_sprint10_command_sheet.py --host <host> --port <port> --output /tmp/sprint10-radeon-command-sheet.md"
+            ),
         )
         self.assertLess(
             report["next_commands"].index(

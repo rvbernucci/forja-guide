@@ -37,14 +37,21 @@ Before spending time on the instance, render a public-safe command sheet for
 the exact host and port:
 
 ```bash
+python3 scripts/prepare_radeon_sprint10_handoff_packet.py \
+  --host <host> \
+  --port <port> \
+  --output-dir /tmp/forja-radeon-sprint10-handoff
+
 python3 scripts/render_radeon_sprint10_command_sheet.py \
   --host <host> \
   --port <port> \
   --output /tmp/sprint10-radeon-command-sheet.md
 ```
 
-The command sheet is an operator aid only. It contains no credentials or
-private receipts and does not close Sprint 10.
+The handoff packet contains the command sheet, SSH recovery sheet,
+web-terminal bootstrap, web-terminal evidence sheet, and a manifest with file
+hashes. These are operator aids only. They contain no credentials or private
+receipts and do not close Sprint 10.
 
 To generate private templates on the Radeon instance:
 
