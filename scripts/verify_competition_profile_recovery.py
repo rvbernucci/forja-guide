@@ -18,6 +18,7 @@ EXPECTED_REPORTS = {
     "runtime_readiness": "radeon_runtime_readiness",
     "source_restore": "forja_alpha_snapshot_restore_verification",
     "model_benchmark": "radeon_model_candidate_benchmark",
+    "embedding_benchmark": "radeon_embedding_benchmark",
 }
 
 
@@ -130,12 +131,43 @@ def verify_model_benchmark(payload: dict[str, Any], minimum_candidates: int) -> 
     return errors
 
 
+def verify_embedding_benchmark(payload: dict[str, Any]) -> list[str]:
+    errors: list[str] = []
+    if payload.get("report_kind") != EXPECTED_REPORTS["embedding_benchmark"]:
+        errors.append("embedding_benchmark_kind")
+    if payload.get("verified") is not True:
+        errors.append("embedding_benchmark_not_verified")
+    privacy = payload.get("privacy")
+    if not isinstance(privacy, dict):
+        errors.append("embedding_benchmark_privacy")
+    else:
+        if privacy.get("stores_vectors") is not False:
+            errors.append("embedding_benchmark_vector_storage")
+        if privacy.get("requires_loopback_endpoint") is not True:
+            errors.append("embedding_benchmark_loopback_policy")
+    endpoint = payload.get("endpoint")
+    if not isinstance(endpoint, dict) or endpoint.get("loopback") is not True:
+        errors.append("embedding_benchmark_endpoint_loopback")
+    summary = payload.get("summary")
+    if not isinstance(summary, dict):
+        errors.append("embedding_benchmark_summary")
+    else:
+        if summary.get("failed_count") != 0:
+            errors.append("embedding_benchmark_failures")
+        if summary.get("consistent_dimensions") is not True:
+            errors.append("embedding_benchmark_dimensions")
+        if not isinstance(summary.get("embedding_dimensions"), int) or summary["embedding_dimensions"] <= 0:
+            errors.append("embedding_benchmark_dimension_value")
+    return errors
+
+
 def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     evidence_paths = {
         "runtime_receipt": args.runtime_receipt,
         "runtime_readiness": args.runtime_readiness,
         "source_restore": args.source_restore,
         "model_benchmark": args.model_benchmark,
+        "embedding_benchmark": args.embedding_benchmark,
     }
     loaded = {name: load_json(path) for name, path in evidence_paths.items()}
     failures = {
@@ -143,6 +175,7 @@ def build_report(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         "runtime_readiness": verify_runtime_readiness(loaded["runtime_readiness"]),
         "source_restore": verify_source_restore(loaded["source_restore"]),
         "model_benchmark": verify_model_benchmark(loaded["model_benchmark"], args.minimum_model_candidates),
+        "embedding_benchmark": verify_embedding_benchmark(loaded["embedding_benchmark"]),
     }
     git_commit = loaded["runtime_receipt"].get("git", {}).get("commit")
     if args.expected_commit and git_commit != args.expected_commit:
@@ -175,6 +208,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--runtime-readiness", type=Path, required=True)
     parser.add_argument("--source-restore", type=Path, required=True)
     parser.add_argument("--model-benchmark", type=Path, required=True)
+    parser.add_argument("--embedding-benchmark", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--expected-commit", help="Expected Git commit recorded by the runtime receipt.")
     parser.add_argument("--minimum-model-candidates", type=int, default=2)

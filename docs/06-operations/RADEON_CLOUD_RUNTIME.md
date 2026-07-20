@@ -97,6 +97,23 @@ returns it. It does not store response bodies. Real model selection must run on
 a private tuning task set outside Git and then be confirmed on an untouched
 holdout before Sprint 10 can select an instruction model for the demo profile.
 
+## Local Embedding Benchmark
+
+Use the public embedding input set only as a contract smoke test:
+
+```bash
+python3 scripts/benchmark_radeon_embedding.py \
+  --input-set internal/alpha/testdata/radeon_embedding_public_v1.json \
+  --base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+  --model "$FORJA_ALPHA_EMBEDDING_MODEL" \
+  --output /workspace/forja-radeon-embedding-benchmark.json
+```
+
+The benchmark rejects non-loopback endpoints and records only input hashes,
+embedding hashes, dimensions, vector norms, and latency. It never stores input
+text or vectors. A valid report requires every input to produce finite vectors
+with consistent dimensions.
+
 ## Competition Profile Recovery Check
 
 After destroying and recreating the Radeon instance from the committed source
@@ -108,6 +125,7 @@ python3 scripts/verify_competition_profile_recovery.py \
   --runtime-readiness /workspace/forja-radeon-runtime-readiness.json \
   --source-restore /workspace/forja-alpha-source-restore-report.json \
   --model-benchmark /workspace/forja-radeon-model-candidate-report.json \
+  --embedding-benchmark /workspace/forja-radeon-embedding-benchmark.json \
   --expected-commit "$(git rev-parse HEAD)" \
   --output /workspace/forja-alpha-competition-profile-recovery.json
 ```
@@ -116,9 +134,10 @@ This report is the Sprint 10 bridge between infrastructure and product
 readiness. It fails unless the runtime receipt records Radeon/Git evidence,
 the readiness report proves loopback-only zero remote core inference, the
 source snapshot restore report verifies every required data family, and at
-least two local model candidates complete the frozen benchmark without
-response-body storage. It is still evidence, not a Sprint closure by itself:
-raw reports remain outside Git until reviewed and summarized.
+least two local model candidates plus one local embedding endpoint complete
+their frozen benchmarks without response-body, input-text, or vector storage.
+It is still evidence, not a Sprint closure by itself: raw reports remain
+outside Git until reviewed and summarized.
 
 ## Runtime Boundary
 

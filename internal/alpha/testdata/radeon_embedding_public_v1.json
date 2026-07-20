@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "input_set_id": "radeon_embedding_public_v1",
+  "split": "public",
+  "inputs": [
+    {
+      "input_id": "alpha_embed_filing_001",
+      "category": "filing_section",
+      "text": "NVIDIA reports revenue, gross margin, operating income, and cash flow in periodic SEC filings."
+    },
+    {
+      "input_id": "alpha_embed_policy_001",
+      "category": "accounting_policy",
+      "text": "Revenue recognition policies and remaining performance obligations must be cited with filing period and accession."
+    },
+    {
+      "input_id": "alpha_embed_risk_001",
+      "category": "risk_factor",
+      "text": "Interest-rate sensitivity is a historical estimate and must not be presented as a causal forecast."
+    },
+    {
+      "input_id": "alpha_embed_method_001",
+      "category": "methodology",
+      "text": "A point-in-time query must exclude source observations whose available_at timestamp is after the research as_of time."
+    }
+  ]
+}

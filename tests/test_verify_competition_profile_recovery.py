@@ -60,6 +60,29 @@ class CompetitionProfileRecoveryTests(unittest.TestCase):
             report["evidence"]["model_benchmark"]["errors"],
         )
 
+    def test_embedding_benchmark_failure_is_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            paths = write_evidence_bundle(root)
+            embedding = json.loads(paths["embedding_benchmark"].read_text(encoding="utf-8"))
+            embedding["verified"] = False
+            embedding["summary"]["consistent_dimensions"] = False
+            paths["embedding_benchmark"].write_text(json.dumps(embedding), encoding="utf-8")
+            args = namespace(root, paths)
+
+            report, exit_code = RECOVERY.build_report(args)
+
+        self.assertEqual(2, exit_code)
+        self.assertFalse(report["verified"])
+        self.assertIn(
+            "embedding_benchmark_not_verified",
+            report["evidence"]["embedding_benchmark"]["errors"],
+        )
+        self.assertIn(
+            "embedding_benchmark_dimensions",
+            report["evidence"]["embedding_benchmark"]["errors"],
+        )
+
 
 def namespace(root: Path, paths: dict[str, Path]) -> object:
     return type(
@@ -70,6 +93,7 @@ def namespace(root: Path, paths: dict[str, Path]) -> object:
             "runtime_readiness": paths["runtime_readiness"],
             "source_restore": paths["source_restore"],
             "model_benchmark": paths["model_benchmark"],
+            "embedding_benchmark": paths["embedding_benchmark"],
             "output": root / "recovery.json",
             "expected_commit": "a" * 40,
             "minimum_model_candidates": 2,
@@ -84,6 +108,7 @@ def write_evidence_bundle(root: Path) -> dict[str, Path]:
         "runtime_readiness": root / "runtime-readiness.json",
         "source_restore": root / "source-restore.json",
         "model_benchmark": root / "model-benchmark.json",
+        "embedding_benchmark": root / "embedding-benchmark.json",
     }
     write_json(
         paths["runtime_receipt"],
@@ -133,6 +158,23 @@ def write_evidence_bundle(root: Path) -> dict[str, Path]:
                 candidate("candidate-a"),
                 candidate("candidate-b"),
             ],
+        },
+    )
+    write_json(
+        paths["embedding_benchmark"],
+        {
+            "report_kind": "radeon_embedding_benchmark",
+            "verified": True,
+            "endpoint": {"loopback": True},
+            "privacy": {
+                "stores_vectors": False,
+                "requires_loopback_endpoint": True,
+            },
+            "summary": {
+                "failed_count": 0,
+                "consistent_dimensions": True,
+                "embedding_dimensions": 768,
+            },
         },
     )
     return paths

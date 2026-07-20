@@ -191,6 +191,8 @@ analytical memo.
 - [x] Add an integrated competition-profile recovery verifier that binds
   runtime receipt, readiness, source restore, and local model benchmark
   evidence.
+- [x] Add a frozen public smoke input set and sanitized benchmark harness for
+  validating a loopback local embedding endpoint on Radeon.
 - [ ] Deploy at least two open-weight instruction-model candidates locally and
   select one with a frozen task set.
 - [ ] Deploy and benchmark a local embedding model on the Radeon profile.
