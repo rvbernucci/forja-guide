@@ -45,7 +45,16 @@ python3 scripts/wait_radeon_ssh.py {host} {port} \\
 Proceed only when the report says `"ready": true`. If it returns
 `"connected_no_banner"`, `"refused"`, `"timeout"`, `"unreachable"`, or
 `"unexpected_banner"`, follow the report's `next_action` and `operator_hints`
-before attempting `ssh`, `scp`, or evidence collection.
+before attempting `ssh`, `scp`, or evidence collection. For
+`"connected_no_banner"`, render a web-terminal recovery sheet:
+
+```bash
+python3 scripts/render_radeon_ssh_recovery_sheet.py \\
+  --wait-report /tmp/forja-radeon-ssh-wait.json \\
+  --host {host} \\
+  --port {port} \\
+  --output /tmp/forja-radeon-ssh-recovery.md
+```
 
 ## 2. Prepare Repository On Radeon
 

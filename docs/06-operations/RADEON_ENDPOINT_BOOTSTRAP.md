@@ -116,6 +116,17 @@ wait report also includes `next_action` and `operator_hints`; use those hints
 to decide whether to start `sshd` from the Radeon web terminal, recreate the
 template with SSH enabled, or replace a stale host/port before copying files.
 
+For `connected_no_banner`, render a public-safe recovery sheet from the
+workstation and follow it inside the Radeon web terminal:
+
+```bash
+python3 scripts/render_radeon_ssh_recovery_sheet.py \
+  --wait-report /tmp/forja-radeon-ssh-wait.json \
+  --host <host> \
+  --port <port> \
+  --output /tmp/forja-radeon-ssh-recovery.md
+```
+
 ## Private Candidate File
 
 Create `/secure/forja/radeon-model-candidates.json` with at least two local
