@@ -5,8 +5,9 @@ implemented in migration `000010_forja_alpha_financial_data`; the Magnificent
 Seven SEC identity registry and idempotent SQL seed are implemented in
 `forja-alpha seed-identities`, including an optional versioned SEC
 `company_tickers.json` snapshot path with source-object lineage. Filing,
-Treasury, FRED/ALFRED, market-data adapters, populated snapshots,
-point-in-time views, and recovery gates remain Sprint 10 work.
+Treasury, and first FRED/ALFRED snapshot adapters now preserve source lineage
+and point-in-time clocks. Market-data adapters, populated snapshots, and
+recovery gates remain Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
 [ADR-0021](../05-decisions/ADR-0021-POINT-IN-TIME-FINANCIAL-AUTHORITY.md).
@@ -263,6 +264,33 @@ semantics. The seed records the Treasury source system, source object,
 ingestion run, series registry row, and accepted `alpha_series_observations`.
 Rows with empty or non-numeric values are counted in source metadata and do
 not become canonical observations.
+
+## FRED/ALFRED Series Snapshot Seed
+
+The first macro adapter ingests a hash-pinned local FRED/ALFRED CSV snapshot
+for the approved macro registry. The default operational series is FEDFUNDS,
+used as the initial policy-rate factor:
+
+```bash
+go run ./cmd/forja-alpha seed-fred-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --csv /secure/forja/fred/FEDFUNDS.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-fred-fedfunds.sql
+```
+
+The CSV must include a `date` column and a `value` column. FRED/ALFRED export
+columns such as `realtime_start` are treated as vintage evidence: when present,
+`realtime_start` becomes both the observation publication clock and the
+`vintage_at` value. The snapshot-level `available_at` still controls
+point-in-time eligibility inside Forja.
+
+Rows with empty, `N/A`, `.`, or non-numeric values are preserved only as
+skipped-row counts in source metadata. Accepted rows create the FRED source
+system, source object, ingestion run, series registry row, and
+`alpha_series_observations` with observed, published, available, and vintage
+clocks.
 
 ## Point-in-Time Query Views
 

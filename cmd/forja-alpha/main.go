@@ -51,6 +51,12 @@ func main() {
 		}
 		return
 	}
+	if len(os.Args) > 1 && os.Args[1] == "seed-fred-series" {
+		if err := seedFREDSeries(os.Args[2:]); err != nil {
+			log.Fatalf("forja-alpha seed-fred-series: %v", err)
+		}
+		return
+	}
 	config, err := alpha.LoadConfig()
 	if err != nil {
 		log.Fatalf("forja-alpha configuration: %v", err)
@@ -303,4 +309,38 @@ func seedTreasurySeries(arguments []string) error {
 		return err
 	}
 	return alpha.WriteTreasurySeriesSeedSQL(os.Stdout, *tenantID, *repositoryID, snapshot)
+}
+
+func seedFREDSeries(arguments []string) error {
+	flags := flag.NewFlagSet("forja-alpha seed-fred-series", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	tenantID := flags.String("tenant-id", "", "target tenant UUID")
+	repositoryID := flags.String("repository-id", "", "target repository UUID")
+	csvPath := flags.String("csv", "", "local hash-pinned FRED/ALFRED CSV snapshot")
+	availableAtRaw := flags.String("available-at", "", "snapshot availability timestamp in RFC3339 format")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	if *csvPath == "" {
+		return errors.New("--csv is required")
+	}
+	if *availableAtRaw == "" {
+		return errors.New("--available-at is required")
+	}
+	availableAt, err := time.Parse(time.RFC3339, *availableAtRaw)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(*csvPath)
+	if err != nil {
+		return err
+	}
+	snapshot, err := alpha.ParseFREDSeriesCSVSnapshot(content, alpha.DefaultFREDFedFundsSeries(), availableAt)
+	if err != nil {
+		return err
+	}
+	return alpha.WriteFREDSeriesSeedSQL(os.Stdout, *tenantID, *repositoryID, snapshot)
 }

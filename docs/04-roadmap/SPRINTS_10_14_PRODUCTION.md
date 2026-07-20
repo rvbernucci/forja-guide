@@ -170,7 +170,7 @@ analytical memo.
   with observed, published, available, and optional vintage clocks.
 - [ ] Add the first market-data snapshot adapter for adjusted prices, returns,
   corporate-action policy, source license, and availability semantics.
-- [ ] Add the first FRED/ALFRED vintage adapter for the approved macro registry.
+- [x] Add the first FRED/ALFRED vintage adapter for the approved macro registry.
 - [ ] Add object-manifest restore tests for SEC, Treasury, FRED, and market
   source snapshots.
 
