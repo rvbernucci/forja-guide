@@ -1,0 +1,23 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "09",
+  "status": "recorded",
+  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "metrics": {
+    "tracked_files_before_evidence": 463,
+    "sprint_changed_files": 104,
+    "go_files": 197,
+    "go_test_files": 82,
+    "test_and_fuzz_entry_points": 570,
+    "retrieval_test_and_fuzz_entry_points": 75,
+    "python_test_methods": 55,
+    "canonical_json_schemas": 34,
+    "postgres_migration_versions": 9,
+    "required_retrieval_baseline_policies": 4,
+    "known_reachable_vulnerabilities": 0,
+    "private_quality_evaluations_completed": 0,
+    "undocumented_blockers": 0
+  },
+  "quality_activation_state": "deferred_to_sprint_10",
+  "recorded_at": "2026-07-20T02:34:05Z"
+}

@@ -217,7 +217,7 @@ documentation evidence.
   return zero accepted canonical results.
 - [x] Run unit, race, integration, security, reproducibility, rollback, and
   full-range implementation checks recorded by the Sprint evidence package.
-- [ ] Publish a fail-closed Sprint 09 closure candidate for immutable review.
+- [x] Publish a fail-closed Sprint 09 closure candidate for immutable review.
 
 ### Closure Scope Amendment
 

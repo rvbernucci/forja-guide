@@ -1,0 +1,33 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "09",
+  "status": "passed",
+  "basis_commit": "6ee798e2331ef41598a0834d6a50fa154ca12275",
+  "strategy": "Stop new retrieval projection and query commands; preserve canonical PostgreSQL events, outbox history, per-projector deliveries, generation receipts, point receipts, artifacts, and evidence. Disable semantic retrieval or return to bounded source-backed exact behavior. If a new Qdrant generation is unhealthy, verify the expected alias target and atomically restore the last verified generation. If Qdrant is lost, recreate it from canonical sources and replay the dedicated projector. Migration 009 may downgrade only before governed retrieval history exists; otherwise rollback is a forward repair that preserves the ledger.",
+  "rollback_target": "620256d0d0744f6ecf1e1851dff83a5cf02e48e3",
+  "tests": [
+    {
+      "name": "blue-green alias rollback",
+      "result": "passed",
+      "summary": "A disposable Qdrant drill verified green, switched the stable alias, read it back, and restored the prior target only while the expected alias fence remained valid."
+    },
+    {
+      "name": "derived-store deletion and replay",
+      "result": "passed",
+      "summary": "An empty Qdrant instance was rebuilt from canonical PostgreSQL projection history without treating vectors as authority."
+    },
+    {
+      "name": "canonical-history downgrade refusal",
+      "result": "passed",
+      "summary": "Migration 009 refuses destructive downgrade after projector, delivery, checkpoint, generation, or point history exists."
+    },
+    {
+      "name": "provider and Qdrant outage degradation",
+      "result": "passed",
+      "summary": "Unavailable embedding or candidate retrieval returns bounded explicit gaps and cannot broaden scope or fabricate a canonical entity."
+    }
+  ],
+  "data_migration_required": true,
+  "runtime_state_impact": "Empty pre-adoption environments can return to Sprint 08. Environments with retrieval history retain migration 009 and use forward repair, alias rollback, or canonical replay while production retrieval remains disabled until Sprint 10 quality gates pass.",
+  "recorded_at": "2026-07-20T02:34:05Z"
+}
