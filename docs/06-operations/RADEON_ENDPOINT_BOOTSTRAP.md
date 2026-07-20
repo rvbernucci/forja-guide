@@ -99,15 +99,17 @@ The probe reports whether an SSH banner is visible, whether the TCP port is
 refused, or whether the instance accepted TCP but did not send a banner before
 the timeout.
 
-When the instance is still booting, wait for a real SSH banner before copying
-files or starting evidence commands:
+When the instance is still booting, run the workstation preflight before
+copying files or starting evidence commands:
 
 ```bash
-python3 scripts/wait_radeon_ssh.py <host> <port> \
+python3 scripts/preflight_radeon_ssh.py <host> <port> \
   --timeout-seconds 180 \
   --interval-seconds 10 \
   --probe-timeout-seconds 8 \
-  --output /workspace/forja-radeon-ssh-wait.json
+  --wait-output /tmp/forja-radeon-ssh-wait.json \
+  --recovery-output /tmp/forja-radeon-ssh-recovery.md \
+  --output /tmp/forja-radeon-ssh-preflight.json
 ```
 
 `connected_no_banner` means the TCP proxy accepted the connection but SSH is
@@ -115,17 +117,9 @@ not ready yet. Treat `ready` as the only signal that SSH work may proceed. The
 wait report also includes `next_action` and `operator_hints`; use those hints
 to decide whether to start `sshd` from the Radeon web terminal, recreate the
 template with SSH enabled, or replace a stale host/port before copying files.
-
-For `connected_no_banner`, render a public-safe recovery sheet from the
-workstation and follow it inside the Radeon web terminal:
-
-```bash
-python3 scripts/render_radeon_ssh_recovery_sheet.py \
-  --wait-report /tmp/forja-radeon-ssh-wait.json \
-  --host <host> \
-  --port <port> \
-  --output /tmp/forja-radeon-ssh-recovery.md
-```
+If the preflight is not ready, it automatically writes
+`/tmp/forja-radeon-ssh-recovery.md`; follow that sheet inside the Radeon web
+terminal before retrying.
 
 ## Private Candidate File
 

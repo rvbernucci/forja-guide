@@ -30,6 +30,7 @@ class RadeonSprint10CommandSheetTests(unittest.TestCase):
         body = render()
 
         expected = [
+            "preflight_radeon_ssh.py 36.150.116.206 31200",
             "wait_radeon_ssh.py 36.150.116.206 31200",
             "python3 scripts/validate_repository.py",
             "prepare_radeon_sprint10_operator_bundle.py",
@@ -64,6 +65,7 @@ class RadeonSprint10CommandSheetTests(unittest.TestCase):
             snapshot_root="/secure/demo",
         )
 
+        self.assertIn("preflight_radeon_ssh.py example.test 2222", body)
         self.assertIn("wait_radeon_ssh.py example.test 2222", body)
         self.assertIn("git checkout feature/demo", body)
         self.assertIn("git clone https://github.com/example/repo .", body)

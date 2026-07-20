@@ -35,20 +35,32 @@ independent immutable review, and a v2 close receipt.
 Run from the workstation:
 
 ```bash
+python3 scripts/preflight_radeon_ssh.py {host} {port} \\
+  --timeout-seconds 180 \\
+  --interval-seconds 10 \\
+  --probe-timeout-seconds 8 \\
+  --wait-output /tmp/forja-radeon-ssh-wait.json \\
+  --recovery-output /tmp/forja-radeon-ssh-recovery.md \\
+  --output /tmp/forja-radeon-ssh-preflight.json
+```
+
+Proceed only when the preflight report says `"ready": true`. If it returns
+`"connected_no_banner"`, `"refused"`, `"timeout"`, `"unreachable"`, or
+`"unexpected_banner"`, follow the report's `next_action` and `operator_hints`
+from `/tmp/forja-radeon-ssh-wait.json` before attempting `ssh`, `scp`, or
+evidence collection. For `"connected_no_banner"`, open
+`/tmp/forja-radeon-ssh-recovery.md` and follow the web-terminal repair steps.
+
+The lower-level wait and recovery commands remain available for manual
+debugging:
+
+```bash
 python3 scripts/wait_radeon_ssh.py {host} {port} \\
   --timeout-seconds 180 \\
   --interval-seconds 10 \\
   --probe-timeout-seconds 8 \\
   --output /tmp/forja-radeon-ssh-wait.json
-```
 
-Proceed only when the report says `"ready": true`. If it returns
-`"connected_no_banner"`, `"refused"`, `"timeout"`, `"unreachable"`, or
-`"unexpected_banner"`, follow the report's `next_action` and `operator_hints`
-before attempting `ssh`, `scp`, or evidence collection. For
-`"connected_no_banner"`, render a web-terminal recovery sheet:
-
-```bash
 python3 scripts/render_radeon_ssh_recovery_sheet.py \\
   --wait-report /tmp/forja-radeon-ssh-wait.json \\
   --host {host} \\
