@@ -85,31 +85,39 @@ set -euo pipefail
 cd "${FORJA_REPO:-/workspace/forja-guide}"
 . /workspace/forja-alpha-sprint10-operator-bundle/sprint10-env.template.sh
 
-python3 scripts/capture_radeon_runtime_receipt.py \
+python3 scripts/check_radeon_sprint10_private_inputs.py \\
+  --snapshot-root /secure/forja \\
+  --model-candidates /secure/forja/radeon-model-candidates.json \\
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \\
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \\
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \\
+  --output /workspace/forja-radeon-private-input-preflight.json
+
+python3 scripts/capture_radeon_runtime_receipt.py \\
   --output /workspace/forja-radeon-runtime-receipt.json
 
-python3 scripts/verify_radeon_runtime_readiness.py \
-  --receipt /workspace/forja-radeon-runtime-receipt.json \
-  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
-  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
-  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \
-  --require-endpoints \
+python3 scripts/verify_radeon_runtime_readiness.py \\
+  --receipt /workspace/forja-radeon-runtime-receipt.json \\
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \\
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \\
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \\
+  --require-endpoints \\
   --output /workspace/forja-radeon-runtime-readiness.json
 
-python3 scripts/run_radeon_sprint10_evidence.py \
-  --evidence-dir /workspace/forja-alpha-sprint10-evidence \
-  --build-source-manifest \
-  --source-manifest /secure/forja/alpha-source-manifest.json \
-  --snapshot-root /secure/forja \
-  --required-snapshot sec_identity=sec/company_tickers.json \
-  --required-snapshot sec_submissions=sec/submissions/CIK0001045810.json \
-  --required-snapshot sec_company_facts=sec/companyfacts/CIK0001045810.json \
-  --required-snapshot treasury=treasury/real-yield-10y.csv \
-  --required-snapshot fred=fred/FEDFUNDS.csv \
-  --required-snapshot market=market/NVDA-adjusted.csv \
-  --model-candidates /secure/forja/radeon-model-candidates.json \
-  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
-  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+python3 scripts/run_radeon_sprint10_evidence.py \\
+  --evidence-dir /workspace/forja-alpha-sprint10-evidence \\
+  --build-source-manifest \\
+  --source-manifest /secure/forja/alpha-source-manifest.json \\
+  --snapshot-root /secure/forja \\
+  --required-snapshot sec_identity=sec/company_tickers.json \\
+  --required-snapshot sec_submissions=sec/submissions/CIK0001045810.json \\
+  --required-snapshot sec_company_facts=sec/companyfacts/CIK0001045810.json \\
+  --required-snapshot treasury=treasury/real-yield-10y.csv \\
+  --required-snapshot fred=fred/FEDFUNDS.csv \\
+  --required-snapshot market=market/NVDA-adjusted.csv \\
+  --model-candidates /secure/forja/radeon-model-candidates.json \\
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \\
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \\
   --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL"
 """
 
@@ -134,6 +142,10 @@ edit the templates. Keep it outside Git.
 2. Replace placeholder local model IDs and quantization notes.
 3. Start the instruction and embedding endpoints on loopback.
 4. Run `{output_dir.as_posix()}/run-sprint10-evidence.sh`.
+
+The first command is a private-input preflight. It fails before GPU evidence
+collection if source snapshots are missing, model-candidate placeholders remain,
+or any core endpoint is not loopback-only.
 
 The generated evidence still has to pass public-summary application,
 independent review readiness, and v2 close-receipt promotion before Sprint 11

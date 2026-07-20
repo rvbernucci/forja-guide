@@ -41,6 +41,18 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
         self.assertFalse(report["next_sprint_authorized"])
         self.assertEqual(4, len(report["real_radeon_gates"]))
         self.assertTrue(all(not gate["complete"] for gate in report["real_radeon_gates"]))
+        self.assertIn(
+            "python3 scripts/check_radeon_sprint10_private_inputs.py --snapshot-root /secure/forja --model-candidates /secure/forja/radeon-model-candidates.json ...",
+            report["next_commands"],
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/check_radeon_sprint10_private_inputs.py --snapshot-root /secure/forja --model-candidates /secure/forja/radeon-model-candidates.json ..."
+            ),
+            report["next_commands"].index(
+                "python3 scripts/run_radeon_sprint10_evidence.py --evidence-dir /workspace/forja-alpha-sprint10-evidence ..."
+            ),
+        )
 
     def test_ready_package_reports_ready_without_authorizing_next_sprint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

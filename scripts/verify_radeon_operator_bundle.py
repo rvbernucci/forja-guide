@@ -86,9 +86,11 @@ def verify_bundle(bundle_dir: Path, *, allow_placeholders: bool = False) -> tupl
     if command_path.is_file():
         body = command_path.read_text(encoding="utf-8")
         for required_snippet in (
+            "check_radeon_sprint10_private_inputs.py",
             "capture_radeon_runtime_receipt.py",
             "verify_radeon_runtime_readiness.py",
             "run_radeon_sprint10_evidence.py",
+            "forja-radeon-private-input-preflight.json",
             "--require-endpoints",
         ):
             if required_snippet not in body:

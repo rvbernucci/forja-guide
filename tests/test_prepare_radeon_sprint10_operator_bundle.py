@@ -44,6 +44,9 @@ class RadeonSprint10OperatorBundleTests(unittest.TestCase):
                     encoding="utf-8"
                 )
             )
+            command_body = (output_dir / "run-sprint10-evidence.sh").read_text(
+                encoding="utf-8"
+            )
 
         self.assertEqual("prepared", report["status"])
         self.assertEqual(
@@ -58,6 +61,11 @@ class RadeonSprint10OperatorBundleTests(unittest.TestCase):
         self.assertEqual("1.0", candidates["schema_version"])
         self.assertEqual(2, len(candidates["candidates"]))
         self.assertEqual("http://localhost:8001/v1", candidates["candidates"][1]["base_url"])
+        self.assertIn("check_radeon_sprint10_private_inputs.py \\\n", command_body)
+        self.assertLess(
+            command_body.index("check_radeon_sprint10_private_inputs.py"),
+            command_body.index("capture_radeon_runtime_receipt.py"),
+        )
 
     def test_rejects_remote_urls(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

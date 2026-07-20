@@ -51,12 +51,30 @@ python3 scripts/verify_radeon_operator_bundle.py \
 ```
 
 After replacing local model IDs, embedding model ID, and quantization notes,
-run the strict pre-flight:
+run the strict bundle pre-flight:
 
 ```bash
 python3 scripts/verify_radeon_operator_bundle.py \
   --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle
 ```
+
+Then run the private input pre-flight before spending GPU time on evidence
+collection:
+
+```bash
+python3 scripts/check_radeon_sprint10_private_inputs.py \
+  --snapshot-root /secure/forja \
+  --model-candidates /secure/forja/radeon-model-candidates.json \
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \
+  --output /workspace/forja-radeon-private-input-preflight.json
+```
+
+This check fails if required private snapshots are missing, the local model
+candidate file still contains placeholders, or any core inference endpoint is
+not loopback-only. It is a private readiness receipt and should stay outside
+Git.
 
 Before opening an SSH session from a workstation, classify the endpoint:
 
@@ -109,8 +127,9 @@ revisions, or operational notes.
 2. Start the embedding service on a separate loopback port.
 3. Confirm both services expose OpenAI-compatible `/v1/models`.
 4. Confirm the embedding service responds through `/v1/embeddings`.
-5. Run the readiness verifier before any benchmark.
-6. Run the one-shot Sprint 10 evidence runner.
+5. Run the private input preflight.
+6. Run the readiness verifier before any benchmark.
+7. Run the one-shot Sprint 10 evidence runner.
 
 ## Minimum Proof Commands
 

@@ -149,6 +149,23 @@ Use the endpoint preparation checklist in
 [`RADEON_ENDPOINT_BOOTSTRAP.md`](RADEON_ENDPOINT_BOOTSTRAP.md) before running
 the evidence sequence.
 
+The operator bundle runs a private input preflight before any runtime receipt
+or benchmark. If running commands manually, execute the same check first:
+
+```bash
+python3 scripts/check_radeon_sprint10_private_inputs.py \
+  --snapshot-root /secure/forja \
+  --model-candidates /secure/forja/radeon-model-candidates.json \
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \
+  --output /workspace/forja-radeon-private-input-preflight.json
+```
+
+This report stays private. It proves that the source snapshot files exist, the
+two-candidate local model config is filled, and the core inference endpoints
+are loopback-only before GPU time is spent on the evidence sequence.
+
 ```bash
 python3 scripts/run_radeon_sprint10_evidence.py \
   --evidence-dir /workspace/forja-alpha-sprint10-evidence \
