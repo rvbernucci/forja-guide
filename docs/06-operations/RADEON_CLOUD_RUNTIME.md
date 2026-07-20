@@ -164,6 +164,14 @@ It fails fast on the first broken gate and writes sanitized JSON evidence under
 the evidence directory. Raw source snapshots, candidate configuration, model
 weights, tokens, and private artifacts remain outside Git.
 
+The model candidate file must follow
+[`schemas/radeon-model-candidates.schema.json`](../../schemas/radeon-model-candidates.schema.json).
+Use
+[`internal/alpha/testdata/radeon_model_candidates.example.json`](../../internal/alpha/testdata/radeon_model_candidates.example.json)
+as a safe starting point, then replace the example model IDs and ports with the
+actual local endpoints running on the Radeon instance. The benchmark will
+reject non-loopback URLs even if the JSON shape is otherwise valid.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD

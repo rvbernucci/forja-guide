@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0",
+  "candidate_set_id": "radeon_local_instruction_candidates_example_v1",
+  "notes": "Example only. Replace model IDs and ports with the two local loopback endpoints actually served on Radeon Cloud.",
+  "candidates": [
+    {
+      "candidate_id": "gemma-local-primary",
+      "base_url": "http://127.0.0.1:8000",
+      "model": "local-gemma-instruct-primary",
+      "server": "vllm",
+      "quantization": "operator-selected",
+      "expected_context_tokens": 8192
+    },
+    {
+      "candidate_id": "qwen-local-backup",
+      "base_url": "http://127.0.0.1:8002",
+      "model": "local-qwen-instruct-backup",
+      "server": "vllm",
+      "quantization": "operator-selected",
+      "expected_context_tokens": 8192
+    }
+  ]
+}

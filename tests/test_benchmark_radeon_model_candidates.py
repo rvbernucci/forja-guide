@@ -52,6 +52,36 @@ class RadeonModelBenchmarkTests(unittest.TestCase):
 
         self.assertIn("not loopback", str(context.exception))
 
+    def test_candidate_config_requires_schema_version(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            task_set = write_task_set(root)
+            candidates = write_candidates(root, "http://127.0.0.1:8000", "local-model")
+            payload = json.loads(candidates.read_text(encoding="utf-8"))
+            payload.pop("schema_version")
+            candidates.write_text(json.dumps(payload), encoding="utf-8")
+            args = namespace(root, task_set, candidates)
+
+            with self.assertRaises(ValueError) as context:
+                BENCH.build_report(args)
+
+        self.assertIn("schema_version", str(context.exception))
+
+    def test_public_candidate_example_is_accepted_by_validator(self) -> None:
+        example = (
+            Path(__file__).resolve().parents[1]
+            / "internal"
+            / "alpha"
+            / "testdata"
+            / "radeon_model_candidates.example.json"
+        )
+        payload = json.loads(example.read_text(encoding="utf-8"))
+
+        candidates = BENCH.validate_candidates(payload)
+
+        self.assertEqual(2, len(candidates))
+        self.assertTrue(all(candidate["base_url"].startswith("http://127.0.0.1") for candidate in candidates))
+
 
 def fake_chat_completion(
     url: str,

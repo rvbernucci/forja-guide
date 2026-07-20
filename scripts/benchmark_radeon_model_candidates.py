@@ -80,6 +80,8 @@ def validate_task_set(payload: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def validate_candidates(payload: dict[str, Any]) -> list[dict[str, str]]:
+    if payload.get("schema_version") != "1.0":
+        raise ValueError("candidate config schema_version must be 1.0")
     candidates = payload.get("candidates")
     if not isinstance(candidates, list) or not candidates:
         raise ValueError("candidate config requires non-empty candidates")
