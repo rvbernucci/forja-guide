@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "basis_commit": "12f9849db65e0f155daca7c10368b77ca1a09be8",
   "tests": [
     {
       "name": "complete local quality-gate component set",
@@ -15,9 +15,14 @@
       "summary": "Contracts, deterministic cards, sparse encoding, rank fusion, canonical resolution, stale and cross-scope rejection, Qdrant request validation, Bedrock vector validation, evaluation scoring, private capture validation, bounded deadlines, and telemetry behavior passed under unit and race execution."
     },
     {
+      "name": "public exact-basis CI",
+      "result": "passed",
+      "summary": "Public GitHub Actions run 29718524871 on basis commit 12f9849db65e0f155daca7c10368b77ca1a09be8 passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
+    },
+    {
       "name": "PostgreSQL retrieval integration suite",
       "result": "passed",
-      "summary": "The recorded disposable PostgreSQL drills covered migration 009, projector registration and fan-out, claims and fencing, contiguous checkpoints, replay, generation activation, point receipts, canonical symbol/test/memory/incident resolution, and rollback refusal after canonical history."
+      "summary": "The public CI PostgreSQL durability gate covered migration 009, projector registration and fan-out, claims and fencing, contiguous checkpoints, replay, generation activation, point receipts, canonical symbol/test/memory/incident resolution, and rollback refusal after canonical history."
     },
     {
       "name": "historical rollback compatibility after migration 009",
@@ -25,9 +30,9 @@
       "summary": "Sprint 08-to-07, Sprint 07-to-06, and Sprint 05-to-04 binary compatibility rehearsals dynamically rolled a disposable PostgreSQL 18.4 schema from migration 009 to each historical target and passed."
     },
     {
-      "name": "live disposable Qdrant lifecycle drills",
+      "name": "Qdrant lifecycle test coverage",
       "result": "passed",
-      "summary": "Loopback Qdrant v1.18.2 drills covered physical collection creation, payload indexes, dense and sparse query paths, upsert, deletion, blue-green alias cutover, guarded rollback, derived-store deletion, canonical reset, and replay."
+      "summary": "Unit, protocol, and opt-in integration test sources cover physical collection creation, payload indexes, dense and sparse query paths, upsert, deletion, blue-green alias cutover, guarded rollback, derived-store deletion, canonical reset, and replay. No uncommitted live execution is claimed as closure evidence."
     },
     {
       "name": "governed VPS dependency observation",
@@ -35,5 +40,5 @@
       "summary": "Qdrant and Neo4j were running, ready, and loopback-only through scoped wrappers. The staged linux/amd64 CLI failed closed without runtime configuration. The installed Qdrant validator has a caller-working-directory defect transferred to Sprint 10."
     }
   ],
-  "recorded_at": "2026-07-20T04:10:28Z"
+  "recorded_at": "2026-07-20T05:17:56Z"
 }

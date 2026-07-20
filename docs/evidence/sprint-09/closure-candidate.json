@@ -5,7 +5,7 @@
   "status": "candidate",
   "closure_protocol_version": "2.0",
   "authoritative": false,
-  "basis_commit": "6c191e08a94b232bfd5a49f90454154a3f4db053",
+  "basis_commit": "12f9849db65e0f155daca7c10368b77ca1a09be8",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
@@ -39,8 +39,9 @@
     "docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md",
     "docs/06-operations/RETRIEVAL_RUNTIME_DEPLOYMENT.md",
     "docs/06-operations/VPS_RETRIEVAL_RUNTIME_RECEIPT.md",
-    "docs/07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md"
+    "docs/07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md",
+    "docs/evidence/sprint-09/ci-receipt.md"
   ],
   "next_sprint_authorized": null,
-  "recorded_at": "2026-07-20T04:10:28Z"
+  "recorded_at": "2026-07-20T05:17:56Z"
 }
