@@ -14,7 +14,8 @@ investment advice.
 The application reuses Forja governance, retrieval, memory, tool, evidence,
 and observability boundaries. Financial behavior stays under `internal/alpha`;
 domain-neutral behavior is promoted to the kernel only after another vertical
-requires the same contract.
+requires the same contract. This boundary and its local-inference trust policy
+are governed by [ADR-0020](../05-decisions/ADR-0020-BOUNDED-ALPHA-VERTICAL.md).
 
 ## Implemented Foundation
 
@@ -23,7 +24,8 @@ requires the same contract.
 - The interface exposes the local-runtime state, coverage universe, planned
   capability status, deterministic evidence plan, and explicit gaps.
 - Model and embedding endpoints are optional at startup but, when configured,
-  must use an explicit loopback address. Remote core inference is rejected.
+  must use an explicit loopback address. Remote core inference is rejected as
+  required by [ADR-0020](../05-decisions/ADR-0020-BOUNDED-ALPHA-VERTICAL.md).
 - Research prompts are bounded, excluded from server logs, held only in the
   process-local preview service, and omitted from research-session responses.
 - The preview never fabricates financial results. Until execution adapters are

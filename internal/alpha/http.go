@@ -60,7 +60,8 @@ func (h *Handler) startResearch(writer http.ResponseWriter, request *http.Reques
 	var input ResearchRequest
 	if err := decoder.Decode(&input); err != nil {
 		status := http.StatusBadRequest
-		if strings.Contains(err.Error(), "request body too large") {
+		var maxBytesError *http.MaxBytesError
+		if errors.As(err, &maxBytesError) {
 			status = http.StatusRequestEntityTooLarge
 		}
 		writeAPIError(writer, status, "invalid_request", "Request body must contain only a string prompt.")

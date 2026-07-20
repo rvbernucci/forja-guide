@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 type Service struct {
@@ -64,7 +65,7 @@ func (s *Service) StartResearch(prompt string) (ResearchSession, error) {
 	if prompt == "" {
 		return ResearchSession{}, fmt.Errorf("prompt is required")
 	}
-	if len([]rune(prompt)) > 4000 {
+	if utf8.RuneCountInString(prompt) > 4000 {
 		return ResearchSession{}, fmt.Errorf("prompt exceeds 4000 characters")
 	}
 	id, err := s.newID()

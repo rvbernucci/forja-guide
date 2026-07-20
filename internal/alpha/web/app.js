@@ -141,7 +141,11 @@ async function submitResearch(event) {
     });
     renderResearch(session, prompt);
   } catch (error) {
+    elements.hero.classList.add("hidden");
+    elements.suggestions.classList.add("hidden");
     elements.researchOutput.classList.remove("hidden");
+    elements.researchTitle.textContent = compactTitle(prompt);
+    elements.planList.replaceChildren();
     elements.researchNotice.textContent = error.message;
     elements.researchState.textContent = "Request failed";
   } finally {
@@ -191,7 +195,7 @@ function bindInteractions() {
   elements.form.addEventListener("submit", submitResearch);
   elements.prompt.addEventListener("input", resizeComposer);
   elements.prompt.addEventListener("keydown", event => {
-    if (event.key === "Enter" && !event.shiftKey) {
+    if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
       elements.form.requestSubmit();
     }

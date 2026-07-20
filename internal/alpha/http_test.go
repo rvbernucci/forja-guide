@@ -1,6 +1,7 @@
 package alpha
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -21,7 +22,7 @@ func alphaTestHandler(t *testing.T) http.Handler {
 
 func TestHandlerServesEmbeddedApplication(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	alphaTestHandler(t).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/", nil))
+	alphaTestHandler(t).ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/", nil))
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Forja Alpha") {
 		t.Fatalf("application response = %d %q", recorder.Code, recorder.Body.String())
 	}
@@ -32,7 +33,7 @@ func TestHandlerServesEmbeddedApplication(t *testing.T) {
 
 func TestHandlerExposesHonestBootstrapState(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	alphaTestHandler(t).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/bootstrap", nil))
+	alphaTestHandler(t).ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/bootstrap", nil))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("bootstrap status = %d", recorder.Code)
 	}
@@ -48,7 +49,8 @@ func TestHandlerExposesHonestBootstrapState(t *testing.T) {
 func TestHandlerCreatesAndReadsResearchPlan(t *testing.T) {
 	handler := alphaTestHandler(t)
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(
+	handler.ServeHTTP(recorder, httptest.NewRequestWithContext(
+		context.Background(),
 		http.MethodPost,
 		"/api/v1/research",
 		strings.NewReader(`{"prompt":"Compare the latest filings and rate sensitivity."}`),
@@ -58,7 +60,7 @@ func TestHandlerCreatesAndReadsResearchPlan(t *testing.T) {
 	}
 
 	recorder = httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/research/research_test", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/research/research_test", nil))
 	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), "Estimate factor sensitivity") {
 		t.Fatalf("read response = %d %s", recorder.Code, recorder.Body.String())
 	}
@@ -75,7 +77,7 @@ func TestHandlerRejectsUnknownAndOversizedInput(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
-			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/api/v1/research", strings.NewReader(testCase.body)))
+			handler.ServeHTTP(recorder, httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/research", strings.NewReader(testCase.body)))
 			if recorder.Code != testCase.status {
 				t.Fatalf("status = %d, want %d", recorder.Code, testCase.status)
 			}

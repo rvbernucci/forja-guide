@@ -17,9 +17,11 @@ make alpha-run
 
 Open `http://127.0.0.1:8787`.
 
-The application starts in `readiness` mode and truthfully marks language-model,
-embedding, ingestion, retrieval, and analytical execution as unavailable or
-planned. It can create and display a bounded research evidence plan, but it
+By default, the application starts in `readiness` mode and truthfully marks
+language-model, embedding, ingestion, retrieval, and analytical execution as
+unavailable or planned. Configuring both local endpoints changes the mode to
+`local-runtime-configured`, but does not probe or validate either endpoint. The
+application can create and display a bounded research evidence plan, but it
 does not manufacture a financial answer.
 
 ## Build
@@ -47,13 +49,10 @@ prevents an accidental remote core-inference configuration. Configuration does
 not imply health: the current foundation reports `configured-not-probed` until
 the Sprint 10 health, identity, and ROCm evidence adapter is implemented.
 
-To bind the interface on a container or trusted LAN boundary, set
-`FORJA_ALPHA_ADDRESS`. This changes only the application listener and does not
-relax the loopback-only inference policy.
-
-```bash
-export FORJA_ALPHA_ADDRESS=0.0.0.0:8787
-```
+The Alpha HTTP interface is supported on loopback only in this foundation.
+Non-loopback exposure requires a later authenticated, authorized, and
+TLS-protected ingress; setting a public listener without that boundary is not a
+supported deployment.
 
 ## API
 
