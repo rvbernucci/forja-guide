@@ -42,6 +42,16 @@ python3 scripts/prepare_radeon_sprint10_operator_bundle.py
 The generator writes a private env template, two-candidate config template, and
 ordered evidence script under `/workspace/forja-alpha-sprint10-operator-bundle`.
 
+Before opening an SSH session from a workstation, classify the endpoint:
+
+```bash
+python3 scripts/probe_radeon_ssh.py <host> <port>
+```
+
+The probe reports whether an SSH banner is visible, whether the TCP port is
+refused, or whether the instance accepted TCP but did not send a banner before
+the timeout.
+
 ## Private Candidate File
 
 Create `/secure/forja/radeon-model-candidates.json` with at least two local
