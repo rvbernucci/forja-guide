@@ -137,8 +137,9 @@ boundaries and residual risk. Sprint 09 is authorized.
 **Outcome:** discover relevant artifacts and symbols with hybrid search while
 preserving authority and access boundaries.
 
-**Status:** Implementation complete; the protocol-v2 closure candidate is
-published for immutable review. Private quality evaluation and competition-profile activation are
+**Status:** Closed through an authoritative protocol-v2 receipt after an
+independent immutable review of the exact public candidate. Sprint 10 is
+authorized. Private quality evaluation and competition-profile activation are
 transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
 [Sprint 09 execution plan](SPRINT_09_GOVERNED_RETRIEVAL_PLAN.md).
 
@@ -184,6 +185,9 @@ transferred to Sprint 10 and do not become implied Sprint 09 evidence. See the
   disabled until that evidence passes.
 - [x] Publish the complete fail-closed Sprint 09 evidence candidate without
   authorizing Sprint 10.
+- [x] Pass immutable review, publish the authoritative close receipt, and
+  authorize Sprint 10 without changing the reviewed implementation or mutable
+  evidence.
 
 ### Acceptance
 

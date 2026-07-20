@@ -2,14 +2,14 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "name": "Governed Retrieval Foundation",
-  "status": "candidate",
+  "status": "closed",
   "closure_protocol_version": "2.0",
-  "authoritative": false,
+  "authoritative": true,
   "basis_commit": "a9a971cff16ee50ab4fafca3a475f117a47f438d",
   "definition_of_done": {
     "implementation_and_migrations_committed": true,
     "mechanical_tests_passed": true,
-    "independent_validation_recorded": false,
+    "independent_validation_recorded": true,
     "security_and_tenant_boundaries_checked": true,
     "observability_for_new_runtime_behavior": true,
     "documentation_and_adrs_current": true,
@@ -39,8 +39,18 @@
     "docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md",
     "docs/06-operations/RETRIEVAL_RUNTIME_DEPLOYMENT.md",
     "docs/07-evaluations/RETRIEVAL_EVALUATION_PROTOCOL.md",
-    "docs/evidence/sprint-09/ci-receipt.md"
+    "docs/evidence/sprint-09/ci-receipt.md",
+    "docs/evidence/sprint-09/reviews/immutable-candidate-review.md"
   ],
-  "next_sprint_authorized": null,
-  "recorded_at": "2026-07-20T08:04:21Z"
+  "next_sprint_authorized": "10",
+  "candidate_recorded_at": "2026-07-20T08:04:21Z",
+  "reviewed_candidate_commit": "ddaba97dc51a9d70e1dce0a82093fab6d5317040",
+  "immutable_review": {
+    "result": "passed",
+    "reviewed_commit": "ddaba97dc51a9d70e1dce0a82093fab6d5317040",
+    "model": "gpt-5.6-sol",
+    "artifact_path": "docs/evidence/sprint-09/reviews/immutable-candidate-review.md",
+    "artifact_sha256": "2489ff3c062809a33e3d9ba3bdf3f78e9fa64b38d9434ed1e7d5de48c0bd0cdd"
+  },
+  "closed_at": "2026-07-20T08:50:18Z"
 }
