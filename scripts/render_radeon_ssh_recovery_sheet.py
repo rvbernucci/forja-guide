@@ -42,6 +42,9 @@ Observed wait status: `{status}`
 Run in the Radeon Jupyter/OpenCode terminal:
 
 ```bash
+python3 scripts/diagnose_radeon_sshd.py \\
+  --output /workspace/forja-radeon-sshd-diagnosis.json
+
 whoami
 id
 command -v sshd || true

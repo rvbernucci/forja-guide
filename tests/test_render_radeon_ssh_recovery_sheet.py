@@ -37,6 +37,7 @@ class RadeonSSHRecoverySheetTests(unittest.TestCase):
 
         expected = [
             "Observed wait status: `connected_no_banner`",
+            "diagnose_radeon_sshd.py",
             "command -v sshd",
             "apt-get install -y openssh-server",
             "mkdir -p /run/sshd",

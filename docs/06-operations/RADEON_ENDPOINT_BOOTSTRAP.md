@@ -120,6 +120,10 @@ template with SSH enabled, or replace a stale host/port before copying files.
 If the preflight is not ready, it automatically writes
 `/tmp/forja-radeon-ssh-recovery.md`; follow that sheet inside the Radeon web
 terminal before retrying.
+The recovery sheet first runs `scripts/diagnose_radeon_sshd.py` inside the
+Radeon web terminal and writes `/workspace/forja-radeon-sshd-diagnosis.json`.
+Keep that diagnosis private beside the runtime artifacts; it is a repair aid,
+not Sprint closure evidence.
 
 ## Private Candidate File
 
