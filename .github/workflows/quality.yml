@@ -26,6 +26,14 @@ jobs:
           --health-retries 10
         ports:
           - 5432:5432
+      qdrant:
+        image: qdrant/qdrant:v1.18.2-unprivileged@sha256:b79aaa49ce7a7e5b7e9cf3fe76be400c911457084b4b7af47487c1c9ae5962e5
+        env:
+          QDRANT__SERVICE__API_KEY: forja-ci-qdrant-only
+          QDRANT__TELEMETRY_DISABLED: "true"
+        ports:
+          - 6333:6333
+          - 6334:6334
     steps:
       - name: Check out repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -89,6 +97,28 @@ jobs:
           FORJA_TEST_DATABASE_URL: postgres://postgres@127.0.0.1:5432/forja_test?sslmode=disable
           PGPASSWORD: postgres
         run: make test-integration
+
+      - name: Validate live Qdrant lifecycle
+        env:
+          FORJA_QDRANT_API_KEY: forja-ci-qdrant-only
+          FORJA_QDRANT_GRPC_PORT: "6334"
+          FORJA_QDRANT_HOST: 127.0.0.1
+          FORJA_QDRANT_LIVE: "1"
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent --show-error \
+              --header "api-key: ${FORJA_QDRANT_API_KEY}" \
+              http://127.0.0.1:6333/readyz >/dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 30 ]; then
+              echo "Qdrant did not become ready" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          go test -count=1 ./internal/retrieval \
+            -run '^TestLiveQdrantBlueGreenQueryAndDelete$'
 
       - name: Rehearse observability stack on clean Linux host
         env:

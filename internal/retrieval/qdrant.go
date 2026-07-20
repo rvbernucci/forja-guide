@@ -77,6 +77,7 @@ type QdrantCollectionClient interface {
 // verify the green collection before choosing to switch the stable alias.
 type QdrantAliasClient interface {
 	UpdateAliases(context.Context, []*qdrant.AliasOperations) error
+	ListAliases(context.Context) ([]*qdrant.AliasDescription, error)
 }
 
 // QdrantAliasInspector reads the current alias map from Qdrant. Alias names
@@ -174,13 +175,33 @@ func VerifyQdrantCollection(info *qdrant.CollectionInfo, plan QdrantCollectionPl
 }
 
 // SwitchQdrantAlias atomically directs one stable alias to a verified physical
-// generation. Qdrant executes all actions as one request; the caller supplies
-// one replacement action so a failed request preserves the previous target.
-func SwitchQdrantAlias(ctx context.Context, client QdrantAliasClient, aliasName, collectionName string) error {
+// generation. Existing aliases require Qdrant's delete-then-create sequence in
+// one UpdateAliases request; first activation needs only the create action.
+func SwitchQdrantAlias(ctx context.Context, client QdrantAliasClient, aliasName, collectionName string, expected AliasObservation) error {
 	if client == nil || !qdrantCollectionNamePattern.MatchString(aliasName) || !qdrantCollectionNamePattern.MatchString(collectionName) {
 		return fmt.Errorf("Qdrant alias switch is invalid")
 	}
-	if err := client.UpdateAliases(ctx, []*qdrant.AliasOperations{qdrant.NewAliasCreate(aliasName, collectionName)}); err != nil {
+	if expected.AliasName != aliasName || (expected.Exists && !qdrantCollectionNamePattern.MatchString(expected.CollectionName)) || (!expected.Exists && expected.CollectionName != "") {
+		return fmt.Errorf("Qdrant alias switch expectation is invalid")
+	}
+	current, err := ObserveQdrantAlias(ctx, client, aliasName)
+	if err != nil {
+		return err
+	}
+	if current != expected {
+		return fmt.Errorf("Qdrant alias changed before switch")
+	}
+	if current.Exists && current.CollectionName == collectionName {
+		return nil
+	}
+	actions := []*qdrant.AliasOperations{qdrant.NewAliasCreate(aliasName, collectionName)}
+	if current.Exists {
+		actions = []*qdrant.AliasOperations{
+			qdrant.NewAliasDelete(aliasName),
+			qdrant.NewAliasCreate(aliasName, collectionName),
+		}
+	}
+	if err := client.UpdateAliases(ctx, actions); err != nil {
 		return fmt.Errorf("switch Qdrant alias: %w", err)
 	}
 	return nil
@@ -248,7 +269,7 @@ func CutoverQdrantCollection(ctx context.Context, client QdrantBlueGreenClient, 
 	if previous.Exists && previous.CollectionName == plan.Create.CollectionName {
 		return previous, nil
 	}
-	if err := SwitchQdrantAlias(ctx, client, aliasName, plan.Create.CollectionName); err != nil {
+	if err := SwitchQdrantAlias(ctx, client, aliasName, plan.Create.CollectionName, previous); err != nil {
 		return AliasObservation{}, err
 	}
 	if _, err := VerifyQdrantAlias(ctx, client, aliasName, plan.Create.CollectionName); err != nil {
@@ -273,7 +294,7 @@ func RollbackQdrantCollection(ctx context.Context, client QdrantBlueGreenClient,
 	if !current.Exists {
 		return fmt.Errorf("Qdrant alias is absent before rollback")
 	}
-	if err := SwitchQdrantAlias(ctx, client, aliasName, previousCollection); err != nil {
+	if err := SwitchQdrantAlias(ctx, client, aliasName, previousCollection, current); err != nil {
 		return err
 	}
 	_, err = VerifyQdrantAlias(ctx, client, aliasName, previousCollection)
