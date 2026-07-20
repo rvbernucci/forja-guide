@@ -213,6 +213,30 @@ func (s *Store) RetireRetrievalGeneration(ctx context.Context, generationID stri
 	return nil
 }
 
+// WithRetrievalAliasMutation holds the canonical PostgreSQL advisory lock for
+// one scoped alias while an operator observes, updates, and verifies Qdrant.
+// The transaction-scoped lock is released automatically on every error path.
+func (s *Store) WithRetrievalAliasMutation(ctx context.Context, alias string, operation func(context.Context) error) error {
+	if !retrievalCollectionNamePattern.MatchString(alias) || operation == nil {
+		return fmt.Errorf("retrieval alias mutation guard is invalid")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return databaseError("postgres.WithRetrievalAliasMutation.begin", err)
+	}
+	defer func() { _ = tx.Rollback(context.Background()) }()
+	if err := s.lockRetrievalAlias(ctx, tx, alias); err != nil {
+		return err
+	}
+	if err := operation(ctx); err != nil {
+		return err
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return databaseError("postgres.WithRetrievalAliasMutation.commit", err)
+	}
+	return nil
+}
+
 // lockRetrievalAlias serializes lifecycle transitions for one scoped alias.
 // A hash collision only serializes unrelated transitions; it cannot weaken
 // correctness. The lock is released automatically with the transaction.

@@ -136,6 +136,10 @@ documentation evidence.
 - [x] Verify the serving alias target after cutover and before a guarded
   rollback. PostgreSQL records registration, activation, draining, and safe
   retirement of generations.
+- [x] Serialize every governed alias mutation with the canonical PostgreSQL
+  advisory lock scoped by tenant, repository, and alias. The lock covers alias
+  observation, the atomic Qdrant action batch, and post-update readback across
+  operator processes; direct out-of-band alias mutation is unsupported.
 - [x] Implement automated Qdrant blue-green build verification, atomic alias
   switch, observation, and rollback coverage. Public exact-basis CI runs the
   integration test against digest-pinned Qdrant v1.18.2: it creates two

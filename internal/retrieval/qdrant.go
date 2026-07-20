@@ -97,6 +97,14 @@ type QdrantBlueGreenClient interface {
 	QdrantAliasInspector
 }
 
+// QdrantAliasMutationGuard serializes one scoped alias mutation across every
+// operator instance. Implementations must hold the guard from observation
+// through update and readback; an in-process mutex is insufficient in a
+// multi-process deployment.
+type QdrantAliasMutationGuard interface {
+	WithRetrievalAliasMutation(context.Context, string, func(context.Context) error) error
+}
+
 // AliasObservation is the bounded, non-content evidence of one alias lookup.
 // Exists distinguishes an absent alias during first activation from a failed
 // lookup; callers must never treat an inspection error as an absent alias.
@@ -174,10 +182,11 @@ func VerifyQdrantCollection(info *qdrant.CollectionInfo, plan QdrantCollectionPl
 	return nil
 }
 
-// SwitchQdrantAlias atomically directs one stable alias to a verified physical
-// generation. Existing aliases require Qdrant's delete-then-create sequence in
-// one UpdateAliases request; first activation needs only the create action.
-func SwitchQdrantAlias(ctx context.Context, client QdrantAliasClient, aliasName, collectionName string, expected AliasObservation) error {
+// switchQdrantAlias directs one stable alias to a physical generation while
+// its caller holds the distributed alias-mutation guard. Existing aliases
+// require Qdrant's delete-then-create sequence in one UpdateAliases request;
+// first activation needs only the create action.
+func switchQdrantAlias(ctx context.Context, client QdrantAliasClient, aliasName, collectionName string, expected AliasObservation) error {
 	if client == nil || !qdrantCollectionNamePattern.MatchString(aliasName) || !qdrantCollectionNamePattern.MatchString(collectionName) {
 		return fmt.Errorf("Qdrant alias switch is invalid")
 	}
@@ -255,25 +264,33 @@ func VerifyQdrantAlias(ctx context.Context, client QdrantAliasInspector, aliasNa
 // observation is the rollback precondition; it contains no cards, vectors, or
 // secret material. PostgreSQL generation state must be updated only after this
 // function returns success.
-func CutoverQdrantCollection(ctx context.Context, client QdrantBlueGreenClient, aliasName string, plan QdrantCollectionPlan) (AliasObservation, error) {
-	if client == nil || plan.Create == nil || !qdrantCollectionNamePattern.MatchString(aliasName) {
+func CutoverQdrantCollection(ctx context.Context, guard QdrantAliasMutationGuard, client QdrantBlueGreenClient, aliasName string, plan QdrantCollectionPlan) (AliasObservation, error) {
+	if guard == nil || client == nil || plan.Create == nil || !qdrantCollectionNamePattern.MatchString(aliasName) {
 		return AliasObservation{}, fmt.Errorf("Qdrant collection cutover is invalid")
 	}
 	if err := EnsureQdrantCollection(ctx, client, plan); err != nil {
 		return AliasObservation{}, fmt.Errorf("verify green Qdrant collection: %w", err)
 	}
-	previous, err := ObserveQdrantAlias(ctx, client, aliasName)
+	var previous AliasObservation
+	err := guard.WithRetrievalAliasMutation(ctx, aliasName, func(lockedContext context.Context) error {
+		var err error
+		previous, err = ObserveQdrantAlias(lockedContext, client, aliasName)
+		if err != nil {
+			return err
+		}
+		if previous.Exists && previous.CollectionName == plan.Create.CollectionName {
+			return nil
+		}
+		if err := switchQdrantAlias(lockedContext, client, aliasName, plan.Create.CollectionName, previous); err != nil {
+			return err
+		}
+		if _, err := VerifyQdrantAlias(lockedContext, client, aliasName, plan.Create.CollectionName); err != nil {
+			return fmt.Errorf("verify Qdrant alias after cutover: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return AliasObservation{}, err
-	}
-	if previous.Exists && previous.CollectionName == plan.Create.CollectionName {
-		return previous, nil
-	}
-	if err := SwitchQdrantAlias(ctx, client, aliasName, plan.Create.CollectionName, previous); err != nil {
-		return AliasObservation{}, err
-	}
-	if _, err := VerifyQdrantAlias(ctx, client, aliasName, plan.Create.CollectionName); err != nil {
-		return AliasObservation{}, fmt.Errorf("verify Qdrant alias after cutover: %w", err)
+		return AliasObservation{}, fmt.Errorf("guard Qdrant alias cutover: %w", err)
 	}
 	return previous, nil
 }
@@ -283,25 +300,26 @@ func CutoverQdrantCollection(ctx context.Context, client QdrantBlueGreenClient, 
 // prevents one recovery run from overwriting a newer, independently verified
 // cutover. The caller is responsible for keeping the old collection alive for
 // the declared observation window.
-func RollbackQdrantCollection(ctx context.Context, client QdrantBlueGreenClient, aliasName, expectedGreen, previousCollection string) error {
-	if client == nil || !qdrantCollectionNamePattern.MatchString(aliasName) || !qdrantCollectionNamePattern.MatchString(expectedGreen) || !qdrantCollectionNamePattern.MatchString(previousCollection) || expectedGreen == previousCollection {
+func RollbackQdrantCollection(ctx context.Context, guard QdrantAliasMutationGuard, client QdrantBlueGreenClient, aliasName, expectedGreen, previousCollection string) error {
+	if guard == nil || client == nil || !qdrantCollectionNamePattern.MatchString(aliasName) || !qdrantCollectionNamePattern.MatchString(expectedGreen) || !qdrantCollectionNamePattern.MatchString(previousCollection) || expectedGreen == previousCollection {
 		return fmt.Errorf("Qdrant collection rollback is invalid")
 	}
-	current, err := VerifyQdrantAlias(ctx, client, aliasName, expectedGreen)
-	if err != nil {
-		return fmt.Errorf("verify Qdrant alias before rollback: %w", err)
-	}
-	if !current.Exists {
-		return fmt.Errorf("Qdrant alias is absent before rollback")
-	}
-	if err := SwitchQdrantAlias(ctx, client, aliasName, previousCollection, current); err != nil {
-		return err
-	}
-	_, err = VerifyQdrantAlias(ctx, client, aliasName, previousCollection)
-	if err != nil {
-		return fmt.Errorf("verify Qdrant alias after rollback: %w", err)
-	}
-	return nil
+	return guard.WithRetrievalAliasMutation(ctx, aliasName, func(lockedContext context.Context) error {
+		current, err := VerifyQdrantAlias(lockedContext, client, aliasName, expectedGreen)
+		if err != nil {
+			return fmt.Errorf("verify Qdrant alias before rollback: %w", err)
+		}
+		if !current.Exists {
+			return fmt.Errorf("Qdrant alias is absent before rollback")
+		}
+		if err := switchQdrantAlias(lockedContext, client, aliasName, previousCollection, current); err != nil {
+			return err
+		}
+		if _, err := VerifyQdrantAlias(lockedContext, client, aliasName, previousCollection); err != nil {
+			return fmt.Errorf("verify Qdrant alias after rollback: %w", err)
+		}
+		return nil
+	})
 }
 
 func (writer QdrantPointWriter) UpsertPoint(ctx context.Context, point contracts.RetrievalPoint) error {

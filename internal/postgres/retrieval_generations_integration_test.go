@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -121,6 +122,60 @@ func TestRetrievalGenerationConcurrentActivationsLeaveOneActiveTarget(t *testing
 	}
 	if active != 1 {
 		t.Fatalf("active retrieval generations=%d, want 1", active)
+	}
+}
+
+func TestRetrievalAliasMutationGuardSerializesStoreInstances(t *testing.T) {
+	pool := integrationPool(t)
+	resetDatabase(t, pool)
+	if err := Migrate(t.Context(), pool); err != nil {
+		t.Fatal(err)
+	}
+	first := newIntegrationStore(t, pool)
+	second := newIntegrationStore(t, pool)
+	firstEntered := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	secondEntered := make(chan struct{})
+	errs := make(chan error, 2)
+
+	go func() {
+		errs <- first.WithRetrievalAliasMutation(t.Context(), "forja_retrieval", func(context.Context) error {
+			close(firstEntered)
+			<-releaseFirst
+			return nil
+		})
+	}()
+	select {
+	case <-firstEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first alias mutation did not acquire its guard")
+	}
+	go func() {
+		errs <- second.WithRetrievalAliasMutation(t.Context(), "forja_retrieval", func(context.Context) error {
+			close(secondEntered)
+			return nil
+		})
+	}()
+	select {
+	case <-secondEntered:
+		t.Fatal("second store entered the same alias mutation concurrently")
+	case <-time.After(150 * time.Millisecond):
+	}
+	close(releaseFirst)
+	for range 2 {
+		select {
+		case err := <-errs:
+			if err != nil {
+				t.Fatalf("alias mutation guard error = %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("alias mutation guard did not release")
+		}
+	}
+	select {
+	case <-secondEntered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("second alias mutation never entered after release")
 	}
 }
 
