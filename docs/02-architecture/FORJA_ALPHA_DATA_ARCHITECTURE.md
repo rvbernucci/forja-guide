@@ -3,9 +3,10 @@
 Status: Active for Sprints 10-14. The initial PostgreSQL schema is
 implemented in migration `000010_forja_alpha_financial_data`; the Magnificent
 Seven SEC identity registry and idempotent SQL seed are implemented in
-`forja-alpha seed-identities`. Filing, Treasury, FRED/ALFRED, market-data
-adapters, populated snapshots, point-in-time views, and recovery gates remain
-Sprint 10 work.
+`forja-alpha seed-identities`, including an optional versioned SEC
+`company_tickers.json` snapshot path with source-object lineage. Filing,
+Treasury, FRED/ALFRED, market-data adapters, populated snapshots,
+point-in-time views, and recovery gates remain Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
 [ADR-0021](../05-decisions/ADR-0021-POINT-IN-TIME-FINANCIAL-AUTHORITY.md).
@@ -95,7 +96,7 @@ adapter contract records provider, entitlement, adjustment policy, license,
 retrieval timestamp, and redistribution boundary. A user-supplied licensed CSV
 is the reproducible fallback.
 
-## SEC Identity Seed
+## SEC Identity Seed and Snapshot Lineage
 
 The bounded release can bootstrap its issuer universe without network access:
 
@@ -106,11 +107,29 @@ go run ./cmd/forja-alpha seed-identities \
   > /secure/forja/alpha-sec-identities.sql
 ```
 
+When an SEC `company_tickers.json` snapshot has been acquired and preserved in
+the operator's private artifact area, the same command can bind the bootstrap
+to a content hash, ingestion run, and source object:
+
+```bash
+go run ./cmd/forja-alpha seed-identities \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --company-tickers-json /secure/forja/sec/company_tickers.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-identities.sql
+```
+
 The generated SQL is idempotent. It creates the target tenant and repository
-scope, registers the SEC EDGAR source system, and upserts the seven covered
-issuers, their common-stock securities, canonical CIK identifiers, and reviewed
-ticker identifiers. It is a deterministic bootstrap seed, not a substitute for
-the later versioned SEC company-tickers snapshot and filing-source objects.
+scope, registers the SEC EDGAR source system, validates that the snapshot
+contains the seven covered tickers with the expected CIKs, records the snapshot
+SHA-256 and size in `alpha_source_objects`, records an `alpha_ingestion_runs`
+receipt, and upserts the covered issuers, their common-stock securities,
+canonical CIK identifiers, and reviewed ticker identifiers.
+
+The company-tickers snapshot remains a discovery and identity aid. It is not a
+substitute for SEC submissions, filing archives, Company Facts, and filing
+source objects, which remain the authority for reported facts and documents.
 
 ## Temporal Contract
 

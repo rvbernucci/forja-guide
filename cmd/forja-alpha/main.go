@@ -61,11 +61,34 @@ func seedIdentities(arguments []string) error {
 	flags.SetOutput(os.Stderr)
 	tenantID := flags.String("tenant-id", "", "target tenant UUID")
 	repositoryID := flags.String("repository-id", "", "target repository UUID")
+	companyTickersPath := flags.String("company-tickers-json", "", "optional local SEC company_tickers.json snapshot")
+	availableAtRaw := flags.String("available-at", "", "snapshot availability timestamp in RFC3339 format; required with --company-tickers-json")
 	if err := flags.Parse(arguments); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected positional arguments")
 	}
-	return alpha.WriteSECIdentitySeedSQL(os.Stdout, *tenantID, *repositoryID)
+	if *companyTickersPath == "" {
+		if *availableAtRaw != "" {
+			return errors.New("--available-at requires --company-tickers-json")
+		}
+		return alpha.WriteSECIdentitySeedSQL(os.Stdout, *tenantID, *repositoryID)
+	}
+	if *availableAtRaw == "" {
+		return errors.New("--company-tickers-json requires --available-at")
+	}
+	availableAt, err := time.Parse(time.RFC3339, *availableAtRaw)
+	if err != nil {
+		return err
+	}
+	content, err := os.ReadFile(*companyTickersPath)
+	if err != nil {
+		return err
+	}
+	snapshot, err := alpha.ParseSECCompanyTickersSnapshot(content, availableAt)
+	if err != nil {
+		return err
+	}
+	return alpha.WriteSECIdentitySeedSQLWithSnapshot(os.Stdout, *tenantID, *repositoryID, &snapshot)
 }

@@ -61,9 +61,9 @@ A Sprint is done when:
 | 07 | Artifacts and Memory | Object storage, conversations, memory, and provenance |
 | 08 | Deterministic Indexing | Compiler-backed repository and code lineage |
 | 09 | Governed Retrieval | Qdrant hybrid search and canonical entity resolution |
-| 10 | Canonical Financial Data and Local Runtime | Point-in-time Magnificent Seven data plus verified Radeon/ROCm inference |
-| 11 | Deterministic Finance Tools and Evidence Fabric | Typed analytics plus canonical Qdrant/Neo4j context |
-| 12 | Governed Alpha Agent and Research Workspace | Planning, tools, RAG, memory, permissions, verification, and web UX |
+| 10 | Data Foundation and Radeon Runtime | Point-in-time Magnificent Seven data plus verified Radeon/ROCm inference |
+| 11 | Deterministic Tools and Evidence Fabric | Typed analytics plus canonical Qdrant/Neo4j context |
+| 12 | Local Agent and Research Workspace | Planning, tools, RAG, memory, permissions, verification, and web UX |
 | 13 | Evaluation, ROCm Optimization, and Safety Closure | Held-out quality gates and reproducible Radeon performance |
 | 14 | Pilot, Release, and AMD Submission | Clean Forja Alpha release and complete Track 2 submission |
 
