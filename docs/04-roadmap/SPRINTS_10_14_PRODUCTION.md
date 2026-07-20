@@ -188,6 +188,9 @@ analytical memo.
   endpoint, loopback-only policy, GPU evidence, and zero remote core inference.
 - [x] Add a frozen public smoke task set and sanitized benchmark harness for
   comparing loopback local instruction-model candidates on Radeon.
+- [x] Add an integrated competition-profile recovery verifier that binds
+  runtime receipt, readiness, source restore, and local model benchmark
+  evidence.
 - [ ] Deploy at least two open-weight instruction-model candidates locally and
   select one with a frozen task set.
 - [ ] Deploy and benchmark a local embedding model on the Radeon profile.
