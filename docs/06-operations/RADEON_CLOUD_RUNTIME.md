@@ -193,6 +193,21 @@ The summary includes only report hashes, validity, gate counts, and error
 classes. It intentionally drops private paths, logs, prompts, model outputs,
 vectors, source bodies, and credentials.
 
+If the public summary passes review, prepare the public Sprint 10 evidence
+package without closing the Sprint:
+
+```bash
+cp /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json \
+  docs/evidence/sprint-10/radeon-public-summary.json
+python3 scripts/apply_radeon_sprint10_public_summary.py \
+  --summary docs/evidence/sprint-10/radeon-public-summary.json
+```
+
+The applier updates metrics, validation, and the closure candidate to
+`ready_for_independent_review`, but it keeps the candidate non-authoritative
+and leaves `next_sprint_authorized` as `null`. Sprint 11 starts only after a
+separate immutable review promotes the candidate to a v2 close receipt.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
