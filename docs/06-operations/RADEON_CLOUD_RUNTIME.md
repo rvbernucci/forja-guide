@@ -208,6 +208,18 @@ The applier updates metrics, validation, and the closure candidate to
 and leaves `next_sprint_authorized` as `null`. Sprint 11 starts only after a
 separate immutable review promotes the candidate to a v2 close receipt.
 
+Before requesting that immutable review, run:
+
+```bash
+python3 scripts/verify_sprint10_review_readiness.py \
+  --evidence-dir docs/evidence/sprint-10 \
+  --output /workspace/forja-alpha-sprint10-review-readiness.json
+```
+
+The verifier passes only when the public summary, metrics, validation report,
+and closure candidate agree that the real Radeon gates are ready for review
+while still refusing to authorize Sprint 11.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
