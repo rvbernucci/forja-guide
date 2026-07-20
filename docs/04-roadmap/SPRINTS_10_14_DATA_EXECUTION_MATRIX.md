@@ -33,6 +33,33 @@ typed Go tools, Qdrant, and Neo4j each carry a separate responsibility:
 | 13 | Evaluation sets, latency runs, GPU metrics, answer-quality labels, retrieval labels, tool accuracy checks | Evaluation specs, run receipts, result hashes, telemetry snapshots | Prometheus/Loki/Grafana evidence, local model benchmark variants | Accuracy, latency, stability, privacy, and recovery reports |
 | 14 | Submission PDF, demo video evidence, final README facts, release manifest, AMD PR materials | Release artifacts, immutable manifest, final evidence summaries | Public repository and Radeon demo profile | Clean checkout reproduction, public-source audit, submission checklist |
 
+## Data-To-Database Contract
+
+The Alpha must be understandable from its data stores. Each extracted record is
+assigned to exactly one authority first, then projected only when projection
+adds value.
+
+| Data family | Extracted data | Authority | Projection | Product use |
+| --- | --- | --- | --- | --- |
+| Issuer identity | CIK, ticker, aliases, security IDs, exchange labels | PostgreSQL | Neo4j issuer/security nodes | deterministic company resolution |
+| SEC filing timeline | accessions, forms, report periods, accepted/filed/available clocks, primary docs | PostgreSQL + object storage | Neo4j filing/document paths | point-in-time filing planner and source cards |
+| SEC reported facts | taxonomy, concepts, contexts, raw facts, units, decimals, fiscal frames | PostgreSQL + object storage | Neo4j concept/fact/metric paths | fundamentals and cited accounting claims |
+| Filing narrative | sections, notes, policies, risks, MD&A, citations | Object storage + PostgreSQL metadata | Qdrant chunks + Neo4j section paths | RAG, evidence drawer, memo support |
+| Macro and rates | Treasury yields, real yields, FRED/ALFRED vintages | PostgreSQL + object storage | Neo4j series paths | factor tools and availability-aware analysis |
+| Market data | adjusted prices, returns, benchmarks, corporate-action policy | PostgreSQL + object storage | Neo4j series/security paths | factor sensitivity and return alignment |
+| 13F holdings | managers, reports, holdings, changes, filing delays, unresolved securities | PostgreSQL + object storage | Neo4j manager/holding paths | institutional disclosure analysis |
+| Research sessions | prompts, plans, messages, tool calls, decisions, citations, claims, memos | PostgreSQL + object storage | Qdrant approved memory, Neo4j claim paths | multi-turn workspace and replay |
+| Runtime evidence | GPU profile, model receipts, benchmark receipts, recovery reports | PostgreSQL metadata + object storage | Prometheus/Loki/Grafana/Tempo summaries | demo proof, optimization, release claims |
+
+Rules:
+
+- PostgreSQL owns identity, time, permission, numeric selection, and claim
+  state.
+- Object storage owns immutable bytes and large artifacts.
+- Qdrant owns only semantic discovery over approved text or memory summaries.
+- Neo4j owns explainable paths between canonical IDs, never source truth.
+- Observability owns content-free runtime facts, not prompt or source content.
+
 ## Sprint 10-14 Database Build Plan
 
 This is the practical build order for turning the architecture into an Alpha

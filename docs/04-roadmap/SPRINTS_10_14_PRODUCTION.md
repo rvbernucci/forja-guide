@@ -89,6 +89,38 @@ exists. Sprint 11 must not treat Qdrant or Neo4j as authority. Sprint 12 must
 not hide a missing data/tool layer behind a pretty UI. Sprint 13 must measure
 before optimizing. Sprint 14 must package only behavior that has evidence.
 
+## Refactored Alpha Execution Contract
+
+Sprints 10-14 are now treated as one Alpha product pipeline instead of five
+independent engineering lists. Each Sprint closes one layer that the next layer
+is allowed to trust:
+
+| Sprint | Layer closed | What later Sprints may trust | What remains forbidden |
+| --- | --- | --- | --- |
+| 10 | Data spine and Radeon runtime | PostgreSQL point-in-time rows, source-object hashes, restore manifests, local model and embedding receipts | using projections, model output, or UI claims as evidence |
+| 11 | Evidence fabric | deterministic tool receipts, Qdrant discovery receipts, Neo4j path receipts, evidence packs | allowing retrieval or graph traversal to create facts |
+| 12 | Product agent | schema-valid plans, visible tool execution, governed memory, permission receipts, cited memos | hiding missing evidence behind model prose |
+| 13 | Quality and optimization | benchmarked ROCm profile, holdout quality, privacy checks, reliability receipts | optimizing latency at the cost of citations, numeric exactness, or local inference |
+| 14 | Release package | public README/PDF/video/deck tied to evidence and reproducible setup | changing claims after evidence freeze or relying on undocumented manual state |
+
+The Forja Alpha database design follows the same pipeline. PostgreSQL is the
+system of record for truth, permissions, sessions, and claims. Object storage
+preserves immutable bytes. Qdrant accelerates semantic discovery over approved
+narrative material. Neo4j explains deterministic relationships and bounded
+evidence paths. Prometheus, Loki, Grafana, and Tempo make the runtime visible
+without storing private prompts or source bodies.
+
+The practical build order is:
+
+1. extract and preserve source bytes;
+2. load canonical identities, clocks, facts, and time series into PostgreSQL;
+3. create deterministic tools that produce recomputable receipts;
+4. project approved narrative chunks into Qdrant from PostgreSQL-owned
+   metadata;
+5. project canonical IDs and source hashes into Neo4j paths;
+6. let the local model plan and synthesize only after evidence packs exist;
+7. expose the whole path through the web workspace and observability stack.
+
 ## Data We Intend To Extract
 
 Forja Alpha starts with the Magnificent Seven because the bounded scope lets us
