@@ -24,7 +24,10 @@ Required non-secret configuration:
 | `FORJA_TENANT_ID` / `FORJA_REPOSITORY_ID` | Single canonical authority scope |
 | `FORJA_RETRIEVAL_COLLECTION` | Stable Qdrant alias or physical collection |
 | `FORJA_QDRANT_HOST` / `FORJA_QDRANT_GRPC_PORT` / `FORJA_QDRANT_TLS` | Verified Qdrant transport boundary |
-| `AWS_REGION` | Explicit Bedrock region |
+| `AWS_REGION` | Explicit Bedrock region for non-competition deployments |
+| `FORJA_RETRIEVAL_EMBEDDING_PROVIDER` | `bedrock` by default; use `local` for the Radeon competition profile |
+| `FORJA_LOCAL_EMBEDDING_ENDPOINT` / `FORJA_LOCAL_EMBEDDING_MODEL` | Loopback OpenAI-compatible embedding endpoint and model when provider is `local` |
+| `FORJA_LOCAL_EMBEDDING_VERSION` / `FORJA_LOCAL_EMBEDDING_DIMENSIONS` | Pinned local embedding revision and vector dimensions |
 | `FORJA_S3_BUCKET` / `FORJA_S3_REGION` | Governed memory-body capability |
 | `FORJA_S3_ENDPOINT` / `FORJA_S3_PATH_STYLE` | Optional compatible S3 endpoint selection |
 
@@ -58,6 +61,7 @@ go run ./cmd/forja-retrieval preflight \
 6. Score the comparison using the separately access-controlled corpus. Keep
    holdout, OOD, and adversarial outputs out of policy selection.
 
-The preflight receipt proves dependency readiness only. It does not prove
-retrieval quality, a workload role's least-privilege IAM policy, or final
-Sprint 09 acceptance.
+The preflight receipt proves dependency readiness only. It records the
+configured embedding provider and vector dimensions, but never records vectors
+or input text. It does not prove retrieval quality, a workload role's
+least-privilege IAM policy, or final Sprint 09 acceptance.

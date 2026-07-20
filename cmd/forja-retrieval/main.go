@@ -60,8 +60,8 @@ func run(ctx context.Context, arguments []string, stdout, stderr io.Writer, look
 
 // preflightRuntime verifies the bounded dependency contract required before an
 // operator starts projection or private evaluation. It makes one synthetic
-// Bedrock embedding call but never prints credentials, identity, text, vectors,
-// hosts, collection names, or provider responses.
+// embedding call but never prints credentials, identity, text, vectors, hosts,
+// collection names, or provider responses.
 func preflightRuntime(parent context.Context, arguments []string, _ io.Writer, stderr io.Writer, lookup func(string) (string, bool)) error {
 	flags := flag.NewFlagSet("forja-retrieval preflight", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -88,7 +88,8 @@ func preflightRuntime(parent context.Context, arguments []string, _ io.Writer, s
 	if err != nil {
 		return err
 	}
-	plan, err := retrieval.BuildQdrantCollectionPlan(physicalCollection, retrieval.BedrockTitanTextEmbeddingV2Dimensions, runtime.generation)
+	descriptor := runtime.embedder.Descriptor()
+	plan, err := retrieval.BuildQdrantCollectionPlan(physicalCollection, descriptor.Dimensions, runtime.generation)
 	if err != nil {
 		return fmt.Errorf("build configured Qdrant collection contract: %w", err)
 	}
@@ -101,17 +102,22 @@ func preflightRuntime(parent context.Context, arguments []string, _ io.Writer, s
 	}
 	vector, err := runtime.embedder.Embed(ctx, "forja retrieval preflight")
 	if err != nil {
-		return fmt.Errorf("verify Bedrock embedding capability: %w", err)
+		return fmt.Errorf("verify embedding capability: %w", err)
 	}
-	if len(vector) != retrieval.BedrockTitanTextEmbeddingV2Dimensions {
-		return errors.New("Bedrock preflight vector dimensions are invalid")
+	if len(vector) != descriptor.Dimensions {
+		return errors.New("preflight vector dimensions are invalid")
 	}
-	return writePreflightReceipt(*output, retrievalPreflightReceipt{
+	receipt := retrievalPreflightReceipt{
 		SchemaVersion: contracts.RetrievalSchemaVersion,
 		Generation:    runtime.generation,
 		PostgresReady: true, QdrantVerified: true,
-		BedrockDimensions: len(vector),
-	})
+		EmbeddingProvider:   runtime.embeddingProvider,
+		EmbeddingDimensions: len(vector),
+	}
+	if runtime.embeddingProvider == "bedrock" {
+		receipt.BedrockDimensions = len(vector)
+	}
+	return writePreflightReceipt(*output, receipt)
 }
 
 // preflightCollectionTarget resolves an optional serving alias to the physical
@@ -267,14 +273,15 @@ func queryOnce(parent context.Context, arguments []string, _ io.Writer, stderr i
 }
 
 type runtime struct {
-	store        *postgres.Store
-	qdrant       qdrantClient
-	embedder     *retrieval.BedrockTitanEmbedder
-	memoryBodies *objectstore.Store
-	tenantID     string
-	repositoryID string
-	collection   string
-	generation   string
+	store             *postgres.Store
+	qdrant            qdrantClient
+	embedder          retrieval.Embedder
+	memoryBodies      *objectstore.Store
+	tenantID          string
+	repositoryID      string
+	collection        string
+	generation        string
+	embeddingProvider string
 }
 
 // qdrantClient is the smallest runtime capability set; lifecycle mutations
@@ -314,14 +321,10 @@ func openRuntime(ctx context.Context, lookup func(string) (string, bool)) (runti
 		closePool()
 		return runtime{}, func() {}, fmt.Errorf("canonical PostgreSQL is not ready: %w", err)
 	}
-	embedder, err := retrieval.NewBedrockTitanEmbedder(openContext, retrieval.BedrockTitanConfig{
-		Region: config.region, Model: retrieval.BedrockTitanTextEmbeddingV2Model,
-		Version: retrieval.BedrockTitanTextEmbeddingV2Version, Dimensions: retrieval.BedrockTitanTextEmbeddingV2Dimensions,
-		SparseEncoderVersion: retrieval.SparseEncoderVersion,
-	})
+	embedder, err := openEmbedder(openContext, config)
 	if err != nil {
 		closePool()
-		return runtime{}, func() {}, fmt.Errorf("configure Bedrock embedding: %w", err)
+		return runtime{}, func() {}, err
 	}
 	client, err := retrieval.OpenQdrant(retrieval.QdrantEndpoint{
 		Host: config.qdrantHost, Port: config.qdrantPort, APIKey: config.qdrantAPIKey, UseTLS: config.qdrantTLS,
@@ -334,7 +337,8 @@ func openRuntime(ctx context.Context, lookup func(string) (string, bool)) (runti
 	generation := contracts.RetrievalGenerationID(descriptor.Model, descriptor.Version, descriptor.Dimensions, descriptor.SparseEncoderVersion)
 	return runtime{
 			store: store, qdrant: client, embedder: embedder, memoryBodies: memoryBodies,
-			tenantID: config.tenantID, repositoryID: config.repositoryID, collection: config.collection, generation: generation,
+			tenantID: config.tenantID, repositoryID: config.repositoryID, collection: config.collection,
+			generation: generation, embeddingProvider: config.embeddingProvider,
 		}, func() {
 			_ = client.Close()
 			closePool()
@@ -345,9 +349,41 @@ type runtimeConfig struct {
 	databaseURL, tenantID, repositoryID  string
 	qdrantHost, qdrantAPIKey, collection string
 	s3Bucket, s3Region, s3Endpoint       string
+	embeddingProvider                    string
+	localEmbeddingEndpoint               string
+	localEmbeddingModel                  string
+	localEmbeddingVersion                string
+	localEmbeddingDimensions             int
 	qdrantPort                           int
 	qdrantTLS, s3PathStyle               bool
 	region                               string
+}
+
+func openEmbedder(ctx context.Context, config runtimeConfig) (retrieval.Embedder, error) {
+	switch config.embeddingProvider {
+	case "bedrock":
+		embedder, err := retrieval.NewBedrockTitanEmbedder(ctx, retrieval.BedrockTitanConfig{
+			Region: config.region, Model: retrieval.BedrockTitanTextEmbeddingV2Model,
+			Version: retrieval.BedrockTitanTextEmbeddingV2Version, Dimensions: retrieval.BedrockTitanTextEmbeddingV2Dimensions,
+			SparseEncoderVersion: retrieval.SparseEncoderVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configure Bedrock embedding: %w", err)
+		}
+		return embedder, nil
+	case "local":
+		embedder, err := retrieval.NewLocalHTTPEmbedder(retrieval.LocalHTTPEmbeddingConfig{
+			Endpoint: config.localEmbeddingEndpoint, Model: config.localEmbeddingModel,
+			Version: config.localEmbeddingVersion, Dimensions: config.localEmbeddingDimensions,
+			SparseEncoderVersion: retrieval.SparseEncoderVersion,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("configure local embedding: %w", err)
+		}
+		return embedder, nil
+	default:
+		return nil, errors.New("embedding provider is invalid")
+	}
 }
 
 func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, error) {
@@ -366,6 +402,23 @@ func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, er
 		qdrantHost: get("FORJA_QDRANT_HOST"), qdrantAPIKey: get("FORJA_QDRANT_API_KEY"),
 		collection: get("FORJA_RETRIEVAL_COLLECTION"), region: get("AWS_REGION"), qdrantPort: 6334,
 		s3Bucket: get("FORJA_S3_BUCKET"), s3Region: get("FORJA_S3_REGION"), s3Endpoint: get("FORJA_S3_ENDPOINT"),
+		embeddingProvider:      get("FORJA_RETRIEVAL_EMBEDDING_PROVIDER"),
+		localEmbeddingEndpoint: get("FORJA_LOCAL_EMBEDDING_ENDPOINT"),
+		localEmbeddingModel:    get("FORJA_LOCAL_EMBEDDING_MODEL"),
+		localEmbeddingVersion:  get("FORJA_LOCAL_EMBEDDING_VERSION"),
+	}
+	if config.embeddingProvider == "" {
+		config.embeddingProvider = "bedrock"
+	}
+	if config.embeddingProvider != "bedrock" && config.embeddingProvider != "local" {
+		return runtimeConfig{}, errors.New("FORJA_RETRIEVAL_EMBEDDING_PROVIDER is invalid")
+	}
+	if value := get("FORJA_LOCAL_EMBEDDING_DIMENSIONS"); value != "" {
+		dimensions, err := strconv.Atoi(value)
+		if err != nil {
+			return runtimeConfig{}, fmt.Errorf("FORJA_LOCAL_EMBEDDING_DIMENSIONS is invalid")
+		}
+		config.localEmbeddingDimensions = dimensions
 	}
 	if value := get("FORJA_QDRANT_GRPC_PORT"); value != "" {
 		port, err := strconv.Atoi(value)
@@ -388,8 +441,14 @@ func runtimeConfigFromEnv(lookup func(string) (string, bool)) (runtimeConfig, er
 		}
 		config.s3PathStyle = enabled
 	}
-	if config.databaseURL == "" || config.tenantID == "" || config.repositoryID == "" || config.qdrantHost == "" || config.collection == "" || config.region == "" || config.s3Bucket == "" || config.s3Region == "" {
-		return runtimeConfig{}, errors.New("FORJA_DATABASE_URL, FORJA_TENANT_ID, FORJA_REPOSITORY_ID, FORJA_QDRANT_HOST, FORJA_RETRIEVAL_COLLECTION, AWS_REGION, FORJA_S3_BUCKET, and FORJA_S3_REGION are required")
+	if config.databaseURL == "" || config.tenantID == "" || config.repositoryID == "" || config.qdrantHost == "" || config.collection == "" || config.s3Bucket == "" || config.s3Region == "" {
+		return runtimeConfig{}, errors.New("FORJA_DATABASE_URL, FORJA_TENANT_ID, FORJA_REPOSITORY_ID, FORJA_QDRANT_HOST, FORJA_RETRIEVAL_COLLECTION, FORJA_S3_BUCKET, and FORJA_S3_REGION are required")
+	}
+	if config.embeddingProvider == "bedrock" && config.region == "" {
+		return runtimeConfig{}, errors.New("AWS_REGION is required for Bedrock embeddings")
+	}
+	if config.embeddingProvider == "local" && (config.localEmbeddingEndpoint == "" || config.localEmbeddingModel == "" || config.localEmbeddingVersion == "" || config.localEmbeddingDimensions == 0) {
+		return runtimeConfig{}, errors.New("FORJA_LOCAL_EMBEDDING_ENDPOINT, FORJA_LOCAL_EMBEDDING_MODEL, FORJA_LOCAL_EMBEDDING_VERSION, and FORJA_LOCAL_EMBEDDING_DIMENSIONS are required for local embeddings")
 	}
 	if _, err := (retrieval.QdrantEndpoint{Host: config.qdrantHost, Port: config.qdrantPort, APIKey: config.qdrantAPIKey, UseTLS: config.qdrantTLS}).ClientConfig(); err != nil {
 		return runtimeConfig{}, err
@@ -431,11 +490,13 @@ type evaluationComparisonCapture struct {
 }
 
 type retrievalPreflightReceipt struct {
-	SchemaVersion     string `json:"schema_version"`
-	Generation        string `json:"generation"`
-	PostgresReady     bool   `json:"postgres_ready"`
-	QdrantVerified    bool   `json:"qdrant_verified"`
-	BedrockDimensions int    `json:"bedrock_dimensions"`
+	SchemaVersion       string `json:"schema_version"`
+	Generation          string `json:"generation"`
+	PostgresReady       bool   `json:"postgres_ready"`
+	QdrantVerified      bool   `json:"qdrant_verified"`
+	EmbeddingProvider   string `json:"embedding_provider"`
+	EmbeddingDimensions int    `json:"embedding_dimensions"`
+	BedrockDimensions   int    `json:"bedrock_dimensions,omitempty"`
 }
 
 func readQuery(path string) (contracts.RetrievalQuery, error) {
