@@ -284,7 +284,16 @@ python3 scripts/report_sprint10_gate_status.py \
 
 After an immutable review is recorded under
 `docs/evidence/sprint-10/reviews/`, generate the final close receipt with the
-fail-closed promoter:
+fail-closed promoter. First render the final promotion checklist:
+
+```bash
+python3 scripts/render_sprint10_promotion_checklist.py \
+  --reviewer <reviewer-id> \
+  --reviewed-candidate-commit <40-char-candidate-commit> \
+  --output /tmp/sprint10-promotion-checklist.md
+```
+
+Then run the promoter dry-run:
 
 ```bash
 python3 scripts/promote_sprint10_close_receipt.py \

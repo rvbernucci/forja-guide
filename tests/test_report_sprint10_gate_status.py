@@ -145,6 +145,14 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
                 "python3 scripts/render_sprint10_immutable_review_request.py --reviewer <reviewer-id> --output docs/evidence/sprint-10/reviews/immutable-candidate-review.md"
             ),
         )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/render_sprint10_immutable_review_request.py --reviewer <reviewer-id> --output docs/evidence/sprint-10/reviews/immutable-candidate-review.md"
+            ),
+            report["next_commands"].index(
+                "python3 scripts/render_sprint10_promotion_checklist.py --reviewer <reviewer-id> --reviewed-candidate-commit <40-char-candidate-commit> --output /tmp/sprint10-promotion-checklist.md"
+            ),
+        )
 
     def test_ready_package_reports_ready_without_authorizing_next_sprint(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
