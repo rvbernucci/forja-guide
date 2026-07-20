@@ -220,6 +220,23 @@ The verifier passes only when the public summary, metrics, validation report,
 and closure candidate agree that the real Radeon gates are ready for review
 while still refusing to authorize Sprint 11.
 
+After an immutable review is recorded under
+`docs/evidence/sprint-10/reviews/`, generate the final close receipt with the
+fail-closed promoter:
+
+```bash
+python3 scripts/promote_sprint10_close_receipt.py \
+  --review-artifact docs/evidence/sprint-10/reviews/immutable-candidate-review.md \
+  --reviewed-candidate-commit <40-char-candidate-commit> \
+  --model <reviewer-id> \
+  --dry-run
+```
+
+The promoter rejects incomplete real Radeon gates, pre-authorized candidates,
+and reviews outside the Sprint evidence folder. The final closure commit must
+replace `closure-candidate.json` with `close-receipt.json` and contain only the
+promotion artifacts allowed by `scripts/validate_repository.py`.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
