@@ -44,6 +44,26 @@ recording secret values.
 Keep the raw receipt outside Git. Publish only a sanitized summary under
 `docs/evidence/sprint-10/` when Sprint 10 is ready for closure.
 
+After the local instruction model and embedding servers are running, verify the
+competition boundary with the readiness probe:
+
+```bash
+python3 scripts/verify_radeon_runtime_readiness.py \
+  --receipt /workspace/forja-radeon-runtime-receipt.json \
+  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \
+  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \
+  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \
+  --require-endpoints \
+  --output /workspace/forja-radeon-runtime-readiness.json
+```
+
+The verifier accepts only loopback OpenAI-compatible endpoints, probes
+`/v1/models` and `/v1/embeddings`, validates that the receipt declares remote
+core inference disabled, and writes a mode `0600` readiness report. Keep the raw
+report outside Git beside the runtime receipt. A sanitized summary can be
+published only after model names, private paths, and operational details are
+reviewed.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD

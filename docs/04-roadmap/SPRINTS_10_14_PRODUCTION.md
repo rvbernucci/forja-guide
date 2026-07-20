@@ -184,7 +184,7 @@ analytical memo.
 - [x] Add a loopback-only local OpenAI-compatible embedding provider.
 - [ ] Capture a real Radeon Cloud runtime receipt and keep raw artifacts
   outside Git.
-- [ ] Add a runtime readiness verifier for local model endpoint, embedding
+- [x] Add a runtime readiness verifier for local model endpoint, embedding
   endpoint, loopback-only policy, GPU evidence, and zero remote core inference.
 - [ ] Deploy at least two open-weight instruction-model candidates locally and
   select one with a frozen task set.
