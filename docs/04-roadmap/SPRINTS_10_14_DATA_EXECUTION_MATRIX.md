@@ -33,6 +33,155 @@ typed Go tools, Qdrant, and Neo4j each carry a separate responsibility:
 | 13 | Evaluation sets, latency runs, GPU metrics, answer-quality labels, retrieval labels, tool accuracy checks | Evaluation specs, run receipts, result hashes, telemetry snapshots | Prometheus/Loki/Grafana evidence, local model benchmark variants | Accuracy, latency, stability, privacy, and recovery reports |
 | 14 | Submission PDF, demo video evidence, final README facts, release manifest, AMD PR materials | Release artifacts, immutable manifest, final evidence summaries | Public repository and Radeon demo profile | Clean checkout reproduction, public-source audit, submission checklist |
 
+## Sprint 10-14 Database Build Plan
+
+This is the practical build order for turning the architecture into an Alpha
+product. Each Sprint may add code, schemas, and fixtures, but the stores keep
+their authority boundaries.
+
+### Sprint 10: Canonical Data Spine
+
+PostgreSQL tables and views to rely on:
+
+- issuer, security, identifier, source system, source object, and ingestion run
+  records;
+- SEC filing identity, filing document metadata, XBRL taxonomy, concept,
+  context, raw fact, reviewed mapping, and metric-observation records;
+- Treasury, FRED/ALFRED, market price, return, and approved series records;
+- point-in-time views that require `available_at <= as_of`;
+- source coverage views that show row counts, object hashes, ingestion state,
+  and quality state.
+
+Object storage artifacts:
+
+- SEC identity, submissions, Company Facts, filing documents, Treasury,
+  FRED/ALFRED, market-data, and manifest snapshots;
+- Radeon runtime, local model, local embedding, benchmark, readiness, and
+  recovery receipts.
+
+Acceptance:
+
+- canonical queries work without Qdrant or Neo4j;
+- source bytes can be restored from manifests;
+- local model and embedding endpoints are proven on Radeon/ROCm;
+- no Sprint 11 work starts from a candidate-only Sprint 10 closure.
+
+### Sprint 11: Tools, Qdrant, And Neo4j Evidence
+
+PostgreSQL records to add:
+
+- deterministic tool registry, tool input contracts, tool invocation receipts,
+  formula versions, estimator versions, diagnostics, and evidence-pack
+  metadata;
+- chunk metadata, projection versions, projection checkpoints, retrieval
+  receipts, graph projection receipts, claim candidates, and unsupported-gap
+  receipts.
+
+Object storage artifacts:
+
+- filing section extractions, method docs, evidence packs, calculation outputs,
+  retrieval test corpora, graph export manifests, and projection drift reports.
+
+Qdrant points:
+
+- narrative filing sections, notes, accounting policies, risk disclosures,
+  method docs, evidence summaries, and approved memory summaries only;
+- each point carries issuer, filing, source hash, section, available time,
+  graph IDs, access scope, chunking version, embedding model, and projection
+  version.
+
+Neo4j nodes and edges:
+
+- issuer, security, filing, document, section, concept, raw fact, metric,
+  observation, series, manager, holding, analysis, claim, citation, and source
+  object;
+- relationships such as `FILED`, `CONTAINS`, `REPORTS`, `NORMALIZES_TO`,
+  `DERIVED_FROM`, `USES_SERIES`, `HOLDS`, and `SUPPORTED_BY`, each bound to
+  canonical IDs and source hashes.
+
+Acceptance:
+
+- a complete evidence pack for the primary demo question exists before memo
+  synthesis;
+- Qdrant and Neo4j can be deleted and rebuilt from PostgreSQL and object
+  storage;
+- semantic retrieval never promotes a fact without PostgreSQL/tool validation.
+
+### Sprint 12: Agent Workspace, Memory, And Permissions
+
+PostgreSQL records to add:
+
+- research session, message, plan, plan step, permission decision, tool lease,
+  local model invocation, context pack, citation, claim, memo, memory
+  candidate, approved memory, deletion request, tombstone, and replay receipt.
+
+Object storage artifacts:
+
+- memo bodies, exported sessions, replay traces, UI evidence, content-redacted
+  event streams, and private conversation artifacts.
+
+Projection rules:
+
+- Qdrant receives only approved memory summaries and permitted narrative
+  evidence;
+- Neo4j receives claim-to-citation and memo-to-evidence paths;
+- all projections must be cleaned or tombstoned after memory deletion.
+
+Acceptance:
+
+- the judge can operate the primary scenario from the web UI;
+- planning, RAG, tools, memory, and privacy controls are all visible;
+- every released memo claim resolves to deterministic evidence or an explicit
+  unsupported gap.
+
+### Sprint 13: Evaluation And ROCm Optimization
+
+PostgreSQL records to add:
+
+- evaluation suite, split manifest, benchmark run, quality label, mechanical
+  grader result, human-review rubric, ROCm profile, performance baseline,
+  safety finding, regression decision, and release-quality gate.
+
+Object storage artifacts:
+
+- sanitized benchmark logs, charts, GPU metric snapshots, failure examples,
+  replay packages, attack cases, and before/after profile comparisons.
+
+Observability artifacts:
+
+- Prometheus metrics, Loki log labels, trace IDs, GPU utilization, model-load
+  timings, TTFT, tokens/second, p50/p95 response time, retrieval latency, graph
+  latency, tool latency, and verification latency.
+
+Acceptance:
+
+- optimization improves a declared metric without breaking accuracy,
+  citations, numeric exactness, privacy, or no-remote-core-inference gates;
+- holdout data is never available to runtime agents or tuning prompts;
+- every public performance claim has a receipt.
+
+### Sprint 14: Release Freeze And Submission
+
+PostgreSQL records to freeze:
+
+- release manifest, final scenario receipts, final benchmark summaries,
+  documentation facts, demo run metadata, public artifact links, and submission
+  checklist.
+
+Object storage artifacts:
+
+- final PDF, demo video, poster or slide deck, release screenshots, evidence
+  summary, source manifests, projection manifests, and independent backup
+  receipt.
+
+Acceptance:
+
+- a fresh Radeon Cloud environment reproduces the documented workflow;
+- source, README, project document, demo video, and optional deck are public
+  and consistent with evidence;
+- no secrets, private evaluation bodies, prohibited data, or remote core-model
+  dependency are present in the release.
+
 ## Source Extraction Contracts
 
 Each source adapter must produce three things before the agent can use the
