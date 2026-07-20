@@ -58,14 +58,26 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
             report["next_commands"][3],
         )
         self.assertEqual(
-            "python3 scripts/render_radeon_sprint10_web_terminal_sheet.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-evidence.md",
+            "python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-bootstrap.sh",
             report["next_commands"][4],
+        )
+        self.assertEqual(
+            "python3 scripts/render_radeon_sprint10_web_terminal_sheet.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-evidence.md",
+            report["next_commands"][5],
         )
         self.assertLess(
             report["next_commands"].index(
                 "python3 scripts/render_radeon_ssh_recovery_sheet.py --wait-report /tmp/forja-radeon-ssh-wait.json --host <host> --port <port> --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-ssh-recovery.md"
             ),
             report["next_commands"].index("python3 scripts/prepare_radeon_sprint10_operator_bundle.py"),
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-bootstrap.sh"
+            ),
+            report["next_commands"].index(
+                "python3 scripts/render_radeon_sprint10_web_terminal_sheet.py --repo-url https://github.com/rvbernucci/forja-guide --branch feat/sprint-10-radeon-runtime-v2 --repo-dir /workspace/forja-guide --output /tmp/forja-radeon-web-terminal-evidence.md"
+            ),
         )
         self.assertLess(
             report["next_commands"].index(

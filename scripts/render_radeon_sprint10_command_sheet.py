@@ -75,7 +75,19 @@ python3 scripts/render_radeon_ssh_recovery_sheet.py \\
 ```
 
 If the Radeon web terminal is usable but SSH remains unavailable, render the
-web-terminal fallback sheet and run its commands inside Jupyter/OpenCode:
+web-terminal bootstrap and fallback sheet. The bootstrap prepares the checkout,
+validates the repository, generates private templates, and renders the sheet
+inside Jupyter/OpenCode without collecting evidence:
+
+```bash
+python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py \\
+  --repo-url {repo_url} \\
+  --branch {branch} \\
+  --repo-dir {repo_dir} \\
+  --output /tmp/forja-radeon-web-terminal-bootstrap.sh
+```
+
+The fallback sheet can also be rendered directly:
 
 ```bash
 python3 scripts/render_radeon_sprint10_web_terminal_sheet.py \\

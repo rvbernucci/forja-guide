@@ -32,6 +32,7 @@ class RadeonSprint10CommandSheetTests(unittest.TestCase):
         expected = [
             "preflight_radeon_ssh.py 36.150.116.206 31200",
             "wait_radeon_ssh.py 36.150.116.206 31200",
+            "render_radeon_sprint10_web_terminal_bootstrap.py",
             "render_radeon_sprint10_web_terminal_sheet.py",
             "python3 scripts/validate_repository.py",
             "prepare_radeon_sprint10_operator_bundle.py",

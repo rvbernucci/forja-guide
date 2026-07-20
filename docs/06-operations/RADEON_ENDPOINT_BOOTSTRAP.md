@@ -129,7 +129,22 @@ Keep that diagnosis private beside the runtime artifacts; it is a repair aid,
 not Sprint closure evidence.
 
 If the web terminal is usable but SSH remains unavailable, render the fallback
-evidence sheet from the workstation:
+bootstrap from the workstation:
+
+```bash
+python3 scripts/render_radeon_sprint10_web_terminal_bootstrap.py \
+  --repo-url https://github.com/rvbernucci/forja-guide \
+  --branch feat/sprint-10-radeon-runtime-v2 \
+  --repo-dir /workspace/forja-guide \
+  --output /tmp/forja-radeon-web-terminal-bootstrap.sh
+```
+
+Then paste or upload that bootstrap into the Radeon web terminal. It prepares
+the checkout, validates the repository, generates the private operator bundle,
+verifies placeholder-safe shape, and renders the evidence sheet without
+starting model servers or collecting evidence.
+
+The fallback evidence sheet can also be rendered directly:
 
 ```bash
 python3 scripts/render_radeon_sprint10_web_terminal_sheet.py \
