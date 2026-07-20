@@ -326,6 +326,23 @@ Radeon Cloud instances are disposable. Sprint 10 therefore treats source
 snapshots as recoverable only when their restored bytes match a manifest:
 
 ```bash
+python3 scripts/build_alpha_snapshot_manifest.py \
+  --snapshot-root /secure/forja \
+  --required-snapshot sec_identity=sec/company_tickers.json \
+  --required-snapshot sec_submissions=sec/submissions/CIK0001045810.json \
+  --required-snapshot sec_company_facts=sec/companyfacts/CIK0001045810.json \
+  --required-snapshot treasury=treasury/real-yield-10y.csv \
+  --required-snapshot fred=fred/FEDFUNDS.csv \
+  --required-snapshot market=market/NVDA-adjusted.csv \
+  --output /secure/forja/alpha-source-manifest.json
+```
+
+The builder accepts explicit `source_family=relative/path` pairs, computes
+hashes and byte sizes, rejects absolute or escaping paths, and fails closed if
+any required source family is missing. Operators may add optional SEC filing
+documents, XBRL files, or metadata snapshots with `--optional-snapshot`.
+
+```bash
 python3 scripts/verify_alpha_snapshot_manifest.py \
   --manifest /secure/forja/alpha-source-manifest.json \
   --snapshot-root /secure/forja \
