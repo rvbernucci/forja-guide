@@ -136,7 +136,9 @@ python3 scripts/diagnose_radeon_sprint10_artifacts.py \\
 ```
 
 Proceed only when the diagnosis reports
-`"stage": "ready_to_ingest_public_summary"`.
+`"stage": "ready_to_ingest_public_summary"`. If it reports any
+`"blocked_at_*"` stage, inspect `"next_command"` and run that command on the
+Radeon instance after fixing the referenced prerequisite.
 
 ## 7. Bring Back Only The Public Summary
 

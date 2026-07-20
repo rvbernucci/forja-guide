@@ -214,9 +214,10 @@ python3 scripts/diagnose_radeon_sprint10_artifacts.py \
   --output /workspace/forja-alpha-sprint10-artifact-diagnosis.json
 ```
 
-The diagnosis is read-only. It reports the first incomplete artifact and the
-next action when a run stops midway. Copy back only the public summary after
-the diagnosis reports `stage: ready_to_ingest_public_summary`.
+The diagnosis is read-only. It reports the first incomplete artifact, a short
+next action, and a public-safe `next_command` that can be rerun on the Radeon
+instance after fixing the referenced prerequisite. Copy back only the public
+summary after the diagnosis reports `stage: ready_to_ingest_public_summary`.
 
 If the public summary passes review, prepare the public Sprint 10 evidence
 package without closing the Sprint:

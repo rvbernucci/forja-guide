@@ -36,6 +36,8 @@ class RadeonSprint10ArtifactDiagnosisTests(unittest.TestCase):
         self.assertFalse(report["public_summary_ready"])
         self.assertEqual("blocked_at_runtime_receipt", report["stage"])
         self.assertFalse(report["next_sprint_authorized"])
+        self.assertIn("capture_radeon_runtime_receipt.py", report["next_command"])
+        self.assertIn("forja-radeon-runtime-receipt.json", report["next_command"])
 
     def test_complete_public_summary_is_ready_to_ingest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -48,6 +50,8 @@ class RadeonSprint10ArtifactDiagnosisTests(unittest.TestCase):
         self.assertTrue(report["public_summary_ready"])
         self.assertEqual("ready_to_ingest_public_summary", report["stage"])
         self.assertIn("ingest_radeon_sprint10_public_summary.py", report["next_action"])
+        self.assertIn("ingest_radeon_sprint10_public_summary.py", report["next_command"])
+        self.assertIn("radeon-public-summary.json", report["next_command"])
         self.assertTrue(all(item["valid"] for item in report["artifacts"]))
 
     def test_invalid_middle_artifact_points_to_next_action(self) -> None:
@@ -64,6 +68,8 @@ class RadeonSprint10ArtifactDiagnosisTests(unittest.TestCase):
         self.assertEqual(2, exit_code)
         self.assertEqual("blocked_at_runtime_readiness", report["stage"])
         self.assertIn("Start loopback model", report["next_action"])
+        self.assertIn("verify_radeon_runtime_readiness.py", report["next_command"])
+        self.assertIn("FORJA_ALPHA_MODEL_BASE_URL", report["next_command"])
 
 
 def write_complete_artifacts(evidence_dir: Path) -> None:

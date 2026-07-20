@@ -105,10 +105,12 @@ def diagnose(evidence_dir: Path) -> tuple[dict[str, Any], int]:
             "Copy radeon-public-summary.json to the workstation and run "
             "scripts/ingest_radeon_sprint10_public_summary.py."
         )
+        next_command = ingest_command(evidence_dir)
         exit_code = 0
     else:
         stage = f"blocked_at_{first_incomplete}"
         next_action = next_action_for(first_incomplete)
+        next_command = next_command_for(first_incomplete, evidence_dir)
         exit_code = 2
     report = {
         "schema_version": "1.0",
@@ -118,6 +120,7 @@ def diagnose(evidence_dir: Path) -> tuple[dict[str, Any], int]:
         "stage": stage,
         "next_sprint_authorized": False,
         "next_action": next_action,
+        "next_command": next_command,
         "artifacts": artifacts,
     }
     return report, exit_code
@@ -135,6 +138,116 @@ def next_action_for(key: str | None) -> str:
         "recovery": "Rerun scripts/verify_competition_profile_recovery.py after prerequisite reports pass.",
         "public_summary": "Rerun scripts/summarize_radeon_sprint10_evidence.py after recovery passes.",
     }[key]
+
+
+def next_command_for(key: str | None, evidence_dir: Path) -> str:
+    if key is None:
+        return "ls -la /workspace/forja-alpha-sprint10-evidence"
+    commands = {
+        "runtime_receipt": runtime_receipt_command(evidence_dir),
+        "runtime_readiness": runtime_readiness_command(evidence_dir),
+        "source_restore": source_restore_command(evidence_dir),
+        "model_benchmark": model_benchmark_command(evidence_dir),
+        "embedding_benchmark": embedding_benchmark_command(evidence_dir),
+        "recovery": recovery_command(evidence_dir),
+        "public_summary": public_summary_command(evidence_dir),
+    }
+    return commands[key]
+
+
+def runtime_receipt_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/capture_radeon_runtime_receipt.py \\",
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['runtime_receipt']} \\",
+            "  --base-image 'GH-proxy-stable (amd-oneclick-base:git-proxy-test-20260528-1125)' \\",
+            "  --storage-profile persistent_pvc \\",
+            "  --ssh-profile enabled",
+        ]
+    )
+
+
+def runtime_readiness_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/verify_radeon_runtime_readiness.py \\",
+            f"  --receipt {evidence_dir / RUNNER.REPORT_NAMES['runtime_receipt']} \\",
+            '  --model-base-url "$FORJA_ALPHA_MODEL_BASE_URL" \\',
+            '  --embedding-base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \\',
+            '  --embedding-model "$FORJA_ALPHA_EMBEDDING_MODEL" \\',
+            "  --require-endpoints \\",
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['runtime_readiness']}",
+        ]
+    )
+
+
+def source_restore_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/verify_alpha_snapshot_manifest.py \\",
+            "  --manifest /secure/forja/alpha-source-manifest.json \\",
+            "  --snapshot-root /secure/forja \\",
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['source_restore']}",
+        ]
+    )
+
+
+def model_benchmark_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/benchmark_radeon_model_candidates.py \\",
+            "  --task-set internal/alpha/testdata/radeon_model_selection_public_v1.json \\",
+            "  --candidates /secure/forja/radeon-model-candidates.json \\",
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['model_benchmark']}",
+        ]
+    )
+
+
+def embedding_benchmark_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/benchmark_radeon_embedding.py \\",
+            "  --input-set internal/alpha/testdata/radeon_embedding_public_v1.json \\",
+            '  --base-url "$FORJA_ALPHA_EMBEDDING_BASE_URL" \\',
+            '  --model "$FORJA_ALPHA_EMBEDDING_MODEL" \\',
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['embedding_benchmark']}",
+        ]
+    )
+
+
+def recovery_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/verify_competition_profile_recovery.py \\",
+            f"  --runtime-receipt {evidence_dir / RUNNER.REPORT_NAMES['runtime_receipt']} \\",
+            f"  --runtime-readiness {evidence_dir / RUNNER.REPORT_NAMES['runtime_readiness']} \\",
+            f"  --source-restore {evidence_dir / RUNNER.REPORT_NAMES['source_restore']} \\",
+            f"  --model-benchmark {evidence_dir / RUNNER.REPORT_NAMES['model_benchmark']} \\",
+            f"  --embedding-benchmark {evidence_dir / RUNNER.REPORT_NAMES['embedding_benchmark']} \\",
+            '  --expected-commit "$(git rev-parse HEAD)" \\',
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['recovery']}",
+        ]
+    )
+
+
+def public_summary_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/summarize_radeon_sprint10_evidence.py \\",
+            f"  --recovery {evidence_dir / RUNNER.REPORT_NAMES['recovery']} \\",
+            f"  --output {evidence_dir / RUNNER.REPORT_NAMES['public_summary']}",
+        ]
+    )
+
+
+def ingest_command(evidence_dir: Path) -> str:
+    return "\n".join(
+        [
+            "python3 scripts/ingest_radeon_sprint10_public_summary.py \\",
+            f"  --summary {evidence_dir / RUNNER.REPORT_NAMES['public_summary']} \\",
+            "  --output /tmp/forja-alpha-sprint10-public-ingest.json",
+        ]
+    )
 
 
 def parse_args() -> argparse.Namespace:
