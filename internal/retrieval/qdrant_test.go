@@ -59,8 +59,11 @@ func (client *recordingQdrantAliasClient) UpdateAliases(_ context.Context, actio
 	}
 	working := make([]*qdrant.AliasDescription, len(client.aliases))
 	for index, alias := range client.aliases {
-		copy := *alias
-		working[index] = &copy
+		copy, ok := proto.Clone(alias).(*qdrant.AliasDescription)
+		if !ok || copy == nil {
+			return errors.New("clone alias state")
+		}
+		working[index] = copy
 	}
 	for _, action := range actions {
 		if remove := action.GetDeleteAlias(); remove != nil {
