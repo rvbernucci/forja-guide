@@ -139,6 +139,7 @@ def gate_status(evidence_dir: Path) -> tuple[dict[str, Any], int]:
         "real_radeon_gates": gates,
         "errors": errors,
         "next_commands": [
+            "python3 scripts/render_radeon_sprint10_command_sheet.py --host <host> --port <port> --output /tmp/sprint10-radeon-command-sheet.md",
             "python3 scripts/wait_radeon_ssh.py <host> <port> --timeout-seconds 180 --interval-seconds 10",
             "python3 scripts/prepare_radeon_sprint10_operator_bundle.py",
             "python3 scripts/verify_radeon_operator_bundle.py --bundle-dir /workspace/forja-alpha-sprint10-operator-bundle --allow-placeholders",

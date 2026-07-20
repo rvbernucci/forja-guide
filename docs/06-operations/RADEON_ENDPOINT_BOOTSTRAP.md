@@ -33,6 +33,19 @@ Keep model caches, candidate configuration, benchmark outputs, and raw runtime
 receipts outside Git. Prefer persistent PVC paths such as `/secure/forja` and
 `/workspace/forja-alpha-sprint10-evidence`.
 
+Before spending time on the instance, render a public-safe command sheet for
+the exact host and port:
+
+```bash
+python3 scripts/render_radeon_sprint10_command_sheet.py \
+  --host <host> \
+  --port <port> \
+  --output /tmp/sprint10-radeon-command-sheet.md
+```
+
+The command sheet is an operator aid only. It contains no credentials or
+private receipts and does not close Sprint 10.
+
 To generate private templates on the Radeon instance:
 
 ```bash
