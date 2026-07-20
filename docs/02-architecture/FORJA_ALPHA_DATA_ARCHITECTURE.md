@@ -233,6 +233,22 @@ This is intentionally a first-pass reported observation layer. It does not
 deduplicate multiple reported candidates, resolve amendments, infer quarterly
 values from YTD rows, or decide issuer-specific custom extensions.
 
+## Point-in-Time Query Views
+
+Sprint 10 now publishes two read-only query surfaces above the raw Alpha
+tables:
+
+| View | Purpose | Required research filter |
+| --- | --- | --- |
+| `alpha_v_issuer_filing_timeline` | Filing chronology with issuer name, CIK, ticker, accession, form, fiscal period, filing time, availability time, lifecycle, and source object | `available_at <= :as_of` |
+| `alpha_v_reported_metric_panel` | First-pass reported metric observations with metric key, issuer, filing accession, period, numeric value, unit, currency, lineage, and quality state | `available_at <= :as_of` |
+
+The views intentionally do not hide the `available_at` clock behind implicit
+database state. Every deterministic research tool must pass an explicit
+research `as_of` timestamp and filter these views before building an evidence
+pack. This keeps point-in-time behavior visible in logs, receipts, tests, and
+user-facing citations.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must

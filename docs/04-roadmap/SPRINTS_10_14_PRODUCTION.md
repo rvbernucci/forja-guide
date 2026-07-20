@@ -148,8 +148,8 @@ filing and macro timelines. It does not yet generate an analytical memo.
   independently.
 - [ ] Quarantine ambiguous dimensions, unsupported units, duplicate contexts,
   impossible periods, and unmapped custom concepts rather than guessing.
-- [ ] Add point-in-time views that select only data available at the requested
-  research timestamp.
+- [x] Add point-in-time query views that expose `available_at` and require
+  research tools to filter `available_at <= as_of` before evidence assembly.
 
 ### Runtime Work
 
