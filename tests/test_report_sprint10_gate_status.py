@@ -118,6 +118,22 @@ class Sprint10GateStatusReportTests(unittest.TestCase):
                 "python3 scripts/diagnose_radeon_sprint10_artifacts.py --evidence-dir /workspace/forja-alpha-sprint10-evidence"
             ),
             report["next_commands"].index(
+                "python3 scripts/verify_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json"
+            ),
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/verify_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json"
+            ),
+            report["next_commands"].index(
+                "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json --dry-run"
+            ),
+        )
+        self.assertLess(
+            report["next_commands"].index(
+                "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json --dry-run"
+            ),
+            report["next_commands"].index(
                 "python3 scripts/ingest_radeon_sprint10_public_summary.py --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json"
             ),
         )

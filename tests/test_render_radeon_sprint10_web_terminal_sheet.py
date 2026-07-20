@@ -40,6 +40,7 @@ class RadeonSprint10WebTerminalSheetTests(unittest.TestCase):
             "run-sprint10-evidence.sh",
             "diagnose_radeon_sprint10_artifacts.py",
             "Export Only The Public Summary",
+            "verify_radeon_sprint10_public_summary.py",
             "ingest_radeon_sprint10_public_summary.py",
             "verify_sprint10_review_readiness.py",
         ]

@@ -219,8 +219,22 @@ next action, and a public-safe `next_command` that can be rerun on the Radeon
 instance after fixing the referenced prerequisite. Copy back only the public
 summary after the diagnosis reports `stage: ready_to_ingest_public_summary`.
 
-If the public summary passes review, prepare the public Sprint 10 evidence
-package without closing the Sprint:
+After copying the public summary back to the workstation, verify it and run a
+dry-run ingest before changing the public evidence package:
+
+```bash
+python3 scripts/verify_radeon_sprint10_public_summary.py \
+  --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json \
+  --output /workspace/forja-alpha-sprint10-public-summary-verify.json
+
+python3 scripts/ingest_radeon_sprint10_public_summary.py \
+  --summary /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json \
+  --dry-run \
+  --output /workspace/forja-alpha-sprint10-public-ingest-dry-run.json
+```
+
+If both pass, prepare the public Sprint 10 evidence package without closing
+the Sprint:
 
 ```bash
 python3 scripts/ingest_radeon_sprint10_public_summary.py \

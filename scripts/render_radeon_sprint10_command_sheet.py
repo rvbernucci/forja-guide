@@ -209,6 +209,15 @@ tokens, credentials, model weights, caches, or private candidate files.
 Run from the repository workstation after copying the public summary:
 
 ```bash
+python3 scripts/verify_radeon_sprint10_public_summary.py \\
+  --summary /path/to/radeon-public-summary.json \\
+  --output /tmp/forja-alpha-sprint10-public-summary-verify.json
+
+python3 scripts/ingest_radeon_sprint10_public_summary.py \\
+  --summary /path/to/radeon-public-summary.json \\
+  --dry-run \\
+  --output /tmp/forja-alpha-sprint10-public-ingest-dry-run.json
+
 python3 scripts/ingest_radeon_sprint10_public_summary.py \\
   --summary /path/to/radeon-public-summary.json \\
   --output /tmp/forja-alpha-sprint10-public-ingest.json

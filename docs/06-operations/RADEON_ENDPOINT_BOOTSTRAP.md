@@ -245,7 +245,9 @@ python3 scripts/run_radeon_sprint10_evidence.py \
 ## Closure Rule
 
 The endpoint bootstrap is successful only when the public summary produced from
-the private recovery report can be ingested by
-`scripts/ingest_radeon_sprint10_public_summary.py` and then passes
-`scripts/verify_sprint10_review_readiness.py`. Until then, Sprint 10 remains a
-candidate and Sprint 11 is not authorized.
+the private recovery report passes
+`scripts/verify_radeon_sprint10_public_summary.py`, survives
+`scripts/ingest_radeon_sprint10_public_summary.py --dry-run`, can be ingested
+by `scripts/ingest_radeon_sprint10_public_summary.py`, and then passes
+`scripts/verify_sprint10_review_readiness.py`. Until then, Sprint 10 remains
+a candidate and Sprint 11 is not authorized.
