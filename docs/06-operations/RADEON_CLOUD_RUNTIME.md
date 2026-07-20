@@ -180,6 +180,19 @@ as a safe starting point, then replace the example model IDs and ports with the
 actual local endpoints running on the Radeon instance. The benchmark will
 reject non-loopback URLs even if the JSON shape is otherwise valid.
 
+After the private recovery report verifies, generate a public summary for
+review before updating the Sprint 10 evidence package:
+
+```bash
+python3 scripts/summarize_radeon_sprint10_evidence.py \
+  --recovery /workspace/forja-alpha-sprint10-evidence/forja-alpha-competition-profile-recovery.json \
+  --output /workspace/forja-alpha-sprint10-evidence/radeon-public-summary.json
+```
+
+The summary includes only report hashes, validity, gate counts, and error
+classes. It intentionally drops private paths, logs, prompts, model outputs,
+vectors, source bodies, and credentials.
+
 ## Runtime Boundary
 
 - Core language-model inference for the competition profile runs locally on AMD
