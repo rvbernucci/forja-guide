@@ -130,6 +130,23 @@ in [`docs/06-operations/QDRANT_RECOVERY_RUNBOOK.md`](docs/06-operations/QDRANT_R
 
 Current planning release: [`v0.1.0`](https://github.com/rvbernucci/forja-guide/releases/tag/v0.1.0).
 
+## Forja Alpha Experience Preview
+
+Forja Alpha is the first bounded domain specialization of the Forja runtime: a
+private investment-research workspace for source-grounded fundamental,
+factor-sensitivity, and institutional-disclosure analysis. Its current
+experience foundation serves a responsive web interface, versioned API,
+runtime-readiness state, and deterministic evidence plan from one Go binary.
+It does not yet execute financial analysis and never simulates a result while
+the local ROCm, data, retrieval, and analytical adapters are unavailable.
+
+```bash
+make alpha-run
+```
+
+Open `http://127.0.0.1:8787`. See the [architecture](docs/02-architecture/FORJA_ALPHA.md)
+and [local operation guide](docs/06-operations/FORJA_ALPHA_LOCAL.md).
+
 ## Architecture
 
 ```mermaid
@@ -180,6 +197,7 @@ source code, schemas, tests, and runtime receipts establish authority.
 | [`cmd/forja`](cmd/forja/) | Experimental command-line client |
 | [`cmd/forja-index`](cmd/forja-index/) | Committed-source deterministic indexing publisher |
 | [`cmd/forja-mcp`](cmd/forja-mcp/) | Governed MCP stdio control surface |
+| [`cmd/forja-alpha`](cmd/forja-alpha/) | Embedded local web experience for the Forja Alpha vertical |
 | [`cmd/forja-worker`](cmd/forja-worker/) | Bounded one-shot Codex worker runner |
 | [`cmd/forja-retrieval-eval`](cmd/forja-retrieval-eval/) | Offline, schema-validated retrieval evaluation reporter |
 | [`cmd/forja-retrieval`](cmd/forja-retrieval/) | Bounded governed projection, query, and private baseline-capture operations |

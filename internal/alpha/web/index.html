@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="dark">
+    <meta name="description" content="Forja Alpha private investment research workspace">
+    <title>Forja Alpha</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="module" src="/app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <button class="icon-button mobile-only" id="open-navigation" aria-label="Open navigation">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <a class="brand" href="/" aria-label="Forja Alpha home">
+          <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+          <span class="brand-name">Forja <strong>Alpha</strong></span>
+        </a>
+        <div class="topbar-center">
+          <span class="privacy-pill"><i></i> Local research boundary</span>
+        </div>
+        <div class="runtime-brief" id="runtime-brief">
+          <span class="runtime-dot" data-state="loading"></span>
+          <span id="runtime-label">Inspecting runtime</span>
+        </div>
+        <button class="icon-button mobile-only" id="open-inspector" aria-label="Open evidence inspector">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5zM9 8h6M9 12h6M9 16h3"/></svg>
+        </button>
+      </header>
+
+      <aside class="navigation panel" id="navigation">
+        <div class="panel-heading">
+          <span>Research desk</span>
+          <button class="icon-button mobile-only" id="close-navigation" aria-label="Close navigation">×</button>
+        </div>
+        <button class="new-research" id="new-research">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          New research
+          <kbd>⌘ K</kbd>
+        </button>
+
+        <section class="nav-section">
+          <p class="eyebrow">Workspace</p>
+          <button class="nav-item active"><span class="nav-glyph">◫</span> Research</button>
+          <button class="nav-item" disabled><span class="nav-glyph">⌁</span> Memos <small>soon</small></button>
+          <button class="nav-item" disabled><span class="nav-glyph">◇</span> Watchlists <small>soon</small></button>
+        </section>
+
+        <section class="nav-section universe-section">
+          <div class="section-title-row">
+            <p class="eyebrow">Coverage universe</p>
+            <span id="universe-count">—</span>
+          </div>
+          <div class="company-list" id="company-list" aria-live="polite"></div>
+        </section>
+
+        <div class="sidebar-footer">
+          <div class="boundary-card">
+            <span class="boundary-icon">⌾</span>
+            <div>
+              <strong>Private by construction</strong>
+              <p>Prompts and research memory stay inside the local runtime.</p>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <div class="workspace-scroll" id="workspace-scroll">
+          <section class="hero" id="hero">
+            <div class="hero-kicker"><span></span> Grounded financial intelligence</div>
+            <h1>Ask the market.<br><em>Inspect the evidence.</em></h1>
+            <p>Fundamentals, factor sensitivity and institutional disclosures, composed by a governed local agent on AMD Radeon.</p>
+          </section>
+
+          <section class="suggestions" id="suggestions" aria-label="Suggested research questions"></section>
+
+          <section class="research-output hidden" id="research-output" aria-live="polite">
+            <div class="research-header">
+              <div>
+                <p class="eyebrow">Research trace</p>
+                <h2 id="research-title">Evidence plan</h2>
+              </div>
+              <span class="state-badge" id="research-state">Planning</span>
+            </div>
+            <div class="notice" id="research-notice"></div>
+            <div class="plan-list" id="plan-list"></div>
+          </section>
+        </div>
+
+        <form class="composer" id="research-form">
+          <label class="sr-only" for="research-prompt">Research question</label>
+          <textarea id="research-prompt" name="prompt" rows="1" maxlength="4000" placeholder="Ask about fundamentals, filings, rates or institutional holdings…"></textarea>
+          <div class="composer-footer">
+            <div class="composer-meta">
+              <span><i class="local-indicator"></i> Local only</span>
+              <span class="desktop-only">Evidence required</span>
+            </div>
+            <button class="submit-research" type="submit" id="submit-research" aria-label="Start research">
+              <span>Research</span>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 12 6-6 6 6M12 6v12"/></svg>
+            </button>
+          </div>
+        </form>
+      </main>
+
+      <aside class="inspector panel" id="inspector">
+        <div class="panel-heading">
+          <span>Evidence inspector</span>
+          <button class="icon-button mobile-only" id="close-inspector" aria-label="Close inspector">×</button>
+        </div>
+        <div class="inspector-tabs" role="tablist">
+          <button class="inspector-tab active" data-tab="runtime" role="tab">Runtime</button>
+          <button class="inspector-tab" data-tab="sources" role="tab">Sources</button>
+          <button class="inspector-tab" data-tab="method" role="tab">Method</button>
+        </div>
+
+        <div class="tab-panel active" id="tab-runtime" role="tabpanel">
+          <section class="inspector-section">
+            <p class="eyebrow">Compute</p>
+            <div class="compute-card">
+              <div class="compute-orbit"><span></span></div>
+              <div>
+                <strong id="accelerator-name">Detecting hardware</strong>
+                <p id="software-stack">Inspecting software stack</p>
+              </div>
+            </div>
+          </section>
+          <section class="inspector-section">
+            <p class="eyebrow">Core services</p>
+            <div class="service-list">
+              <div class="service-row"><span>Language model</span><strong id="model-status">Checking</strong></div>
+              <div class="service-row"><span>Embeddings</span><strong id="embedding-status">Checking</strong></div>
+              <div class="service-row"><span>Remote inference</span><strong class="safe">Disabled</strong></div>
+            </div>
+          </section>
+          <section class="inspector-section">
+            <p class="eyebrow">Capabilities</p>
+            <div class="capability-list" id="capability-list"></div>
+          </section>
+        </div>
+
+        <div class="tab-panel" id="tab-sources" role="tabpanel">
+          <section class="inspector-section source-stack">
+            <p class="eyebrow">Canonical sources</p>
+            <article><span>SEC</span><div><strong>EDGAR + XBRL</strong><p>Filings and reported facts</p></div></article>
+            <article><span>UST</span><div><strong>US Treasury</strong><p>Nominal and real yield curves</p></div></article>
+            <article><span>FRB</span><div><strong>FRED / ALFRED</strong><p>Point-in-time macro series</p></div></article>
+            <article><span>13F</span><div><strong>Institutional filings</strong><p>Delayed disclosed holdings</p></div></article>
+          </section>
+        </div>
+
+        <div class="tab-panel" id="tab-method" role="tabpanel">
+          <section class="inspector-section method-list">
+            <p class="eyebrow">Research contract</p>
+            <div><b>01</b><span><strong>Facts first</strong><p>Reported values remain separate from inference.</p></span></div>
+            <div><b>02</b><span><strong>Recompute</strong><p>Material metrics are mechanically reproducible.</p></span></div>
+            <div><b>03</b><span><strong>Point in time</strong><p>No future filing or revised macro observation leaks in.</p></span></div>
+            <div><b>04</b><span><strong>Show uncertainty</strong><p>Correlation is never presented as causation.</p></span></div>
+          </section>
+        </div>
+
+        <footer class="inspector-footer">
+          <span>FORJA ALPHA</span>
+          <span>CONTRACT 1.0</span>
+        </footer>
+      </aside>
+    </div>
+    <div class="scrim" id="scrim"></div>
+  </body>
+</html>

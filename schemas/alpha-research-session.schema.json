@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://forja.dev/schemas/alpha-research-session.schema.json",
+  "title": "Forja Alpha Research Session",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "id",
+    "state",
+    "created_at",
+    "plan",
+    "notice"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^research_[a-f0-9]{24}$"
+    },
+    "state": {
+      "enum": [
+        "awaiting_local_runtime",
+        "planned",
+        "running",
+        "completed",
+        "failed"
+      ]
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "plan": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 8,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "tool",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{1,63}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 160
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          },
+          "tool": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]+\\.[a-z][a-z0-9_-]+$"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "blocked",
+              "failed"
+            ]
+          }
+        }
+      }
+    },
+    "notice": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1000
+    }
+  }
+}

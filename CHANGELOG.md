@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Add the Forja Alpha local web experience foundation with an embedded
+  three-pane research interface, strict local-inference endpoint policy,
+  bounded research-plan API, and explicit capability readiness.
+
 - Preserve valid pre-upgrade blocked-run resume events during projection replay
   without reopening their retired runtime transition.
 - Recover prepared and published journals from their immutable receipt and a
