@@ -177,6 +177,40 @@ func lockIncrementalMigrationWriters(ctx context.Context, tx pgx.Tx) error {
 					forja.retrieval_projection_points
 				IN ACCESS EXCLUSIVE MODE NOWAIT';
 			END IF;
+			IF to_regclass('forja.alpha_source_systems') IS NOT NULL THEN
+				EXECUTE 'LOCK TABLE
+					forja.alpha_source_systems,
+					forja.alpha_ingestion_runs,
+					forja.alpha_source_objects,
+					forja.alpha_quality_findings,
+					forja.alpha_issuers,
+					forja.alpha_securities,
+					forja.alpha_identifiers,
+					forja.alpha_corporate_actions,
+					forja.alpha_filings,
+					forja.alpha_filing_documents,
+					forja.alpha_taxonomies,
+					forja.alpha_xbrl_concepts,
+					forja.alpha_xbrl_contexts,
+					forja.alpha_xbrl_facts,
+					forja.alpha_metric_definitions,
+					forja.alpha_metric_mappings,
+					forja.alpha_metric_observations,
+					forja.alpha_series,
+					forja.alpha_series_observations,
+					forja.alpha_analysis_specs,
+					forja.alpha_analysis_runs,
+					forja.alpha_analysis_results,
+					forja.alpha_managers,
+					forja.alpha_holdings_reports,
+					forja.alpha_holding_positions,
+					forja.alpha_holding_resolutions,
+					forja.alpha_research_sessions,
+					forja.alpha_tool_invocations,
+					forja.alpha_claims,
+					forja.alpha_claim_evidence
+				IN ACCESS EXCLUSIVE MODE NOWAIT';
+			END IF;
 		END
 		$$`); err != nil {
 		return fmt.Errorf("lock governed migration writers: %w", err)

@@ -119,7 +119,9 @@ Sprints 10-14 now complete Forja Alpha for AMD AI DevMaster Track 2: canonical
 point-in-time financial data, local ROCm model and embedding inference,
 deterministic analytical tools, graph-grounded RAG, multi-step planning,
 governed memory and permissions, measurable optimization, and a reproducible
-public submission.
+public submission. Sprint 10 has started the Alpha data plane with an initial
+PostgreSQL schema for financial sources, filings, XBRL facts, time series,
+holdings, analysis lineage, research sessions, and claim evidence.
 
 When a canonical snapshot is superseded, the projector first tombstones every
 affected PostgreSQL retrieval receipt and only then asks Qdrant to delete the

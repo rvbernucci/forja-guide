@@ -115,6 +115,10 @@ filing and macro timelines without generating an analytical conclusion.
   artifact rules.
 - [x] Added a loopback-only local HTTP embedding provider for Radeon-hosted
   OpenAI-compatible embedding endpoints.
+- [x] Added the initial PostgreSQL Alpha financial schema for source systems,
+  source objects, issuers, securities, identifiers, filings, XBRL facts,
+  metric observations, time series, analysis runs, 13F holdings, research
+  sessions, tool invocations, claims, and claim evidence.
 - [ ] Capture the first real Radeon Cloud receipt and keep the raw artifact
   outside Git.
 
@@ -139,7 +143,7 @@ filing and macro timelines without generating an analytical conclusion.
 
 ### Canonical PostgreSQL Model
 
-- [ ] Add migrations for source systems, ingestion runs, source objects,
+- [x] Add migrations for source systems, ingestion runs, source objects,
   issuers, securities, identifiers, filings, documents, XBRL concepts,
   contexts, facts, metric mappings, time series, observations, institutional
   managers, reports, positions, and data-quality findings.

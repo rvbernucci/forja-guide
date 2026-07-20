@@ -1,7 +1,9 @@
 # Forja Alpha Data Architecture
 
-Status: Planned for Sprints 10-14. Canonical contracts are implemented only
-after their migrations, adapters, fixtures, and recovery gates pass.
+Status: Active for Sprints 10-14. The initial PostgreSQL schema is
+implemented in migration `000010_forja_alpha_financial_data`; source adapters,
+fixtures, populated snapshots, point-in-time views, and recovery gates remain
+Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
 [ADR-0021](../05-decisions/ADR-0021-POINT-IN-TIME-FINANCIAL-AUTHORITY.md).
