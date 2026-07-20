@@ -1,0 +1,24 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "status": "partial_pass",
+  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "security_checks": [
+    {
+      "area": "secret handling",
+      "result": "passed_for_public_code",
+      "summary": "Repository validation rejects common private keys, API tokens, credential URLs, and machine-specific private paths. Radeon evidence scripts record sanitized hashes, excerpts, endpoint classes, and counts rather than secrets, model weights, prompts, vectors, or private source bodies."
+    },
+    {
+      "area": "remote core inference boundary",
+      "result": "passed_for_public_code",
+      "summary": "Runtime readiness, model benchmark, embedding benchmark, and evidence runner require loopback model and embedding endpoints for the competition profile."
+    },
+    {
+      "area": "private artifacts",
+      "result": "pending_operator_evidence",
+      "summary": "Raw source snapshots, model weights, candidate configuration, and Radeon runtime reports must remain outside Git and be reviewed before closure."
+    }
+  ],
+  "recorded_at": "2026-07-20T18:06:00Z"
+}

@@ -1,0 +1,32 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "name": "Data Spine and Radeon Runtime",
+  "status": "candidate",
+  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "objective": "Establish the minimum credible financial data foundation and prove local model and embedding inference inside the Radeon/ROCm competition boundary.",
+  "scope": [
+    "Forja Alpha financial PostgreSQL data spine for identity, source objects, filings, XBRL facts, metric observations, time series, and point-in-time views",
+    "local source snapshot adapters for SEC identity, SEC submissions, SEC Company Facts, Treasury, FRED/ALFRED, and adjusted market series",
+    "sanitized source snapshot restore verification",
+    "Radeon Cloud runtime receipt capture",
+    "loopback-only local model and embedding readiness verification",
+    "sanitized model candidate and embedding benchmark harnesses",
+    "integrated Sprint 10 recovery verifier and one-shot evidence runner"
+  ],
+  "out_of_scope": [
+    "Sprint 11 deterministic analysis tools and evidence packs",
+    "Qdrant narrative projection activation",
+    "Neo4j evidence graph projection activation",
+    "agent planner and product web experience",
+    "final AMD submission materials"
+  ],
+  "remaining_runtime_gates": [
+    "capture a real Radeon Cloud runtime receipt outside Git",
+    "serve and benchmark at least two loopback open-weight instruction model candidates on Radeon",
+    "serve and benchmark one loopback local embedding endpoint on Radeon",
+    "prove source, configuration, and evaluation recovery after instance destruction without committing model weights or secrets"
+  ],
+  "author": "codex",
+  "recorded_at": "2026-07-20T18:06:00Z"
+}

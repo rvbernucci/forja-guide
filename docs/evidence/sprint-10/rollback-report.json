@@ -1,0 +1,24 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "status": "partial_pass",
+  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "rollback": [
+    {
+      "area": "public source rollback",
+      "result": "passed_for_code",
+      "summary": "The public quality gate includes reproducible release builds and existing rollback/recovery compatibility coverage inherited from previous Sprints."
+    },
+    {
+      "area": "source snapshot restore",
+      "result": "passed_for_harness",
+      "summary": "The snapshot manifest verifier requires SEC, Treasury, FRED, and market source families to match hash and size expectations before recovery can pass."
+    },
+    {
+      "area": "Radeon instance destruction recovery",
+      "result": "pending_real_runtime",
+      "summary": "A clean Radeon destroy/recreate drill has not yet produced the required runtime, source, model, embedding, and competition-profile recovery reports."
+    }
+  ],
+  "recorded_at": "2026-07-20T18:06:00Z"
+}

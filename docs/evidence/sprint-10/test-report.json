@@ -1,0 +1,29 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "status": "partial_pass",
+  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "tests": [
+    {
+      "name": "local repository quality gate",
+      "result": "passed",
+      "summary": "make validate passed on the public branch after adding the Radeon candidate contract. It covered npm dependency installation, Go module verification, go vet, Go unit tests, go test -race, reproducible linux/amd64 and linux/arm64 builds, kernel smoke, MCP smoke, worker smoke, alpha test, 79 Python tests, and repository validation."
+    },
+    {
+      "name": "Sprint 10 Python evidence tooling",
+      "result": "passed",
+      "summary": "Unit tests cover Radeon runtime receipt capture, runtime readiness verification, source snapshot manifest verification, model candidate benchmarking, embedding benchmarking, competition-profile recovery binding, and the one-shot Sprint 10 evidence runner."
+    },
+    {
+      "name": "Radeon model candidate contract",
+      "result": "passed",
+      "summary": "The benchmark now rejects missing candidate schema_version and non-loopback model endpoints. The public candidate example validates through the benchmark parser and remains safe because it contains only loopback URLs and placeholder local model identifiers."
+    },
+    {
+      "name": "real Radeon runtime gate",
+      "result": "pending",
+      "summary": "The known Radeon instance refused SSH on 36.150.116.206:31200, so no real runtime receipt, real model benchmark, real embedding benchmark, or instance-destruction recovery evidence is claimed yet."
+    }
+  ],
+  "recorded_at": "2026-07-20T18:06:00Z"
+}
