@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "candidate_pending_immutable_review",
-  "basis_commit": "12f9849db65e0f155daca7c10368b77ca1a09be8",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
   "validators": [
     {
       "name": "local repository quality gate",
@@ -20,7 +20,7 @@
       "name": "public exact-basis GitHub workflow",
       "type": "mechanical",
       "result": "passed",
-      "summary": "GitHub Actions run 29718524871 checked out basis commit 12f9849db65e0f155daca7c10368b77ca1a09be8 and passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
+      "summary": "GitHub Actions run 29719449256 checked out basis commit 8cdb2bb53966b52a8480e09445caf37e89f8e2b8 and passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
     },
     {
       "name": "governed infrastructure boundary observation",
@@ -62,5 +62,5 @@
     "protected exact-main GitHub workflow",
     "private tuning, holdout, OOD, leakage, stale, and adversarial evaluation owned by Sprint 10"
   ],
-  "recorded_at": "2026-07-20T05:17:56Z"
+  "recorded_at": "2026-07-20T05:41:35Z"
 }

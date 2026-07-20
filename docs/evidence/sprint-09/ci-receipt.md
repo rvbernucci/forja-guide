@@ -4,12 +4,12 @@ Status: passed public mechanical evidence for the Sprint 09 corrected basis.
 
 ## Immutable Coordinates
 
-- Basis commit: `12f9849db65e0f155daca7c10368b77ca1a09be8`
+- Basis commit: `8cdb2bb53966b52a8480e09445caf37e89f8e2b8`
 - Pull request: <https://github.com/rvbernucci/forja-guide/pull/52>
-- Workflow run: <https://github.com/rvbernucci/forja-guide/actions/runs/29718524871>
-- Job: <https://github.com/rvbernucci/forja-guide/actions/runs/29718524871/job/88276387867>
+- Workflow run: <https://github.com/rvbernucci/forja-guide/actions/runs/29719449256>
+- Job: <https://github.com/rvbernucci/forja-guide/actions/runs/29719449256/job/88279164796>
 - Result: `success`
-- Duration: 6 minutes 16 seconds
+- Duration: 6 minutes 18 seconds
 
 ## Publicly Reviewable Gates
 

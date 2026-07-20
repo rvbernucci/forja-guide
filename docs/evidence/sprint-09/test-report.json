@@ -2,7 +2,7 @@
   "evidence_version": "1.0",
   "sprint_id": "09",
   "status": "passed",
-  "basis_commit": "12f9849db65e0f155daca7c10368b77ca1a09be8",
+  "basis_commit": "8cdb2bb53966b52a8480e09445caf37e89f8e2b8",
   "tests": [
     {
       "name": "complete local quality-gate component set",
@@ -17,7 +17,7 @@
     {
       "name": "public exact-basis CI",
       "result": "passed",
-      "summary": "Public GitHub Actions run 29718524871 on basis commit 12f9849db65e0f155daca7c10368b77ca1a09be8 passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
+      "summary": "Public GitHub Actions run 29719449256 on basis commit 8cdb2bb53966b52a8480e09445caf37e89f8e2b8 passed repository validation, PostgreSQL durability, and the clean-host observability rehearsal."
     },
     {
       "name": "PostgreSQL retrieval integration suite",
@@ -40,5 +40,5 @@
       "summary": "Qdrant and Neo4j were running, ready, and loopback-only through scoped wrappers. The staged linux/amd64 CLI failed closed without runtime configuration. The installed Qdrant validator has a caller-working-directory defect transferred to Sprint 10."
     }
   ],
-  "recorded_at": "2026-07-20T05:17:56Z"
+  "recorded_at": "2026-07-20T05:41:35Z"
 }
