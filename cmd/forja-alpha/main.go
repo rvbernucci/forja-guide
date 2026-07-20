@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"log"
 	"net/http"
 	"os"
@@ -14,6 +15,12 @@ import (
 )
 
 func main() {
+	if len(os.Args) > 1 && os.Args[1] == "seed-identities" {
+		if err := seedIdentities(os.Args[2:]); err != nil {
+			log.Fatalf("forja-alpha seed-identities: %v", err)
+		}
+		return
+	}
 	config, err := alpha.LoadConfig()
 	if err != nil {
 		log.Fatalf("forja-alpha configuration: %v", err)
@@ -47,4 +54,18 @@ func main() {
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatalf("forja-alpha serve: %v", err)
 	}
+}
+
+func seedIdentities(arguments []string) error {
+	flags := flag.NewFlagSet("forja-alpha seed-identities", flag.ContinueOnError)
+	flags.SetOutput(os.Stderr)
+	tenantID := flags.String("tenant-id", "", "target tenant UUID")
+	repositoryID := flags.String("repository-id", "", "target repository UUID")
+	if err := flags.Parse(arguments); err != nil {
+		return err
+	}
+	if flags.NArg() != 0 {
+		return errors.New("unexpected positional arguments")
+	}
+	return alpha.WriteSECIdentitySeedSQL(os.Stdout, *tenantID, *repositoryID)
 }

@@ -119,6 +119,9 @@ filing and macro timelines without generating an analytical conclusion.
   source objects, issuers, securities, identifiers, filings, XBRL facts,
   metric observations, time series, analysis runs, 13F holdings, research
   sessions, tool invocations, claims, and claim evidence.
+- [x] Added a deterministic SEC identity registry and idempotent SQL seed for
+  the Magnificent Seven issuers, common-stock securities, CIK identifiers, and
+  ticker identifiers.
 - [ ] Capture the first real Radeon Cloud receipt and keep the raw artifact
   outside Git.
 

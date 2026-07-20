@@ -1,8 +1,10 @@
 # Forja Alpha Data Architecture
 
 Status: Active for Sprints 10-14. The initial PostgreSQL schema is
-implemented in migration `000010_forja_alpha_financial_data`; source adapters,
-fixtures, populated snapshots, point-in-time views, and recovery gates remain
+implemented in migration `000010_forja_alpha_financial_data`; the Magnificent
+Seven SEC identity registry and idempotent SQL seed are implemented in
+`forja-alpha seed-identities`. Filing, Treasury, FRED/ALFRED, market-data
+adapters, populated snapshots, point-in-time views, and recovery gates remain
 Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
@@ -92,6 +94,23 @@ Market prices are not silently scraped from an undocumented endpoint. The
 adapter contract records provider, entitlement, adjustment policy, license,
 retrieval timestamp, and redistribution boundary. A user-supplied licensed CSV
 is the reproducible fallback.
+
+## SEC Identity Seed
+
+The bounded release can bootstrap its issuer universe without network access:
+
+```bash
+go run ./cmd/forja-alpha seed-identities \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  > /secure/forja/alpha-sec-identities.sql
+```
+
+The generated SQL is idempotent. It creates the target tenant and repository
+scope, registers the SEC EDGAR source system, and upserts the seven covered
+issuers, their common-stock securities, canonical CIK identifiers, and reviewed
+ticker identifiers. It is a deterministic bootstrap seed, not a substitute for
+the later versioned SEC company-tickers snapshot and filing-source objects.
 
 ## Temporal Contract
 
