@@ -67,6 +67,7 @@ def diagnose() -> tuple[dict[str, Any], int]:
         "id": run_command(["id"]),
         "sshd_path": run_command(["sh", "-lc", "command -v sshd"]),
         "sshd_process": run_command(["sh", "-lc", "ps -ef | grep '[s]shd'"]),
+        "ss_path": run_command(["sh", "-lc", "command -v ss"]),
         "port_22": run_command(["sh", "-lc", "ss -ltnp | grep ':22 '"]),
         "systemctl": run_command(["sh", "-lc", "command -v systemctl"]),
         "service": run_command(["sh", "-lc", "command -v service"]),
@@ -75,6 +76,7 @@ def diagnose() -> tuple[dict[str, Any], int]:
         "running_as_root": os.geteuid() == 0 if hasattr(os, "geteuid") else None,
         "sshd_installed": command_ok(commands["sshd_path"]),
         "sshd_process_running": process_running(commands["sshd_process"]),
+        "ss_available": command_ok(commands["ss_path"]),
         "port_22_listening": listening_on_22(commands["port_22"]),
         "run_sshd_dir_exists": file_exists("/run/sshd"),
         "host_keys_present": host_keys_present(),
@@ -99,7 +101,9 @@ def next_action(checks: dict[str, Any]) -> str:
     if checks["sshd_installed"] and checks["sshd_process_running"] and checks["port_22_listening"]:
         return "Return to the workstation and rerun preflight_radeon_ssh.py."
     if not checks["sshd_installed"]:
-        return "Install openssh-server in the Radeon web terminal, then rerun this diagnosis."
+        return "Install openssh-server and diagnostic network tools in the Radeon web terminal, then rerun this diagnosis."
+    if not checks["ss_available"]:
+        return "Install iproute2 so the diagnosis can confirm that sshd is listening on port 22."
     if not checks["run_sshd_dir_exists"]:
         return "Create /run/sshd, then start sshd and rerun this diagnosis."
     if not checks["host_keys_present"]:
@@ -114,7 +118,14 @@ def next_action(checks: dict[str, Any]) -> str:
 def suggested_commands(checks: dict[str, Any]) -> list[str]:
     commands: list[str] = []
     if not checks["sshd_installed"]:
-        commands.extend(["apt-get update", "apt-get install -y openssh-server"])
+        commands.extend(
+            [
+                "apt-get update",
+                "DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server iproute2 procps",
+            ]
+        )
+    elif not checks["ss_available"]:
+        commands.append("DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2")
     if not checks["run_sshd_dir_exists"]:
         commands.extend(["mkdir -p /run/sshd", "chmod 755 /run/sshd"])
     if not checks["host_keys_present"]:

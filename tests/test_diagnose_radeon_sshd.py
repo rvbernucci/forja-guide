@@ -53,8 +53,36 @@ class RadeonSSHDiagnosisTests(unittest.TestCase):
 
         self.assertEqual(2, exit_code)
         self.assertFalse(report["ready"])
-        self.assertEqual("Install openssh-server in the Radeon web terminal, then rerun this diagnosis.", report["next_action"])
-        self.assertIn("apt-get install -y openssh-server", report["suggested_commands"])
+        self.assertEqual(
+            "Install openssh-server and diagnostic network tools in the Radeon web terminal, then rerun this diagnosis.",
+            report["next_action"],
+        )
+        self.assertIn(
+            "DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server iproute2 procps",
+            report["suggested_commands"],
+        )
+
+    def test_missing_ss_recommends_iproute2(self) -> None:
+        configure_fake_host(
+            sshd_installed=True,
+            process=True,
+            port=False,
+            run_dir=True,
+            ss_available=False,
+        )
+
+        report, exit_code = DIAGNOSE.diagnose()
+
+        self.assertEqual(2, exit_code)
+        self.assertFalse(report["checks"]["ss_available"])
+        self.assertEqual(
+            "Install iproute2 so the diagnosis can confirm that sshd is listening on port 22.",
+            report["next_action"],
+        )
+        self.assertIn(
+            "DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2",
+            report["suggested_commands"],
+        )
 
     def test_missing_runtime_directory_recommends_run_sshd_dir(self) -> None:
         configure_fake_host(sshd_installed=True, process=False, port=False, run_dir=False)
@@ -76,11 +104,20 @@ class RadeonSSHDiagnosisTests(unittest.TestCase):
         self.assertIn("systemctl restart ssh || service ssh restart || /usr/sbin/sshd", report["suggested_commands"])
 
 
-def configure_fake_host(*, sshd_installed: bool, process: bool, port: bool, run_dir: bool) -> None:
+def configure_fake_host(
+    *,
+    sshd_installed: bool,
+    process: bool,
+    port: bool,
+    run_dir: bool,
+    ss_available: bool = True,
+) -> None:
     def fake_run_command(argv: list[str], timeout: float = 5.0):
         command = " ".join(argv)
         if "command -v sshd" in command:
             return report("/usr/sbin/sshd" if sshd_installed else "", 0 if sshd_installed else 1)
+        if "command -v ss" in command:
+            return report("/usr/bin/ss" if ss_available else "", 0 if ss_available else 1)
         if "ps -ef" in command:
             return report("root 1 0 00:00 ? 00:00:00 sshd: /usr/sbin/sshd -D" if process else "", 0 if process else 1)
         if "ss -ltnp" in command:

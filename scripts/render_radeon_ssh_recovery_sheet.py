@@ -76,6 +76,7 @@ python3 scripts/diagnose_radeon_sshd.py \\
 whoami
 id
 command -v sshd || true
+command -v ss || true
 ps -ef | grep '[s]shd' || true
 ss -ltnp | grep ':22 ' || true
 ```
@@ -92,12 +93,18 @@ python3 scripts/wait_radeon_ssh.py {host} {port} \\
 
 ## 3. Repair Missing OpenSSH Server
 
-If `command -v sshd` prints nothing, install OpenSSH server from the web
-terminal:
+If `command -v sshd` prints nothing, install OpenSSH server and lightweight
+diagnostic tools from the web terminal:
 
 ```bash
 apt-get update
-apt-get install -y openssh-server
+DEBIAN_FRONTEND=noninteractive apt-get install -y openssh-server iproute2 procps
+```
+
+If `ss` is missing but `sshd` is already installed, install only `iproute2`:
+
+```bash
+DEBIAN_FRONTEND=noninteractive apt-get install -y iproute2
 ```
 
 ## 4. Repair Missing Runtime Directory Or Host Keys
