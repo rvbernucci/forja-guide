@@ -36,7 +36,8 @@ func TestPreflightReceiptIsRedactedPrivateAndSchemaValid(t *testing.T) {
 	output := filepath.Join(directory, "preflight.json")
 	if err := writePreflightReceipt(output, retrievalPreflightReceipt{
 		SchemaVersion: "1.0", Generation: "retrieval_generation_" + strings.Repeat("a", 64),
-		PostgresReady: true, QdrantVerified: true, BedrockDimensions: 1024,
+		PostgresReady: true, QdrantVerified: true, EmbeddingProvider: "bedrock",
+		EmbeddingDimensions: 1024, BedrockDimensions: 1024,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -156,6 +157,9 @@ func TestRuntimeConfigRequiresEnvironmentBoundariesAndRejectsUnsafeRemoteQdrant(
 	if err != nil || config.qdrantPort != 6334 || !config.qdrantTLS {
 		t.Fatalf("valid config=%#v err=%v", config, err)
 	}
+	if config.embeddingProvider != "bedrock" {
+		t.Fatalf("default embedding provider=%q", config.embeddingProvider)
+	}
 	delete(valid, "FORJA_QDRANT_API_KEY")
 	if _, err := runtimeConfigFromEnv(lookup); err == nil || strings.Contains(err.Error(), "secret-not-printed") {
 		t.Fatalf("unsafe remote Qdrant error=%v", err)
@@ -169,6 +173,36 @@ func TestRuntimeConfigRequiresEnvironmentBoundariesAndRejectsUnsafeRemoteQdrant(
 	valid["AWS_BEARER_TOKEN_BEDROCK"] = "legacy-bearer-not-printed"
 	if _, err := runtimeConfigFromEnv(lookup); err == nil || strings.Contains(err.Error(), "legacy-bearer-not-printed") {
 		t.Fatalf("legacy Bedrock bearer error=%v", err)
+	}
+}
+
+func TestRuntimeConfigSupportsLocalRadeonEmbeddingProvider(t *testing.T) {
+	valid := map[string]string{
+		"FORJA_DATABASE_URL":                 "postgresql://example.invalid/forja",
+		"FORJA_TENANT_ID":                    "tenant_00000000-0000-4000-8000-000000000001",
+		"FORJA_REPOSITORY_ID":                "repo_00000000-0000-4000-8000-000000000002",
+		"FORJA_QDRANT_HOST":                  "127.0.0.1",
+		"FORJA_RETRIEVAL_COLLECTION":         "forja_retrieval_v1",
+		"FORJA_S3_BUCKET":                    "forja-artifacts",
+		"FORJA_S3_REGION":                    "us-east-1",
+		"FORJA_RETRIEVAL_EMBEDDING_PROVIDER": "local",
+		"FORJA_LOCAL_EMBEDDING_ENDPOINT":     "http://127.0.0.1:8000",
+		"FORJA_LOCAL_EMBEDDING_MODEL":        "local-bge",
+		"FORJA_LOCAL_EMBEDDING_VERSION":      "rocm-q8",
+		"FORJA_LOCAL_EMBEDDING_DIMENSIONS":   "768",
+	}
+	lookup := func(key string) (string, bool) { value, found := valid[key]; return value, found }
+	config, err := runtimeConfigFromEnv(lookup)
+	if err != nil {
+		t.Fatalf("local config error=%v", err)
+	}
+	if config.embeddingProvider != "local" || config.region != "" ||
+		config.localEmbeddingDimensions != 768 {
+		t.Fatalf("local config=%#v", config)
+	}
+	valid["FORJA_RETRIEVAL_EMBEDDING_PROVIDER"] = "remote"
+	if _, err := runtimeConfigFromEnv(lookup); err == nil {
+		t.Fatal("invalid embedding provider accepted")
 	}
 }
 

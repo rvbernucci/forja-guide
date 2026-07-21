@@ -1,0 +1,18 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "status": "partial",
+  "basis_commit": "7602d753a4ab20190b2de61332eae167b8b795c4",
+  "metrics": {
+    "python_tests": 127,
+    "markdown_files_validated": 92,
+    "json_schemas_validated": 38,
+    "radeon_model_candidate_examples": 2,
+    "public_embedding_smoke_inputs": 4,
+    "real_radeon_runtime_receipts": 0,
+    "real_radeon_model_benchmarks": 0,
+    "real_radeon_embedding_benchmarks": 0,
+    "real_destroy_recreate_recovery_reports": 0
+  },
+  "recorded_at": "2026-07-20T19:40:28Z"
+}

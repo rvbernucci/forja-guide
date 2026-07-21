@@ -49,6 +49,15 @@ func TestGovernedKnowledgePersistenceAndRollbackBoundary(t *testing.T) {
 	}
 
 	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 012: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 011: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 010: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback unused migration 009: %v", err)
 	}
 	if err := RollbackLast(t.Context(), pool); err != nil {

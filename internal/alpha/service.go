@@ -137,13 +137,14 @@ func researchPlan(prompt string) []ResearchStep {
 }
 
 func magnificentSeven() []Company {
-	return []Company{
-		{Ticker: "AAPL", Name: "Apple", CIK: "0000320193"},
-		{Ticker: "MSFT", Name: "Microsoft", CIK: "0000789019"},
-		{Ticker: "GOOGL", Name: "Alphabet", CIK: "0001652044"},
-		{Ticker: "AMZN", Name: "Amazon", CIK: "0001018724"},
-		{Ticker: "NVDA", Name: "NVIDIA", CIK: "0001045810"},
-		{Ticker: "META", Name: "Meta Platforms", CIK: "0001326801"},
-		{Ticker: "TSLA", Name: "Tesla", CIK: "0001318605"},
+	companies := MagnificentSevenSECCompanies()
+	result := make([]Company, 0, len(companies))
+	for _, company := range companies {
+		result = append(result, Company{
+			Ticker: company.Ticker,
+			Name:   company.Name,
+			CIK:    company.CIK,
+		})
 	}
+	return result
 }

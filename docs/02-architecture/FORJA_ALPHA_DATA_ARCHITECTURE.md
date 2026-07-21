@@ -1,7 +1,13 @@
 # Forja Alpha Data Architecture
 
-Status: Planned for Sprints 10-14. Canonical contracts are implemented only
-after their migrations, adapters, fixtures, and recovery gates pass.
+Status: Active for Sprints 10-14. The initial PostgreSQL schema is
+implemented in migration `000010_forja_alpha_financial_data`; the Magnificent
+Seven SEC identity registry and idempotent SQL seed are implemented in
+`forja-alpha seed-identities`, including an optional versioned SEC
+`company_tickers.json` snapshot path with source-object lineage. Filing,
+Treasury, first FRED/ALFRED, and first market-data snapshot adapters now
+preserve source lineage and point-in-time clocks. Populated snapshots and
+recovery gates remain Sprint 10 work.
 
 The authority and point-in-time decisions in this design are governed by
 [ADR-0021](../05-decisions/ADR-0021-POINT-IN-TIME-FINANCIAL-AUTHORITY.md).
@@ -91,6 +97,287 @@ adapter contract records provider, entitlement, adjustment policy, license,
 retrieval timestamp, and redistribution boundary. A user-supplied licensed CSV
 is the reproducible fallback.
 
+## SEC Identity Seed and Snapshot Lineage
+
+The bounded release can bootstrap its issuer universe without network access:
+
+```bash
+go run ./cmd/forja-alpha seed-identities \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  > /secure/forja/alpha-sec-identities.sql
+```
+
+When an SEC `company_tickers.json` snapshot has been acquired and preserved in
+the operator's private artifact area, the same command can bind the bootstrap
+to a content hash, ingestion run, and source object:
+
+```bash
+go run ./cmd/forja-alpha seed-identities \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --company-tickers-json /secure/forja/sec/company_tickers.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-identities.sql
+```
+
+The generated SQL is idempotent. It creates the target tenant and repository
+scope, registers the SEC EDGAR source system, validates that the snapshot
+contains the seven covered tickers with the expected CIKs, records the snapshot
+SHA-256 and size in `alpha_source_objects`, records an `alpha_ingestion_runs`
+receipt, and upserts the covered issuers, their common-stock securities,
+canonical CIK identifiers, and reviewed ticker identifiers.
+
+The company-tickers snapshot remains a discovery and identity aid. It is not a
+substitute for SEC submissions, filing archives, Company Facts, and filing
+source objects, which remain the authority for reported facts and documents.
+
+## SEC Submissions Snapshot Seed
+
+After issuer identity has been seeded, a preserved SEC submissions snapshot can
+populate the initial filing timeline for one covered company:
+
+```bash
+go run ./cmd/forja-alpha seed-submissions \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --submissions-json /secure/forja/sec/submissions/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-submissions-nvda.sql
+```
+
+The command validates that the snapshot CIK and ticker match the bounded
+universe, filters the recent filing table to `10-K`, `10-K/A`, `10-Q`, and
+`10-Q/A`, records the submissions JSON as a source object, records an ingestion
+run, and upserts `alpha_filings` with accession, form, period end, filing time,
+and availability time.
+
+This is a filing-timeline adapter, not a full document or XBRL parser. The
+primary filing document, inline XBRL instance, Company Facts payload, and
+parsed accounting facts remain separate Sprint 10 ingestion work.
+
+## SEC Company Facts Snapshot Seed
+
+SEC Company Facts snapshots are recorded before Forja attempts canonical metric
+mapping:
+
+```bash
+go run ./cmd/forja-alpha seed-company-facts \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --company-facts-json /secure/forja/sec/companyfacts/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-sec-companyfacts-nvda.sql
+```
+
+The command validates the CIK, records the snapshot SHA-256 and source object,
+stores an ingestion receipt, writes a sanitized coverage summary into
+source-object metadata, and persists raw XBRL-like rows into
+`alpha_taxonomies`, `alpha_xbrl_concepts`, `alpha_xbrl_contexts`, and
+`alpha_xbrl_facts`. Coverage metadata includes taxonomy count, concept count,
+unit count, fact count, forms, fiscal years, currencies, and canonical metric
+hints.
+
+This step deliberately stops before choosing authoritative accounting metrics.
+The raw fact rows preserve lexical and numeric values, SEC `decimals`, units,
+currency, period start, period end, fiscal frame, filing accession, concept
+identity, context hash, and source-object lineage. Metric mapping, dimensional
+validation, unit/scale normalization, amendment priority, and
+`alpha_metric_observations` remain reviewed Sprint 10 work.
+
+Unsupported taxonomies, missing unit identity, missing numeric monetary values,
+invalid currency units, and impossible or missing periods are not discarded.
+They are preserved as raw facts with `quality_state='quarantined'` and are
+excluded from first-pass metric-observation promotion. This keeps the evidence
+auditable without allowing ambiguous source rows to become canonical accounting
+truth.
+
+## Canonical Metric Registry Seed
+
+The initial metric registry is seeded after raw facts exist:
+
+```bash
+go run ./cmd/forja-alpha seed-metrics \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  > /secure/forja/alpha-metrics-nvda.sql
+```
+
+The command creates versioned reported metric definitions for revenue,
+operating income, net income, operating cash flow, and capital expenditure. It
+also creates issuer-scoped, reviewed US-GAAP concept mappings for the bounded
+demo universe. The mappings reference deterministic concept IDs produced by the
+Company Facts raw-fact adapter and include the reviewed concept name in the
+context filter for auditability.
+
+This registry authorizes candidate normalizations; it still does not select
+periods, resolve amendments, derive quarterly values from YTD facts, or create
+`alpha_metric_observations`.
+
+## Initial Metric Observation Seed
+
+Mapped numeric Company Facts rows can be promoted into reported metric
+observations only after identity, submissions, raw Company Facts, and metric
+mappings have been seeded:
+
+```bash
+go run ./cmd/forja-alpha seed-metric-observations \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --company-facts-json /secure/forja/sec/companyfacts/CIK0001045810.json \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-metric-observations-nvda.sql
+```
+
+The command selects only numeric USD raw facts whose concept IDs match reviewed
+metric mappings. Each observation keeps the source fact, filing, issuer,
+period start, period end, value, unit, currency, fiscal frame, and a lineage
+object that states the selection remains
+`mapped_raw_fact_only_no_amendment_or_ytd_resolution`.
+
+This is intentionally a first-pass reported observation layer. It does not
+deduplicate multiple reported candidates, resolve amendments, infer quarterly
+values from YTD rows, or decide issuer-specific custom extensions.
+It promotes only mapped, numeric USD facts whose raw quality state is accepted.
+
+## Treasury Series Snapshot Seed
+
+The first macro/rates adapter ingests a hash-pinned local Treasury CSV snapshot
+for the 10-year real-yield series:
+
+```bash
+go run ./cmd/forja-alpha seed-treasury-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --csv /secure/forja/treasury/real-yield-10y.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-treasury-real-yield-10y.sql
+```
+
+The CSV must include a date column and a value/rate column. Optional
+`published_at` and `vintage_at` columns preserve publication and revision
+semantics. The seed records the Treasury source system, source object,
+ingestion run, series registry row, and accepted `alpha_series_observations`.
+Rows with empty or non-numeric values are counted in source metadata and do
+not become canonical observations.
+
+## FRED/ALFRED Series Snapshot Seed
+
+The first macro adapter ingests a hash-pinned local FRED/ALFRED CSV snapshot
+for the approved macro registry. The default operational series is FEDFUNDS,
+used as the initial policy-rate factor:
+
+```bash
+go run ./cmd/forja-alpha seed-fred-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --csv /secure/forja/fred/FEDFUNDS.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-fred-fedfunds.sql
+```
+
+The CSV must include a `date` column and a `value` column. FRED/ALFRED export
+columns such as `realtime_start` are treated as vintage evidence: when present,
+`realtime_start` becomes both the observation publication clock and the
+`vintage_at` value. The snapshot-level `available_at` still controls
+point-in-time eligibility inside Forja.
+
+Rows with empty, `N/A`, `.`, or non-numeric values are preserved only as
+skipped-row counts in source metadata. Accepted rows create the FRED source
+system, source object, ingestion run, series registry row, and
+`alpha_series_observations` with observed, published, available, and vintage
+clocks.
+
+## Market Series Snapshot Seed
+
+The first market adapter ingests a hash-pinned local adjusted-price CSV
+snapshot for one covered security at a time:
+
+```bash
+go run ./cmd/forja-alpha seed-market-series \
+  --tenant-id <tenant-uuid> \
+  --repository-id <repository-uuid> \
+  --ticker NVDA \
+  --provider licensed-csv \
+  --csv /secure/forja/market/NVDA-adjusted.csv \
+  --available-at 2026-07-20T12:00:00Z \
+  > /secure/forja/alpha-market-nvda.sql
+```
+
+The CSV must include a `date` column and an adjusted close column named
+`adjusted_close`, `adj_close`, `adjclose`, or `close_adjusted`. Optional
+`published_at` and `vintage_at` columns preserve availability and revision
+clocks. The adapter records the market source system, source object, ingestion
+run, adjusted-close series, and a derived daily-return series.
+
+Daily returns are simple returns calculated mechanically from adjacent accepted
+adjusted close observations. This lets factor tools use a deterministic return
+panel while preserving the provider adjustment policy and license boundary in
+source metadata. Rows with missing, non-numeric, or non-positive adjusted close
+values are skipped and counted; they do not become canonical prices or returns.
+
+## Source Snapshot Restore Manifest
+
+Radeon Cloud instances are disposable. Sprint 10 therefore treats source
+snapshots as recoverable only when their restored bytes match a manifest:
+
+```bash
+python3 scripts/build_alpha_snapshot_manifest.py \
+  --snapshot-root /secure/forja \
+  --required-snapshot sec_identity=sec/company_tickers.json \
+  --required-snapshot sec_submissions=sec/submissions/CIK0001045810.json \
+  --required-snapshot sec_company_facts=sec/companyfacts/CIK0001045810.json \
+  --required-snapshot treasury=treasury/real-yield-10y.csv \
+  --required-snapshot fred=fred/FEDFUNDS.csv \
+  --required-snapshot market=market/NVDA-adjusted.csv \
+  --output /secure/forja/alpha-source-manifest.json
+```
+
+The builder accepts explicit `source_family=relative/path` pairs, computes
+hashes and byte sizes, rejects absolute or escaping paths, and fails closed if
+any required source family is missing. Operators may add optional SEC filing
+documents, XBRL files, or metadata snapshots with `--optional-snapshot`.
+
+```bash
+python3 scripts/verify_alpha_snapshot_manifest.py \
+  --manifest /secure/forja/alpha-source-manifest.json \
+  --snapshot-root /secure/forja \
+  --output /workspace/forja-alpha-source-restore-report.json
+```
+
+The manifest is a JSON object with `schema_version: "1.0"`,
+`manifest_kind: "forja_alpha_source_snapshots"`, and a `snapshots` array. Each
+entry must include `source_family`, `logical_path`, `sha256`, `size_bytes`,
+`media_type`, and `required`. Paths are relative to `--snapshot-root` and may
+not escape it.
+
+The verifier fails closed unless required SEC identity, SEC submissions, SEC
+Company Facts, Treasury, FRED, and market families are present and every listed
+file matches its expected SHA-256 and size. The generated report is sanitized:
+it records paths, hashes, sizes, source families, and mismatch classes, but not
+source bodies or credentials. Raw reports stay outside Git until reviewed.
+
+## Point-in-Time Query Views
+
+Sprint 10 now publishes three read-only query surfaces above the raw Alpha
+tables:
+
+| View | Purpose | Required research filter |
+| --- | --- | --- |
+| `alpha_v_source_coverage` | Source-system, ingestion-run, source-object, hash, lifecycle, availability, row-count, object-count, and metadata coverage inventory | Permission and scope policy before display |
+| `alpha_v_issuer_filing_timeline` | Filing chronology with issuer name, CIK, ticker, accession, form, fiscal period, filing time, availability time, lifecycle, and source object | `available_at <= :as_of` |
+| `alpha_v_reported_metric_panel` | First-pass reported metric observations with metric key, issuer, filing accession, period, numeric value, unit, currency, lineage, and quality state | `available_at <= :as_of` |
+
+The views intentionally do not hide the `available_at` clock behind implicit
+database state. Every deterministic research tool must pass an explicit
+research `as_of` timestamp and filter these views before building an evidence
+pack. This keeps point-in-time behavior visible in logs, receipts, tests, and
+user-facing citations.
+
 ## Temporal Contract
 
 Financial research fails when it knows the future. Every canonical record must
@@ -107,10 +394,11 @@ distinguish the following clocks where applicable:
 | `valid_from` / `valid_to` | Canonical validity interval for a versioned mapping or identity |
 | `superseded_at` | Time an amendment or corrected source replaced a prior preferred version |
 
-Every research request declares an `as_of` timestamp. Canonical views exclude
-filings, observations, revisions, mappings, and identities whose
-`available_at` is later than `as_of`. Current-state queries and historical
-point-in-time queries use different explicit contracts.
+Every research request declares an `as_of` timestamp. Canonical query tools
+must exclude filings, observations, revisions, mappings, and identities whose
+availability or validity clocks are later than the declared `as_of`.
+Current-state queries and historical point-in-time queries use different
+explicit contracts.
 
 ## Storage Responsibilities
 

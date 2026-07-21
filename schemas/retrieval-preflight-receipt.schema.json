@@ -5,12 +5,14 @@
   "description": "Redacted proof that the governed retrieval runtime dependencies passed their bounded preflight.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "generation", "postgres_ready", "qdrant_verified", "bedrock_dimensions"],
+  "required": ["schema_version", "generation", "postgres_ready", "qdrant_verified", "embedding_provider", "embedding_dimensions"],
   "properties": {
     "schema_version": {"const": "1.0"},
     "generation": {"type": "string", "pattern": "^retrieval_generation_[a-f0-9]{64}$"},
     "postgres_ready": {"const": true},
     "qdrant_verified": {"const": true},
-    "bedrock_dimensions": {"const": 1024}
+    "embedding_provider": {"enum": ["bedrock", "local"]},
+    "embedding_dimensions": {"type": "integer", "minimum": 1, "maximum": 4096},
+    "bedrock_dimensions": {"type": "integer", "minimum": 1, "maximum": 4096}
   }
 }

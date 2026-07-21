@@ -1,0 +1,34 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "status": "partial_pass",
+  "basis_commit": "7602d753a4ab20190b2de61332eae167b8b795c4",
+  "validation": [
+    {
+      "gate": "data spine implementation",
+      "result": "passed_for_public_code",
+      "summary": "Migrations, adapters, point-in-time views, source coverage, and restore-manifest verification exist in public source and are covered by tests."
+    },
+    {
+      "gate": "Radeon evidence collection automation",
+      "result": "passed_for_public_code",
+      "summary": "The one-shot evidence runner produces a dry-run execution plan and will fail fast across receipt, readiness, source restore, model benchmark, embedding benchmark, and recovery gates."
+    },
+    {
+      "gate": "local inference proof",
+      "result": "pending_real_runtime",
+      "summary": "No real Radeon Cloud receipt or live loopback model/embedding benchmark has been captured for this candidate."
+    },
+    {
+      "gate": "next Sprint authorization",
+      "result": "not_authorized",
+      "summary": "Sprint 11 must not start until independent validation records the real Radeon runtime artifacts and this closure candidate is promoted to a review-bound close receipt."
+    },
+    {
+      "gate": "closure promotion guard",
+      "result": "passed_for_public_code",
+      "summary": "The close-receipt promoter is fail-closed and rejects missing rollback, missing real Radeon gates, pre-authorized candidates, and review artifacts outside the Sprint 10 review folder."
+    }
+  ],
+  "recorded_at": "2026-07-20T19:40:28Z"
+}

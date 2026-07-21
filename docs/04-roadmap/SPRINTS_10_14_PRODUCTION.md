@@ -1,20 +1,32 @@
 # Sprints 10-14: Forja Alpha Production Plan
 
-Status: Planned. Sprint 09 is closed. These Sprints complete Forja Alpha as a
+Status: Active. Sprint 09 is closed. Sprint 10 is the current implementation
+Sprint. Sprints 10-14 are now organized as the Forja Alpha completion path:
+data foundation, deterministic evidence, agentic product experience,
+measurement/optimization, and final release. The goal is to finish a local,
 private, evidence-grounded investment-research agent for AMD AI DevMaster
 Hackathon Track 2 without weakening the neutral Forja kernel.
 
 The canonical source and storage design is defined in the
 [Forja Alpha data architecture](../02-architecture/FORJA_ALPHA_DATA_ARCHITECTURE.md).
+The Sprint-by-Sprint extraction, storage, projection, and evidence map is
+tracked in the
+[Sprints 10-14 data execution matrix](SPRINTS_10_14_DATA_EXECUTION_MATRIX.md).
+While AMD Radeon Cloud is unavailable, execution is split into notebook-required
+and notebook-independent work in the
+[Sprints 10-14 dual track execution plan](SPRINTS_10_14_DUAL_TRACK.md).
 
 ## Product Outcome
 
-The release must let a researcher ask a financial question in natural
-language, observe a local agent create and execute a bounded plan, inspect every
+Forja Alpha must let a researcher ask a financial question in natural language,
+watch a local AMD Radeon agent create and execute a bounded plan, inspect every
 tool call and source, continue the conversation with governed memory, and
-receive a cited research memo. It analyzes reported financial performance,
-factor sensitivity, and public institutional disclosures. It does not predict
-prices, place trades, or present correlation as causation.
+receive a cited research memo. The visible product must feel like a serious
+agentic research workstation, not a CLI-only proof: model/runtime health,
+planning, retrieval, tools, graph paths, source cards, citations, limitations,
+and memo output must all be inspectable. It analyzes reported financial
+performance, factor sensitivity, and public institutional disclosures. It does
+not predict prices, place trades, or present correlation as causation.
 
 The primary demonstration question is:
 
@@ -33,199 +45,369 @@ The primary demonstration question is:
 - The product visibly demonstrates local RAG, tool invocation, multi-step
   planning, multi-turn memory, and permission and privacy controls.
 - The Radeon Cloud profile uses persistent PVC storage, SSH, reproducible
-  setup, and explicit GPU/runtime evidence.
+  setup, explicit GPU/runtime evidence, and no committed model weights or
+  secrets.
 - Source, README, project PDF, three-to-five-minute demo, and submission pull
   request are in English.
 - The final AMD pull request title follows
   `Track 2, <Team Name>, Forja Alpha`.
 
+## Alpha Data Operating Model
+
+Forja Alpha is a data-and-agent system, not a chatbot with attached files. The
+agent is only as good as the records it can inspect, the tools it can call, and
+the receipts it can leave behind. Each store has one job:
+
+| Layer | Store | Responsibility | Rebuild policy |
+| --- | --- | --- | --- |
+| Source bytes | Content-addressed object storage on persistent PVC | Immutable SEC, Treasury, FRED, market, 13F, model, benchmark, memo, and evidence artifacts | Never rewritten; restored from hash and manifest |
+| Canonical authority | PostgreSQL | Identity, lineage, point-in-time facts, exact decimals, permissions, sessions, tool receipts, claims, citations, and analysis state | Primary system of record |
+| Narrative discovery | Qdrant | Local embeddings for filing sections, notes, risk factors, accounting policies, methodology, and generated evidence summaries | Rebuilt from PostgreSQL plus source objects |
+| Evidence graph | Neo4j | Proven relationships among issuers, filings, documents, concepts, facts, metrics, series, holdings, analyses, claims, and source objects | Rebuilt from PostgreSQL projection checkpoints |
+| Analytical execution | Typed Go tools | Recomputable fundamentals, factors, holdings, filing comparisons, and validation receipts | Deterministic from canonical data |
+| Local inference | Radeon/ROCm models | Planning, synthesis, follow-up handling, and bounded explanation from approved context | Runtime dependency, not source authority |
+| Observability | Prometheus, Loki, Grafana, Tempo | Metrics, content-free logs, traces, receipts, latency, GPU/runtime status, and failure taxonomy | Retained as sanitized operational evidence |
+
+Every source observation records publication, availability, ingestion, and
+validity time separately. Every research run declares an `as_of` timestamp.
+Qdrant can discover text, and Neo4j can show evidence paths, but PostgreSQL and
+typed tools decide whether a claim is allowed, current, and computable.
+
+## Alpha Completion Strategy
+
+The remaining Sprints are deliberately sequenced so the product can become
+operable before it becomes broad:
+
+| Sprint | Primary question | Alpha outcome |
+| --- | --- | --- |
+| 10 | Can we rebuild trusted data and local Radeon runtime? | Data spine, point-in-time facts, local model and embedding evidence |
+| 11 | Can tools turn that data into verifiable evidence? | Deterministic calculations, Qdrant discovery, Neo4j paths, evidence packs |
+| 12 | Can a user experience the agent end to end? | Web research workspace, planner, memory, permissions, memo generation |
+| 13 | Can we prove it is accurate, fast, stable, and private? | Evaluation, ROCm optimization, safety, reliability, and benchmark receipts |
+| 14 | Can a judge reproduce and understand it quickly? | Clean release, PDF, demo video, README, AMD pull request, public narrative |
+
+The Sprint boundary is important. Sprint 10 may prepare scripts, bundles, and
+candidate receipts, but it is not closed until real Radeon runtime evidence
+exists. Sprint 11 must not treat Qdrant or Neo4j as authority. Sprint 12 must
+not hide a missing data/tool layer behind a pretty UI. Sprint 13 must measure
+before optimizing. Sprint 14 must package only behavior that has evidence.
+
+When the Radeon notebook is offline, work continues through two synchronized
+tracks:
+
+| Track | Can run now? | Purpose | Closure authority |
+| --- | --- | --- | --- |
+| AMD notebook-required | only when Radeon is live | local ROCm runtime, model serving, embedding, Qdrant, Neo4j, PostgreSQL, recovery, and demo evidence | real Radeon receipts |
+| Notebook-independent | yes, local/VPS | schemas, source contracts, importers, deterministic tools, projection builders, UI shell, tests, docs, release material | tests and dry-run receipts only |
+
+The notebook-independent track is allowed to prepare Sprint 11-14 code and
+fixtures, but not to authorize Sprint 11 closure. Sprint 10 still requires a
+reviewed Radeon close receipt.
+
+## Refactored Alpha Execution Contract
+
+Sprints 10-14 are now treated as one Alpha product pipeline instead of five
+independent engineering lists. Each Sprint closes one layer that the next layer
+is allowed to trust:
+
+| Sprint | Layer closed | What later Sprints may trust | What remains forbidden |
+| --- | --- | --- | --- |
+| 10 | Data spine and Radeon runtime | PostgreSQL point-in-time rows, source-object hashes, restore manifests, local model and embedding receipts | using projections, model output, or UI claims as evidence |
+| 11 | Evidence fabric | deterministic tool receipts, Qdrant discovery receipts, Neo4j path receipts, evidence packs | allowing retrieval or graph traversal to create facts |
+| 12 | Product agent | schema-valid plans, visible tool execution, governed memory, permission receipts, cited memos | hiding missing evidence behind model prose |
+| 13 | Quality and optimization | benchmarked ROCm profile, holdout quality, privacy checks, reliability receipts | optimizing latency at the cost of citations, numeric exactness, or local inference |
+| 14 | Release package | public README/PDF/video/deck tied to evidence and reproducible setup | changing claims after evidence freeze or relying on undocumented manual state |
+
+The Forja Alpha database design follows the same pipeline. PostgreSQL is the
+system of record for truth, permissions, sessions, and claims. Object storage
+preserves immutable bytes. Qdrant accelerates semantic discovery over approved
+narrative material. Neo4j explains deterministic relationships and bounded
+evidence paths. Prometheus, Loki, Grafana, and Tempo make the runtime visible
+without storing private prompts or source bodies.
+
+The practical build order is:
+
+1. extract and preserve source bytes;
+2. load canonical identities, clocks, facts, and time series into PostgreSQL;
+3. create deterministic tools that produce recomputable receipts;
+4. project approved narrative chunks into Qdrant from PostgreSQL-owned
+   metadata;
+5. project canonical IDs and source hashes into Neo4j paths;
+6. let the local model plan and synthesize only after evidence packs exist;
+7. expose the whole path through the web workspace and observability stack.
+
+## Data We Intend To Extract
+
+Forja Alpha starts with the Magnificent Seven because the bounded scope lets us
+prove quality instead of pretending to cover the whole market. The extraction
+plan is split by source family:
+
+| Source family | Extracted records | Why it matters |
+| --- | --- | --- |
+| SEC identity | CIKs, tickers, securities, names, aliases, exchange labels | deterministic company resolution and no ambiguous issuer matching |
+| SEC submissions | filing accessions, forms, report periods, accepted/filed/available clocks, primary document references | point-in-time filing timeline and amendment awareness |
+| SEC Company Facts/XBRL | raw facts, taxonomy concepts, contexts, units, decimals, fiscal frames, dimensions, reviewed metric observations | exact accounting evidence and raw-to-canonical lineage |
+| SEC filings/documents | primary filing text, sections, notes, accounting policies, risk factors, citations | narrative evidence for RAG and memo support |
+| Treasury/FRED/ALFRED | nominal/real yields, policy-rate and macro vintages, observed/published/available clocks | factor sensitivity without look-ahead |
+| Market data | adjusted prices, returns, benchmarks, corporate-action policy, license receipt | historical return alignment and factor regressions |
+| 13F | managers, reports, holdings, changes, filing delay, security-resolution state | institutional-disclosure analysis with explicit limitations |
+| Product memory | sessions, messages, plans, decisions, tool receipts, claims, citations, promoted memories, tombstones | governed multi-turn interaction and auditability |
+
+## Database Design Around Those Data
+
+The databases are intentionally complementary:
+
+| Store | Data owned | Data not owned |
+| --- | --- | --- |
+| PostgreSQL | canonical identities, clocks, facts, permissions, sessions, memories, tool receipts, claims, citations, analysis state | semantic ranking, graph traversal, large immutable file bodies |
+| Object storage | raw source bytes, downloaded filings, snapshots, memo bodies, evidence artifacts, benchmark artifacts | mutable truth, permissions, derived authority |
+| Qdrant | embeddings for narrative filing sections, method docs, evidence summaries, and approved memory summaries | exact numeric values, fact selection, permission bypass |
+| Neo4j | relationships among issuers, filings, facts, metrics, tools, analyses, claims, citations, and source objects | creating facts or deciding that a semantic match is true |
+| Prometheus/Loki/Grafana/Tempo | runtime health, GPU metrics, content-free traces, latency, failure taxonomy, receipts | private prompts, source bodies, secrets, licensed data |
+
+The retrieval path is two-stage by design. Qdrant finds likely semantic
+starting points. Neo4j explains the route through known relationships.
+PostgreSQL and typed tools decide whether the route is valid enough to become
+evidence.
+
+## Data Products To Ship
+
+The Alpha release is organized around six versioned data products. These are
+the units the agent, UI, evaluation, and recovery procedures reason about.
+
+| Data product | Extracted data | Canonical store | Projection stores | Completion gate |
+| --- | --- | --- | --- | --- |
+| `issuer_identity_registry` | Magnificent Seven issuers, CIKs, tickers, securities, aliases, exchange labels | PostgreSQL | Neo4j issuer/security nodes | Every issuer resolves deterministically without network |
+| `issuer_filing_timeline` | SEC submissions, 10-K/10-Q/amendment chains, accepted/filed/report periods, document URLs | PostgreSQL + object storage | Neo4j filing/document paths | Latest 10-K and two 10-Q periods are point-in-time queryable |
+| `canonical_fundamental_panel` | Reviewed reported facts, metric mappings, exact decimals, units, periods, fiscal frames, dimensions | PostgreSQL + object storage | Neo4j fact/metric edges | Metrics are selected without look-ahead and preserve raw-to-canonical lineage |
+| `daily_factor_panel` | Adjusted equity returns, benchmark returns, Treasury real yield, approved FRED/ALFRED vintages | PostgreSQL + object storage | Neo4j series edges | Series expose observed, published, available, and revised clocks |
+| `narrative_evidence_corpus` | Filing sections, notes, accounting policies, risk disclosures, method docs, evidence summaries | Object storage + PostgreSQL metadata | Qdrant + Neo4j section paths | Retrieval candidates resolve to permitted canonical source objects |
+| `research_memory_and_artifacts` | Sessions, messages, plans, tool receipts, citations, memos, promoted memories, deletion tombstones | PostgreSQL + object storage | Qdrant governed memory, Neo4j claim paths | User can inspect, export, promote, and delete memory safely |
+
 ## Cross-Sprint Invariants
 
-- PostgreSQL is canonical. Object storage preserves source bytes and generated
-  evidence. Qdrant and Neo4j are rebuildable projections.
-- Every source observation records event, publication, availability, and
-  ingestion time. Research never reads data unavailable at its `as_of` time.
-- Raw source bytes are immutable and content-addressed. Corrections and amended
-  filings create new versions; they never rewrite history.
+- PostgreSQL is canonical. Object storage preserves bytes. Qdrant and Neo4j are
+  rebuildable projections.
 - Numeric facts are selected and calculated by typed tools, not semantic
   retrieval or model arithmetic.
-- Qdrant discovers narrative evidence. Neo4j traverses proven relationships.
-  Neither establishes fact, identity, permission, or analytical authority.
 - Model output cannot approve its own tool access, mutate canonical source
   facts, expand scope, or silently call a remote provider.
-- Every claim in a completed memo resolves to source facts, deterministic
-  calculations, statistical estimates, or an explicit unsupported gap.
+- Every released claim resolves to source facts, deterministic calculations,
+  statistical estimates, or an explicit unsupported gap.
 - Public telemetry contains identifiers, states, counts, timings, and hashes,
   but not private prompts, memory bodies, credentials, or licensed data.
+- No Sprint may claim completion from documentation alone. Exit requires
+  runtime evidence, tests, and clean-checkout reproduction.
 
 ## Critical Path
 
 ```mermaid
 flowchart LR
-    S10["Sprint 10\nCanonical data + ROCm"] --> S11["Sprint 11\nTools + evidence fabric"]
+    S10["Sprint 10\nData spine + ROCm runtime"] --> S11["Sprint 11\nTools + evidence fabric"]
     S11 --> S12["Sprint 12\nAgent + product UX"]
     S12 --> S13["Sprint 13\nEvaluation + optimization"]
-    S13 --> S14["Sprint 14\nRelease + submission"]
+    S13 --> S14["Sprint 14\nRelease + AMD submission"]
 ```
 
-No Sprint may claim completion from documentation alone. Its exit requires the
-specified runtime evidence and a clean-checkout reproduction.
+## Sprint 10: Data Spine and Radeon Runtime
 
-## Sprint 10: Canonical Financial Data and Local Runtime
-
-**Outcome:** establish a reproducible Radeon/ROCm inference boundary and a
-point-in-time financial data foundation for the Magnificent Seven.
+**Outcome:** establish the minimum credible financial data foundation and prove
+that local model and embedding inference can run inside the Radeon/ROCm
+competition boundary. This Sprint is the foundation: it creates the canonical
+data spine and runtime receipts, but it does not yet promise a full agentic
+memo.
 
 ### User-Visible Increment
 
-The Alpha interface reports verified local model and embedding health, lists
-the available companies and observation windows, and can display source-backed
-filing and macro timelines without generating an analytical conclusion.
+The web interface shows local model health, local embedding health, GPU/runtime
+receipt status, covered companies, available data windows, source coverage,
+filing timelines, and macro/rate timelines. It does not yet generate a final
+analytical memo.
 
-### Runtime and Deployment
+### Database Increment
 
-- [ ] Reproduce the current public `main` from the Radeon Cloud persistent-PVC
-  template and record the exact source commit.
-- [ ] Generate a machine-readable environment receipt covering GPU, ROCm,
-  driver, OS, Python, PyTorch, serving runtime, model, precision, and flags.
-- [ ] Deploy at least two open-weight instruction-model candidates through a
-  local OpenAI-compatible endpoint and select one using a frozen task set.
-- [ ] Deploy and benchmark a local embedding model on the same Radeon profile.
-- [ ] Implement identity, model, embedding, and GPU health probes; endpoint
-  configuration alone must not imply readiness.
-- [ ] Prove zero remote core-inference calls with egress observation and an
-  explicit disabled-remote-provider test.
-- [ ] Prove source, configuration, and evaluation metadata recovery after
-  instance destruction without committing model weights or secrets to Git.
+- PostgreSQL becomes the canonical Alpha system of record for identity,
+  filings, raw facts, reviewed metric observations, source clocks, and
+  research-run scaffolding.
+- Object storage receives immutable source snapshots and restore manifests for
+  every source family touched in this Sprint.
+- Qdrant and Neo4j are prepared as empty/rebuildable projections, but no Sprint
+  10 output depends on them for truth.
+- Runtime evidence records local model and embedding endpoint readiness,
+  loopback-only policy, GPU evidence, benchmark receipts, and recovery posture.
 
-### Source Ingestion
+### Data Extraction Scope
 
-- [ ] Implement an SEC identity adapter for CIK, ticker, exchange, and issuer
-  aliases, preserving the source snapshot and source limitations.
-- [ ] Implement SEC submissions and Company Facts ingestion for 10-K, 10-Q,
-  and amendments, with a classified User-Agent and a global request budget
-  below the SEC fair-access ceiling.
-- [ ] Preserve the complete filing document and structured source payload in
-  content-addressed object storage before parsing.
-- [ ] Implement Treasury nominal and real yield-curve snapshot ingestion.
-- [ ] Implement FRED/ALFRED series and vintage ingestion for the approved macro
-  series registry, preserving revision and availability semantics.
-- [ ] Implement a provider-neutral adjusted daily market-data adapter with
-  license metadata and a hash-pinned CSV import fallback.
-- [ ] Import a bounded 13F cohort only after its manager CIK allowlist and
-  filing-delay disclosure are reviewed.
-- [ ] Add idempotent refresh, conditional retrieval, backoff, rate limiting,
-  retry budgets, and source-specific quarantine behavior.
+- SEC company tickers, CIKs, issuer names, ticker mappings, and exchange aliases
+  for Apple, Microsoft, Alphabet, Amazon, NVIDIA, Meta Platforms, and Tesla.
+- SEC submissions metadata for 10-K, 10-Q, and amendments, including accession,
+  form, report period, filed time, accepted time, availability time, and primary
+  document references.
+- SEC Company Facts and filing XBRL facts for the bounded accounting metric
+  registry.
+- Immutable filing documents and structured payloads as source objects before
+  parsing.
+- Treasury nominal and real yield snapshots, with initial priority on the
+  10-year real yield required by the demo.
+- FRED/ALFRED vintage snapshots for the approved macro registry.
+- Provider-neutral adjusted daily market data or a hash-pinned licensed CSV
+  fallback.
 
-### Canonical PostgreSQL Model
+### Database And Storage Work
 
-- [ ] Add migrations for source systems, ingestion runs, source objects,
-  issuers, securities, identifiers, filings, documents, XBRL concepts,
-  contexts, facts, metric mappings, time series, observations, institutional
-  managers, reports, positions, and data-quality findings.
-- [ ] Store accounting values as exact decimals with explicit units, scales,
-  currencies, periods, fiscal frames, dimensions, and filing identities.
-- [ ] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,
-  `available_at`, `ingested_at`, and supersession independently.
-- [ ] Quarantine ambiguous dimensions, unsupported units, duplicate contexts,
-  impossible periods, and unmapped custom concepts rather than guessing.
-- [ ] Bind every parsed row to its immutable source-object hash, parser
-  version, ingestion run, and validation result.
-- [ ] Add canonical point-in-time views that select only data available at the
-  requested research timestamp.
+- [x] Add PostgreSQL migrations for Alpha source systems, source objects,
+  issuers, securities, identifiers, filings, XBRL facts, metric observations,
+  time series, analysis runs, 13F holdings, research sessions, tool
+  invocations, claims, and claim evidence.
+- [x] Add deterministic SEC identity registry and idempotent SQL seed for the
+  Magnificent Seven.
+- [x] Convert the deterministic SEC seed into a snapshot-aware identity adapter
+  that stores source hash, source limitations, ingestion run, and object
+  lineage.
+- [x] Add a local SEC submissions snapshot adapter that validates issuer CIK
+  and ticker, filters 10-K/10-Q amendment forms, records source-object lineage,
+  and upserts the initial filing timeline.
+- [x] Add a local SEC Company Facts snapshot adapter that validates CIK,
+  records source-object lineage, and publishes sanitized coverage metadata.
+- [x] Persist initial Company Facts raw rows into taxonomy, concept, context,
+  and fact tables with deterministic IDs and source-object lineage.
+- [x] Add the initial reported metric registry and issuer-scoped reviewed
+  US-GAAP concept mappings for bounded accounting metrics.
+- [x] Add a first-pass reported metric observation seed for mapped numeric USD
+  Company Facts rows with explicit no-amendment/no-YTD-resolution lineage.
+- [x] Store accounting values as exact decimals with explicit units, SEC
+  decimals, currencies, periods, fiscal frames, dimensions, and filing
+  identities.
+- [x] Represent `observed_at`, `period_start`, `period_end`, `filed_at`,
+  `published_at`, `available_at`, `ingested_at`, and supersession
+  independently across the SEC and first Treasury snapshot adapters.
+- [x] Quarantine unsupported taxonomies, missing units, missing numeric monetary
+  values, invalid currency units, and impossible or missing periods rather than
+  promoting them into canonical metrics.
+- [x] Add point-in-time query views that expose `available_at` and require tools
+  to filter `available_at <= as_of` before evidence assembly.
+- [x] Add a source coverage view for UI and agent audit surfaces, including
+  source system, ingestion state, object hash, availability, row counts, and
+  metadata.
+- [x] Add a local Treasury CSV snapshot seed for the 10-year real-yield series
+  with observed, published, available, and optional vintage clocks.
+- [x] Add the first market-data snapshot adapter for adjusted prices, returns,
+  corporate-action policy, source license, and availability semantics.
+- [x] Add the first FRED/ALFRED vintage adapter for the approved macro registry.
+- [x] Add object-manifest restore tests for SEC, Treasury, FRED, and market
+  source snapshots.
 
-### Quality and Security
+### Runtime Work
 
-- [ ] Build fixtures for amendments, restatements, 53-week fiscal years,
-  custom XBRL extensions, split-adjusted prices, missing observations, revised
-  macro values, and duplicate 13F positions.
-- [ ] Test idempotent replay, partial-download rejection, parser failure,
-  source outage, rate-limit response, and object-store recovery.
-- [ ] Verify tenant/repository isolation and prevent source credentials from
-  entering logs, URLs persisted as evidence, or frontend responses.
-- [ ] Publish a sanitized coverage manifest with counts, ranges, hashes,
-  freshness, gaps, and licenses, but no restricted data body.
+- [x] Define the Radeon Cloud template procedure with persistent PVC, SSH, the
+  recommended base image, public Git checkout, and no model weights committed.
+- [x] Add `schemas/radeon-runtime-receipt.schema.json`.
+- [x] Add `scripts/capture_radeon_runtime_receipt.py`.
+- [x] Add `docs/06-operations/RADEON_CLOUD_RUNTIME.md`.
+- [x] Add a loopback-only local OpenAI-compatible embedding provider.
+- [ ] Capture a real Radeon Cloud runtime receipt and keep raw artifacts
+  outside Git.
+- [x] Add a runtime readiness verifier for local model endpoint, embedding
+  endpoint, loopback-only policy, GPU evidence, and zero remote core inference.
+- [x] Add a frozen public smoke task set and sanitized benchmark harness for
+  comparing loopback local instruction-model candidates on Radeon.
+- [x] Add an integrated competition-profile recovery verifier that binds
+  runtime receipt, readiness, source restore, and local model benchmark
+  evidence.
+- [x] Add a frozen public smoke input set and sanitized benchmark harness for
+  validating a loopback local embedding endpoint on Radeon.
+- [ ] Deploy at least two open-weight instruction-model candidates locally and
+  select one with a frozen task set.
+- [ ] Deploy and benchmark a local embedding model on the Radeon profile.
+- [ ] Prove source, configuration, and evaluation recovery after instance
+  destruction without committing model weights or secrets.
 
 ### Sprint 10 Exit Gate
 
 - A clean Radeon instance serves verified local model and embedding endpoints.
-- The exact competition profile performs zero remote inference calls.
-- Every Magnificent Seven issuer resolves deterministically to its SEC identity.
-- At least the latest 10-K and two 10-Q periods per issuer are preserved and
-  queryable point-in-time with raw-to-canonical lineage.
-- Treasury/FRED and approved market observations expose explicit availability
-  and revision semantics.
+- The exact competition profile performs zero remote core-inference calls.
+- Every Magnificent Seven issuer resolves deterministically to SEC identity.
+- Latest 10-K and two 10-Q periods per issuer are preserved and queryable
+  point-in-time with raw-to-canonical lineage.
+- Treasury/FRED and approved market observations expose availability and
+  revision semantics.
 - Destroying the instance loses no committed code, required receipts, or
   persistent data snapshot.
+- Sprint 10 closure remains fail-closed until a real Radeon receipt, model
+  benchmark, embedding benchmark, and destroy/recreate recovery receipt are
+  independently reviewed.
 
-## Sprint 11: Deterministic Finance Tools and Evidence Fabric
+## Sprint 11: Deterministic Tools and Evidence Fabric
 
-**Outcome:** turn canonical data into reproducible financial tools and minimal,
-source-grounded context packs.
+**Outcome:** convert canonical data into recomputable tools, evidence packs,
+Qdrant discovery, and Neo4j paths that a local model can safely use. This is
+where Forja stops being a data loader and becomes a verifiable research engine.
 
 ### User-Visible Increment
 
-The interface can execute one approved deterministic analysis at a time and
-show its inputs, formula, output, source citations, freshness, and limitations.
+The interface runs one approved deterministic analysis at a time and shows its
+inputs, formula, output, citations, freshness, diagnostics, limitations, and
+graph/source path.
 
-### Metric Normalization
+### Database Increment
 
-- [ ] Define a versioned canonical metric registry for revenue, operating
-  income, net income, operating cash flow, capital expenditure, free cash flow,
-  cash, debt, shares, and stock-based compensation.
-- [ ] Map standard and issuer-extension XBRL concepts through reviewed rules;
-  record mapping confidence and never merge incompatible dimensions.
-- [ ] Implement duration/instant selection, quarterly-versus-YTD derivation,
-  fiscal-calendar alignment, currency/unit validation, and amendment priority.
-- [ ] Produce a reconciliation report from each canonical metric back to the
-  filing presentation and raw XBRL facts.
+- PostgreSQL stores tool definitions, tool runs, input hashes, output hashes,
+  formula versions, estimator versions, diagnostics, and claim evidence.
+- Object storage stores large evidence packs, calculation receipts, extracted
+  filing sections, method documents, and generated evidence summaries.
+- Qdrant receives only narrative/discovery chunks that resolve back to
+  PostgreSQL and source-object hashes.
+- Neo4j receives only canonical IDs and evidence-classified relationships
+  projected from PostgreSQL.
 
-### Deterministic Tool Packs
+### Tool Layer
 
-- [ ] Implement `filings.compare` for period, amendment, and disclosure change.
-- [ ] Implement `fundamentals.compute` for growth, margins, cash conversion,
-  capital intensity, leverage, and dilution with typed formulas.
-- [ ] Implement `factors.estimate` for aligned returns, rolling OLS and Ridge,
-  robust errors, diagnostics, and stability checks.
-- [ ] Implement `holdings.compare` for manager positions, changes,
-  concentration, overlap, and filing-delay disclosure.
-- [ ] Require every tool request to declare universe, `as_of`, lookback,
-  frequency, missing-data policy, and output budget.
-- [ ] Emit an immutable analysis specification and result receipt containing
-  code version, input hashes, formula version, diagnostics, and citations.
+- [ ] `filings.timeline`: issuer filing history, amendment chain, source
+  availability, source-object closure, and document status.
+- [ ] `filings.compare`: section-level filing changes, disclosure deltas, risk
+  factor changes, and accounting-policy changes.
+- [ ] `fundamentals.compute`: revenue growth, margin, operating quality, cash
+  conversion, capital intensity, leverage, dilution, and free cash flow.
+- [ ] `factors.estimate`: aligned returns, real-yield sensitivity, rolling OLS,
+  Ridge, robust errors, diagnostics, and stability checks.
+- [ ] `holdings.compare`: manager positions, changes, concentration, overlap,
+  and filing-delay disclosure.
+- [ ] `evidence.pack`: bounded evidence packs with source hashes, canonical
+  IDs, result hashes, graph paths, citation anchors, and unsupported gaps.
 
-### Qdrant Narrative Projection
+### Qdrant Projection
 
-- [ ] Chunk filing sections, notes, accounting policies, risk disclosures, and
-  method documentation without embedding numeric tables as authority.
+- [ ] Chunk filing sections, notes, accounting policies, risk disclosures,
+  method docs, and generated evidence summaries without embedding numeric
+  tables as authority.
 - [ ] Attach issuer, filing, form, section, source hash, filed/available time,
   lifecycle, access scope, concept references, and graph IDs to every point.
-- [ ] Generate embeddings locally on Radeon and record model and vector version.
+- [ ] Generate embeddings locally on Radeon and record model, vector version,
+  chunking version, source closure, and projection receipt.
 - [ ] Implement exact, dense, sparse, and weighted-hybrid retrieval baselines.
-- [ ] Resolve every candidate against current canonical PostgreSQL authority
-  before its text enters a context pack.
+- [ ] Resolve every candidate against PostgreSQL authority before text enters a
+  context pack.
 
-### Neo4j Evidence Graph
+### Neo4j Projection
 
 - [ ] Add idempotent nodes for issuer, security, filing, document, section,
-  concept, fact, metric, series, observation, manager, holding, analysis, claim,
-  and source object.
-- [ ] Add only evidence-classified edges such as `FILED`, `CONTAINS`,
-  `REPORTS`, `NORMALIZES_TO`, `DERIVED_FROM`, `USES_SERIES`, `HOLDS`, and
-  `SUPPORTED_BY`.
-- [ ] Bind every edge to canonical IDs, source hashes, projector version, and
-  an evidence class; semantic suggestions remain untrusted candidates.
-- [ ] Implement independent projector checkpoints, drift detection, full
-  rebuild, path allowlists, hop budgets, and stale-projection fallback.
+  concept, fact, metric, series, observation, manager, holding, analysis,
+  claim, and source object.
+- [ ] Add evidence-classified edges such as `FILED`, `CONTAINS`, `REPORTS`,
+  `NORMALIZES_TO`, `DERIVED_FROM`, `USES_SERIES`, `HOLDS`, and `SUPPORTED_BY`.
+- [ ] Bind every edge to canonical IDs, source hashes, projector version,
+  evidence class, and point-in-time validity.
+- [ ] Implement checkpoints, drift detection, full rebuild, path allowlists,
+  hop budgets, and stale-projection fallback.
 
 ### Context Broker
 
-- [ ] Define typed context requests and packs with user scope, research time,
-  source budget, token budget, and required evidence classes.
+- [ ] Define typed context requests with user scope, research time, source
+  budget, token budget, required evidence classes, and permission boundary.
 - [ ] Route exact numeric questions to PostgreSQL/tools and narrative questions
   to Qdrant plus bounded Neo4j paths.
 - [ ] Deduplicate overlapping excerpts, preserve counterevidence, and report
-  missing or conflicting evidence instead of filling gaps.
+  missing or conflicting evidence.
 - [ ] Emit content-free retrieval receipts for discovery, canonical resolution,
   selection, rejection, freshness, graph traversal, and final context size.
 
@@ -236,13 +418,16 @@ show its inputs, formula, output, source citations, freshness, and limitations.
 - Qdrant and Neo4j can be destroyed and rebuilt without canonical data loss.
 - Point-in-time tests reject look-ahead facts, revised macro values, and late
   filings unavailable at the requested timestamp.
-- The primary demo question produces a complete evidence pack before any LLM
+- The primary demo question produces a complete evidence pack before LLM
   interpretation is enabled.
+- The local model can be disabled and the same evidence pack still exists,
+  proving the model is an interpreter/planner rather than the source of truth.
 
-## Sprint 12: Governed Alpha Agent and Research Workspace
+## Sprint 12: Local Agent and Research Workspace
 
-**Outcome:** convert the experience foundation into a complete local research
-agent with planning, RAG, tools, memory, permissions, and a fluid web workflow.
+**Outcome:** turn the data spine and tools into a complete local research agent
+with planning, tool use, RAG, memory, permissions, and a polished judge-visible
+web experience.
 
 ### User-Visible Increment
 
@@ -250,41 +435,53 @@ The researcher asks the primary question, watches the plan and local tool calls
 execute, inspects evidence, receives a cited memo, asks a follow-up, and can
 delete the conversation and promoted memory.
 
-### Planning and Orchestration
+### Product Increment
+
+- A web workspace replaces CLI-only operation for the main judge path.
+- The agent shows a plan timeline, tool console, evidence drawer, source cards,
+  citation inspector, memo panel, local GPU/runtime status, and privacy
+  controls.
+- The local planner may propose actions, but schema validation, permission
+  checks, tool allowlists, context budgets, and verification gates decide what
+  actually runs.
+
+### Agent Orchestration
 
 - [ ] Replace the static preview plan with a typed local-model planner whose
   output is schema-validated before execution.
-- [ ] Restrict plans to allowlisted tools, bounded companies, approved data
-  windows, budgets, dependencies, stop conditions, and retry policies.
-- [ ] Route every tool request through existing MCP capability, identity,
-  scope, approval, lease, and audit boundaries.
+- [ ] Restrict plans to allowlisted tools, bounded companies, approved windows,
+  source budgets, token budgets, dependencies, stop conditions, and retry
+  policies.
+- [ ] Route every tool request through MCP capability, identity, scope,
+  approval, lease, and audit boundaries.
 - [ ] Execute independent read-only steps concurrently while preserving a
   deterministic dependency graph and cancellation semantics.
 - [ ] Add verify, repair, and fail-closed paths for malformed plans, missing
   evidence, stale data, tool errors, timeout, and local-model failure.
-- [ ] Prevent the planner or writer from approving privileged operations or
-  changing canonical data and analysis results.
 
-### Memo Composition and Verification
+### Memo Composition
 
-- [ ] Define a research-memo contract separating reported facts, calculated
-  metrics, statistical estimates, interpretation, counterarguments, and gaps.
-- [ ] Pass only the bounded evidence pack to the local writer model.
+- [ ] Define a memo contract separating reported facts, calculated metrics,
+  statistical estimates, interpretation, counterarguments, and gaps.
+- [ ] Pass only bounded evidence packs to the local writer model.
 - [ ] Verify citations, numbers, units, periods, company identities, and claim
   support mechanically before releasing a memo.
 - [ ] Reject unsupported causal language, forecasts presented as facts, stale
-  evidence, and outputs that omit material statistical limitations.
+  evidence, and outputs that omit statistical limitations.
 - [ ] Preserve the complete private memo as an access-controlled artifact and
-  expose only content-free operational telemetry.
+  expose only content-free telemetry.
 
-### Memory and Privacy
+### Memory And Privacy
 
 - [ ] Persist conversations, messages, citations, working summaries, memory
-  candidates, and approved memory through existing governed stores.
-- [ ] Promote durable memory only through an explicit policy or user action;
-  raw chat is never automatically treated as truth.
-- [ ] Scope retrieval by user, workspace, research session, issuer, and source
-  lifecycle before embedding or graph traversal.
+  candidates, approved memories, deletion requests, and tombstones in
+  PostgreSQL.
+- [ ] Store large private artifacts and memo bodies as content-addressed
+  objects, not database blobs.
+- [ ] Project approved memory summaries into Qdrant only after permission,
+  retention, and scope checks.
+- [ ] Project claim and citation relationships into Neo4j for explainable
+  research paths.
 - [ ] Implement redaction, retention, export, deletion, tombstone, and derived
   Qdrant/Neo4j cleanup behavior.
 - [ ] Add prompt-injection, indirect-injection, cross-session leakage,
@@ -292,32 +489,36 @@ delete the conversation and promoted memory.
 
 ### Product Experience
 
-- [ ] Stream plan, step, tool, evidence, verification, and completion events to
-  the existing three-pane web interface.
+- [ ] Build a polished web interface inspired by professional coding-agent
+  tools: conversation rail, plan timeline, tool console, evidence drawer, data
+  cards, and memo panel.
+- [ ] Stream plan, step, tool, evidence, verification, local-model, and
+  completion events.
 - [ ] Add source cards, citation inspection, formula drill-down, data freshness,
   runtime/GPU status, cancellation, retry, and degraded-state UI.
 - [ ] Add conversation history and follow-up flow without exposing hidden
   chain-of-thought; show concise reasons, evidence, and decisions instead.
 - [ ] Meet keyboard, IME, responsive, screen-reader, focus, contrast, and error
   recovery requirements on desktop and mobile.
-- [ ] Make the primary workflow understandable without CLI access or manual
-  database inspection.
 
 ### Sprint 12 Exit Gate
 
 - The product visibly demonstrates all five Track 2 capabilities: RAG, tools,
   planning, memory, and permission/privacy controls.
-- The primary scenario and at least four adversarial variants complete with
-  local Radeon inference and no remote core dependency.
+- The primary scenario and four adversarial variants complete with local
+  Radeon inference and no remote core dependency.
 - Every released material claim has a valid citation or deterministic result.
 - Cancellation, restart, source outage, tool failure, and local-model failure
   produce clear bounded states without fabricated completion.
 - A judge can operate the full scenario from the web interface alone.
+- The same scenario can be replayed from receipts so we can debug failures
+  without relying on hidden model state or screenshots.
 
 ## Sprint 13: Evaluation, ROCm Optimization, and Safety Closure
 
-**Outcome:** improve local performance and task success using reproducible
-evidence rather than demo-specific tuning.
+**Outcome:** improve quality, speed, and stability using reproducible evidence
+rather than demo-specific tuning. This Sprint turns the Alpha from "works in a
+demo" into "measured, bounded, and defensible."
 
 ### Evaluation Corpus
 
@@ -331,11 +532,21 @@ evidence rather than demo-specific tuning.
 - [ ] Record dataset version, generation lineage, split manifest, hashes,
   licenses, and private/public boundary.
 
-### Model and Runtime Optimization
+### Database Increment
+
+- PostgreSQL stores evaluation suites, split manifests, run receipts,
+  mechanical labels, reviewer labels, benchmark results, and release-quality
+  decisions.
+- Object storage stores sanitized raw benchmark artifacts, charts, reports,
+  videos-in-progress, and recovery evidence.
+- Observability stores content-free performance and failure telemetry suitable
+  for public claims.
+
+### ROCm Optimization
 
 - [ ] Establish FP16/BF16 baselines for instruction and embedding models.
-- [ ] Evaluate Radeon-compatible quantization or distillation and record exact
-  model revisions, artifacts, hashes, conversion tools, and runtime flags.
+- [ ] Evaluate Radeon-compatible quantization or distillation and record model
+  revisions, artifacts, hashes, conversion tools, and runtime flags.
 - [ ] Tune context length, prefill, batching, concurrency, prefix caching,
   decoding, memory utilization, and tool parallelism against held-out tasks.
 - [ ] Measure startup, model load, TTFT, inter-token latency, tokens/second,
@@ -343,7 +554,7 @@ evidence rather than demo-specific tuning.
 - [ ] Separate ingestion, retrieval, graph, tool, model, verification, and UI
   latency in every benchmark.
 
-### Quality and Safety Gates
+### Safety And Reliability
 
 - [ ] Measure task completion, citation precision/recall, numeric exactness,
   required-source recall, plan validity, tool-call validity, unsupported-claim
@@ -364,8 +575,11 @@ evidence rather than demo-specific tuning.
 - The full primary scenario meets a frozen interaction SLO on Radeon Cloud.
 - Every public performance and quality claim is reproducible from versioned
   configuration and sanitized evidence.
+- The release candidate has a measured no-network core-inference profile and a
+  measured degraded profile for missing source, missing projection, and local
+  model failure.
 
-## Sprint 14: Pilot, Release, and AMD Submission
+## Sprint 14: Release, Submission, and Public Narrative
 
 **Outcome:** ship a polished, reproducible Forja Alpha release and a complete
 Track 2 submission.
@@ -383,15 +597,26 @@ Track 2 submission.
 - [ ] Record intervention, degraded paths, retries, queue time, context size,
   GPU metrics, task quality, and final evidence hashes.
 
-### Packaging and Documentation
+### Release Data Freeze
+
+- [ ] Freeze the public sample dataset, private demo snapshots, source-object
+  manifests, projection manifests, model/runtime manifest, and benchmark
+  manifest.
+- [ ] Record which artifacts are committed, which are downloaded by documented
+  commands, which live on persistent PVC, and which are intentionally excluded
+  for license or privacy reasons.
+- [ ] Verify that README, PDF, demo video, and presentation make the same
+  claims as the evidence ledger and do not overstate unsupported behavior.
+
+### Packaging And Documentation
 
 - [ ] Publish one-command setup and startup paths plus a pinned Radeon Cloud
   template, dependency lockfiles, model-acquisition guide, and sample data path.
 - [ ] Publish an English README covering architecture, requirements, local
   privacy, sources, licenses, setup, use, evaluation, limitations, and recovery.
 - [ ] Publish the English project-specification PDF with application scenario,
-  architecture diagram, capabilities, models, deployment, data lineage,
-  privacy, and ROCm optimization evidence.
+  architecture diagram, capabilities, models, deployment, data lineage, privacy,
+  and ROCm optimization evidence.
 - [ ] Record a three-to-five-minute English demo showing actual Radeon GPU
   execution, question, plan, tools, evidence, memo, follow-up, privacy control,
   and measured performance.
@@ -400,7 +625,7 @@ Track 2 submission.
 - [ ] Audit repository history and artifacts for secrets, private corpora,
   licensed payloads, personal paths, unsupported claims, and stale screenshots.
 
-### Submission and Closure
+### Submission And Closure
 
 - [ ] Fork the official AMD repository and open the final pull request titled
   `Track 2, <Team Name>, Forja Alpha` with every required link public.
@@ -423,7 +648,7 @@ Track 2 submission.
 - Independent evidence supports every published capability, benchmark, and
   data-quality claim.
 
-## Deferred Beyond the Submission
+## Deferred Beyond The Submission
 
 - Real-time trading feeds, order execution, portfolio recommendations, price
   prediction, options analytics, and autonomous financial decisions.

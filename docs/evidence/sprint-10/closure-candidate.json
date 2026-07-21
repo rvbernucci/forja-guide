@@ -1,0 +1,51 @@
+{
+  "evidence_version": "1.0",
+  "sprint_id": "10",
+  "name": "Data Spine and Radeon Runtime",
+  "status": "candidate",
+  "closure_protocol_version": "2.0",
+  "authoritative": false,
+  "basis_commit": "9371ea6e282a9d48fa6bb280dc58ce60209f0a21",
+  "definition_of_done": {
+    "implementation_and_migrations_committed": true,
+    "mechanical_tests_passed": true,
+    "independent_validation_recorded": false,
+    "security_and_tenant_boundaries_checked": true,
+    "observability_for_new_runtime_behavior": true,
+    "documentation_and_adrs_current": true,
+    "rollback_demonstrated": false,
+    "undocumented_blockers": 0
+  },
+  "acceptance": {
+    "financial_data_spine_public_code_verified": true,
+    "source_snapshot_restore_harness_verified": true,
+    "radeon_runtime_receipt_harness_verified": true,
+    "local_model_benchmark_harness_verified": true,
+    "local_embedding_benchmark_harness_verified": true,
+    "one_shot_evidence_runner_verified": true,
+    "real_radeon_runtime_receipt_captured": false,
+    "two_local_instruction_candidates_benchmarked_on_radeon": false,
+    "local_embedding_endpoint_benchmarked_on_radeon": false,
+    "destroy_recreate_recovery_verified": false
+  },
+  "evidence_files": [
+    "plan.json",
+    "test-report.json",
+    "validation-report.json",
+    "security-report.json",
+    "rollback-report.json",
+    "metrics-summary.json"
+  ],
+  "supporting_artifacts": [
+    "docs/04-roadmap/SPRINTS_10_14_PRODUCTION.md",
+    "docs/04-roadmap/SPRINTS_10_14_DATA_EXECUTION_MATRIX.md",
+    "docs/06-operations/RADEON_CLOUD_RUNTIME.md",
+    "scripts/run_radeon_sprint10_evidence.py",
+    "scripts/verify_competition_profile_recovery.py",
+    "scripts/benchmark_radeon_model_candidates.py",
+    "scripts/benchmark_radeon_embedding.py",
+    "schemas/radeon-model-candidates.schema.json"
+  ],
+  "next_sprint_authorized": null,
+  "recorded_at": "2026-07-20T18:06:00Z"
+}

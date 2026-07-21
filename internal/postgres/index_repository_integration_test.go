@@ -130,6 +130,15 @@ func TestIndexPublicationIsAtomicReplaySafeAndSupersedes(t *testing.T) {
 		t.Fatal("live snapshot artifact was not protected")
 	}
 	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 012: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 011: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
+		t.Fatalf("rollback unused migration 010: %v", err)
+	}
+	if err := RollbackLast(t.Context(), pool); err != nil {
 		t.Fatalf("rollback unused migration 009: %v", err)
 	}
 	if err := RollbackLast(t.Context(), pool); err == nil {

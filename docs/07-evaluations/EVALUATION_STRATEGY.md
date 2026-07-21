@@ -80,6 +80,29 @@ Measure:
 - escalation precision;
 - model and infrastructure cost.
 
+## Radeon Local Model Candidate Evaluation
+
+Sprint 10 uses a separate local-model candidate benchmark before selecting the
+instruction model for the AMD demo profile. The public smoke task set is
+[`internal/alpha/testdata/radeon_model_selection_public_v1.json`](../../internal/alpha/testdata/radeon_model_selection_public_v1.json).
+It checks benchmark plumbing only; it is not a quality claim.
+
+Run the benchmark against loopback OpenAI-compatible endpoints on Radeon:
+
+```bash
+python3 scripts/benchmark_radeon_model_candidates.py \
+  --task-set internal/alpha/testdata/radeon_model_selection_public_v1.json \
+  --candidates /secure/forja/radeon-model-candidates.json \
+  --output /workspace/forja-radeon-model-candidate-report.json
+```
+
+Private tuning and holdout task sets stay outside Git. Reports store response
+hashes, latency, completion length, finish reason, and provider token usage
+when available, but never response bodies. Model selection must consider task
+completion, safety behavior, local latency, model load/startup cost, GPU memory,
+and failure modes; a faster model is not acceptable if it loses evidence
+discipline or financial-safety boundaries.
+
 ## Statistical Discipline
 
 - report sample size;
