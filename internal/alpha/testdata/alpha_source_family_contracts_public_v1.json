@@ -1,0 +1,214 @@
+{
+  "schema_version": "1.0",
+  "contract_kind": "forja_alpha_source_family_contracts",
+  "scope": "public_fixture_contract",
+  "families": [
+    {
+      "source_family": "fred",
+      "sprint10_required": true,
+      "expected_snapshot_path": "fred/FEDFUNDS.csv",
+      "preserved_object": "FRED or ALFRED vintage CSV snapshot",
+      "canonical_rows": [
+        "macro_series",
+        "macro_observation"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "series_id",
+        "observed_at",
+        "published_at",
+        "available_at",
+        "revision_policy"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j series paths only after PostgreSQL import",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot select macro values",
+        "Neo4j cannot create observations",
+        "model output cannot revise vintage clocks"
+      ]
+    },
+    {
+      "source_family": "market",
+      "sprint10_required": true,
+      "expected_snapshot_path": "market/NVDA-adjusted.csv",
+      "preserved_object": "provider-neutral or licensed adjusted-price CSV snapshot",
+      "canonical_rows": [
+        "market_series",
+        "market_observation",
+        "return_observation"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "provider",
+        "license_boundary",
+        "adjustment_policy",
+        "observed_at",
+        "available_at"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j security/series paths only after PostgreSQL import",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot serve exact prices",
+        "Neo4j cannot infer adjusted returns",
+        "model output cannot fill missing rows"
+      ]
+    },
+    {
+      "source_family": "sec_company_facts",
+      "sprint10_required": true,
+      "expected_snapshot_path": "sec/companyfacts/CIK0001045810.json",
+      "preserved_object": "SEC Company Facts JSON snapshot",
+      "canonical_rows": [
+        "xbrl_taxonomy",
+        "xbrl_concept",
+        "xbrl_context",
+        "xbrl_fact",
+        "metric_observation"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "cik",
+        "fact_count",
+        "unit_coverage",
+        "currency_coverage",
+        "quarantine_count",
+        "mapping_version"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j concept/fact/metric paths only after reviewed mapping",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot choose canonical metrics",
+        "Neo4j cannot normalize raw facts",
+        "model output cannot approve unsupported taxonomies"
+      ]
+    },
+    {
+      "source_family": "sec_filing_document",
+      "sprint10_required": false,
+      "expected_snapshot_path": "sec/filings/<accession>/<primary-document>",
+      "preserved_object": "SEC filing primary document XHTML, XML, or inline XBRL object",
+      "canonical_rows": [
+        "filing_document",
+        "filing_section",
+        "source_anchor"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "accession",
+        "primary_document",
+        "parser_version",
+        "section_coverage"
+      ],
+      "authority_store": "Object storage + PostgreSQL metadata",
+      "projection_policy": "Qdrant narrative chunks and Neo4j section paths after source closure",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot create filing metadata",
+        "Neo4j cannot create source anchors",
+        "model output cannot cite missing sections"
+      ]
+    },
+    {
+      "source_family": "sec_identity",
+      "sprint10_required": true,
+      "expected_snapshot_path": "sec/company_tickers.json",
+      "preserved_object": "SEC company_tickers.json snapshot",
+      "canonical_rows": [
+        "issuer",
+        "security",
+        "identifier"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "source_time",
+        "issuer_coverage",
+        "missing_covered_tickers"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j issuer/security nodes only after deterministic identity import",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot resolve issuer identity",
+        "Neo4j cannot create identifiers",
+        "model output cannot disambiguate tickers without PostgreSQL"
+      ]
+    },
+    {
+      "source_family": "sec_submissions",
+      "sprint10_required": true,
+      "expected_snapshot_path": "sec/submissions/CIK0001045810.json",
+      "preserved_object": "SEC submissions CIK JSON snapshot",
+      "canonical_rows": [
+        "filing",
+        "filing_document_metadata"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "cik",
+        "accepted_forms",
+        "skipped_forms",
+        "filed_at",
+        "accepted_at",
+        "available_at"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j filing/document paths only after PostgreSQL timeline import",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot decide filing availability",
+        "Neo4j cannot create filing clocks",
+        "model output cannot infer amendment chains"
+      ]
+    },
+    {
+      "source_family": "thirteen_f",
+      "sprint10_required": false,
+      "expected_snapshot_path": "sec/13f/<quarter>/<manager-accession>.json",
+      "preserved_object": "SEC 13F filing artifact or normalized private snapshot",
+      "canonical_rows": [
+        "institutional_manager",
+        "holding_report",
+        "holding_position",
+        "security_resolution"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "manager",
+        "report_period",
+        "filing_delay",
+        "position_count",
+        "unresolved_security_count"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j manager/holding paths after security resolution state is recorded",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot resolve CUSIPs",
+        "Neo4j cannot create holdings",
+        "model output cannot erase filing-delay limitations"
+      ]
+    },
+    {
+      "source_family": "treasury",
+      "sprint10_required": true,
+      "expected_snapshot_path": "treasury/real-yield-10y.csv",
+      "preserved_object": "Treasury nominal or real yield CSV/XML snapshot",
+      "canonical_rows": [
+        "rate_series",
+        "rate_observation"
+      ],
+      "required_receipt_fields": [
+        "source_hash",
+        "series_id",
+        "observed_at",
+        "published_at",
+        "available_at",
+        "vintage_policy"
+      ],
+      "authority_store": "PostgreSQL",
+      "projection_policy": "Neo4j series paths only after point-in-time import",
+      "forbidden_runtime_authority": [
+        "Qdrant cannot serve exact yields",
+        "Neo4j cannot create rate observations",
+        "model output cannot fill missing vintages"
+      ]
+    }
+  ]
+}

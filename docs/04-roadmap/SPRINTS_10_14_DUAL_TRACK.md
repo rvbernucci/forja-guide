@@ -169,13 +169,25 @@ fully testable without GPU.
 
 Checklist:
 
-- [ ] Freeze source-family contracts for SEC identity, SEC submissions, SEC
+- [x] Freeze source-family contracts for SEC identity, SEC submissions, SEC
   Company Facts, filing documents, Treasury, FRED/ALFRED, market data, and 13F.
 - [ ] Add public-safe fixture manifests for each source family.
 - [ ] Add importer tests for missing, malformed, stale, duplicated, and
   unsupported source data.
 - [ ] Add point-in-time query tests for `available_at <= as_of`.
 - [ ] Add source coverage tests for UI/agent audit surfaces.
+
+Current evidence:
+
+```bash
+python3 scripts/validate_alpha_source_contracts.py \
+  --output /tmp/forja-alpha-source-contract-validation.json
+```
+
+The validator cross-checks
+`internal/alpha/testdata/alpha_source_family_contracts_public_v1.json` against
+the same Sprint 10 required snapshot contract used by the Radeon private-input
+preflight and source-manifest builder.
 
 Exit evidence:
 
