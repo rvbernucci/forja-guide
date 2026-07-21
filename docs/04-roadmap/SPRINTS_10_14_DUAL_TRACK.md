@@ -201,13 +201,25 @@ model synthesis exists.
 
 Checklist:
 
-- [ ] Define tool schemas for filings timeline, fundamentals, factor
+- [x] Define tool schemas for filings timeline, fundamentals, factor
   sensitivity, holdings, and evidence-pack assembly.
 - [ ] Store tool run metadata, input hashes, output hashes, formula versions,
   estimator versions, diagnostics, and limitations.
 - [ ] Add mechanical validators for numeric exactness and citation coverage.
 - [ ] Add unsupported-gap receipts when data is missing or not computable.
 - [ ] Add local CLI/API smoke tests for each tool.
+
+Current evidence:
+
+```bash
+python3 scripts/validate_alpha_tool_contracts.py \
+  --output /tmp/forja-alpha-tool-contract-validation.json
+```
+
+The validator checks
+`internal/alpha/testdata/alpha_tool_contracts_public_v1.json` for the required
+tool set, receipt fields, diagnostics, forbidden behaviors, and storage
+boundary with `forja.alpha_tool_invocations`.
 
 Exit evidence:
 

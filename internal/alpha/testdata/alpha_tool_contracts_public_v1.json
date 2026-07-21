@@ -1,0 +1,189 @@
+{
+  "schema_version": "1.0",
+  "contract_kind": "forja_alpha_deterministic_tool_contracts",
+  "scope": "public_fixture_contract",
+  "receipt_contract": {
+    "required_fields": [
+      "contract_version",
+      "tool_name",
+      "tool_version",
+      "capability_id",
+      "request_sha256",
+      "input_refs",
+      "result_state",
+      "result_sha256",
+      "formula_or_method_version",
+      "diagnostics",
+      "limitations",
+      "evidence_refs"
+    ],
+    "allowed_result_states": [
+      "succeeded",
+      "failed",
+      "rejected",
+      "unsupported_gap"
+    ],
+    "storage_table": "forja.alpha_tool_invocations",
+    "authority_rule": "A deterministic tool receipt may support a claim only when all required input_refs resolve to PostgreSQL or content-addressed object storage."
+  },
+  "tools": [
+    {
+      "tool_name": "evidence.pack",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.evidence_pack.assemble",
+      "claim_classes": [
+        "reported_fact",
+        "calculation",
+        "statistical_estimate",
+        "interpretation",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL",
+        "object_storage",
+        "tool_receipt"
+      ],
+      "output_kind": "bounded_evidence_pack",
+      "required_diagnostics": [
+        "source_count",
+        "unsupported_gap_count",
+        "citation_count"
+      ],
+      "forbidden_behavior": [
+        "create facts",
+        "hide unsupported gaps",
+        "include model prose as evidence"
+      ]
+    },
+    {
+      "tool_name": "factors.estimate",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.factor_sensitivity.estimate",
+      "claim_classes": [
+        "statistical_estimate",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL"
+      ],
+      "output_kind": "factor_sensitivity_result",
+      "required_diagnostics": [
+        "window_start",
+        "window_end",
+        "observation_count",
+        "estimator",
+        "r_squared",
+        "standard_error",
+        "stability_warning"
+      ],
+      "forbidden_behavior": [
+        "predict future prices",
+        "present correlation as causation",
+        "ignore missing aligned observations"
+      ]
+    },
+    {
+      "tool_name": "filings.compare",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.filing_sections.compare",
+      "claim_classes": [
+        "interpretation",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL",
+        "object_storage"
+      ],
+      "output_kind": "filing_section_delta",
+      "required_diagnostics": [
+        "base_filing_id",
+        "comparison_filing_id",
+        "section_count",
+        "parser_version",
+        "missing_section_count"
+      ],
+      "forbidden_behavior": [
+        "cite missing sections",
+        "rewrite filing metadata",
+        "infer amendment chains without PostgreSQL"
+      ]
+    },
+    {
+      "tool_name": "filings.timeline",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.filing_timeline.query",
+      "claim_classes": [
+        "reported_fact",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL"
+      ],
+      "output_kind": "point_in_time_filing_timeline",
+      "required_diagnostics": [
+        "issuer_id",
+        "as_of",
+        "filing_count",
+        "amendment_count",
+        "source_closure"
+      ],
+      "forbidden_behavior": [
+        "use filings after as_of",
+        "drop amendments silently",
+        "resolve issuer identity semantically"
+      ]
+    },
+    {
+      "tool_name": "fundamentals.compute",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.fundamentals.compute",
+      "claim_classes": [
+        "calculation",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL"
+      ],
+      "output_kind": "reported_metric_calculation",
+      "required_diagnostics": [
+        "metric_ids",
+        "formula_version",
+        "period_count",
+        "unit_check",
+        "quality_warning_count"
+      ],
+      "forbidden_behavior": [
+        "calculate from retrieved prose",
+        "mix incompatible units",
+        "use rejected metric observations"
+      ]
+    },
+    {
+      "tool_name": "holdings.compare",
+      "tool_version": "alpha-v1",
+      "capability_id": "alpha.institutional_holdings.compare",
+      "claim_classes": [
+        "reported_fact",
+        "calculation",
+        "gap"
+      ],
+      "input_authorities": [
+        "PostgreSQL",
+        "object_storage"
+      ],
+      "output_kind": "institutional_holding_comparison",
+      "required_diagnostics": [
+        "manager_count",
+        "report_period",
+        "filing_delay",
+        "unresolved_security_count",
+        "position_count"
+      ],
+      "forbidden_behavior": [
+        "erase filing delay limitations",
+        "resolve securities by model output",
+        "claim complete ownership coverage"
+      ]
+    }
+  ]
+}
