@@ -12,6 +12,9 @@ The canonical source and storage design is defined in the
 The Sprint-by-Sprint extraction, storage, projection, and evidence map is
 tracked in the
 [Sprints 10-14 data execution matrix](SPRINTS_10_14_DATA_EXECUTION_MATRIX.md).
+While AMD Radeon Cloud is unavailable, execution is split into notebook-required
+and notebook-independent work in the
+[Sprints 10-14 dual track execution plan](SPRINTS_10_14_DUAL_TRACK.md).
 
 ## Product Outcome
 
@@ -88,6 +91,18 @@ candidate receipts, but it is not closed until real Radeon runtime evidence
 exists. Sprint 11 must not treat Qdrant or Neo4j as authority. Sprint 12 must
 not hide a missing data/tool layer behind a pretty UI. Sprint 13 must measure
 before optimizing. Sprint 14 must package only behavior that has evidence.
+
+When the Radeon notebook is offline, work continues through two synchronized
+tracks:
+
+| Track | Can run now? | Purpose | Closure authority |
+| --- | --- | --- | --- |
+| AMD notebook-required | only when Radeon is live | local ROCm runtime, model serving, embedding, Qdrant, Neo4j, PostgreSQL, recovery, and demo evidence | real Radeon receipts |
+| Notebook-independent | yes, local/VPS | schemas, source contracts, importers, deterministic tools, projection builders, UI shell, tests, docs, release material | tests and dry-run receipts only |
+
+The notebook-independent track is allowed to prepare Sprint 11-14 code and
+fixtures, but not to authorize Sprint 11 closure. Sprint 10 still requires a
+reviewed Radeon close receipt.
 
 ## Refactored Alpha Execution Contract
 

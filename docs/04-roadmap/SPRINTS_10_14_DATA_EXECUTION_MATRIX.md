@@ -6,6 +6,10 @@ Status: Active planning companion for
 This matrix turns the Alpha data architecture into executable work. It is the
 bridge between source extraction, durable storage, projection stores,
 deterministic tools, local Radeon inference, and Sprint closure evidence.
+Execution is split by environment in
+[Sprints 10-14 dual track execution plan](SPRINTS_10_14_DUAL_TRACK.md): Radeon
+Cloud proves runtime behavior, while local/VPS work prepares contracts,
+schemas, tools, projections, UI, tests, and release materials.
 
 ## Operating Principle
 
@@ -32,6 +36,26 @@ typed Go tools, Qdrant, and Neo4j each carry a separate responsibility:
 | 12 | Research sessions, plans, messages, promoted memories, permission decisions, memo drafts, citations | Research session, message, memory, tool invocation, claim, and claim-evidence tables | Web UI, local model planner, memory retrieval, context broker | End-to-end demo trace, memory audit, permission audit, cited memo artifact |
 | 13 | Evaluation sets, latency runs, GPU metrics, answer-quality labels, retrieval labels, tool accuracy checks | Evaluation specs, run receipts, result hashes, telemetry snapshots | Prometheus/Loki/Grafana evidence, local model benchmark variants | Accuracy, latency, stability, privacy, and recovery reports |
 | 14 | Submission PDF, demo video evidence, final README facts, release manifest, AMD PR materials | Release artifacts, immutable manifest, final evidence summaries | Public repository and Radeon demo profile | Clean checkout reproduction, public-source audit, submission checklist |
+
+## Environment Split
+
+| Component | Radeon notebook role | Notebook-independent role |
+| --- | --- | --- |
+| PostgreSQL | run canonical Alpha database against restored private snapshots and demo state | define migrations, point-in-time views, seed fixtures, import tests, source coverage tests |
+| Object storage/PVC | preserve private snapshots, model caches, DB exports, and runtime evidence | define manifests, restore verifiers, no-git boundaries, fixture contracts |
+| Qdrant | run local embedding-backed narrative retrieval on Radeon | define payload schema, rebuild contract, drift tests, synthetic/stub embedding tests |
+| Neo4j | run evidence-path graph over canonical IDs on Radeon | define projection schema, Cypher/export tests, rebuild and drift validation |
+| Local model | serve planner/synthesis through ROCm loopback endpoint | define prompts, contracts, mocked planner traces, UI states, safety tests |
+| Local embeddings | serve OpenAI-compatible loopback embedding endpoint | define dimensions/contracts and projection metadata checks |
+| Deterministic tools | execute in final local demo with receipts | implement formulas, schemas, validators, fixtures, and unsupported-gap receipts |
+| Web UI | demo complete private local agent on Radeon | build fixture-driven workstation shell and E2E flow |
+| Observability | capture GPU/runtime metrics and local latency | define dashboards, metric names, content-free log policy, smoke fixtures |
+
+The practical implication: yes, Qdrant, Neo4j, PostgreSQL, object storage,
+models, embeddings, and data all run on the AMD notebook for final proof. But
+the schemas, loaders, projection builders, and tests should be finished before
+Radeon returns so GPU time is spent proving behavior, not discovering missing
+contracts.
 
 ## Data-To-Database Contract
 
